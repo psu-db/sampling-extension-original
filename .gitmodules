@@ -1,0 +1,6 @@
+[submodule "external/RoaringBitmap"]
+	path = external/RoaringBitmap
+	url = git@github.com:RoaringBitmap/CRoaring.git
+[submodule "external/SuRF"]
+	path = external/SuRF
+	url = git@github.com:efficient/SuRF.git
