@@ -1,2 +1,10 @@
 .ccls
 .ccls-cache
+build/*
+lib/*
+
+tests/*
+!tests/*.{cpp,sh}
+
+benchmarks/*
+!benchmarks/*.{cpp,sh}
