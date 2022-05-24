@@ -76,13 +76,13 @@ PageId PagedFile::allocate_page()
 }
 
 
-int PagedFile::read_page(PageId pid, char *buffer_ptr)
+int PagedFile::read_page(PageId pid, byte *buffer_ptr)
 {
     return this->read_page(pid.page_number, buffer_ptr);
 }
 
 
-int PagedFile::read_page(PageNum pnum, char *buffer_ptr)
+int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
 {
     return (this->check_pnum(pnum)) 
              ? this->dfile->read(buffer_ptr, parm::PAGE_SIZE,
@@ -91,13 +91,13 @@ int PagedFile::read_page(PageNum pnum, char *buffer_ptr)
 }
 
 
-int PagedFile::write_page(PageId pid, const char *buffer_ptr)
+int PagedFile::write_page(PageId pid, const byte *buffer_ptr)
 {
     return this->write_page(pid.page_number, buffer_ptr);
 }
 
 
-int PagedFile::write_page(PageNum pnum, const char *buffer_ptr)
+int PagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
 {
     return (this->check_pnum(pnum)) 
              ? this->dfile->write(buffer_ptr, parm::PAGE_SIZE,

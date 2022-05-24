@@ -76,11 +76,11 @@ public:
 
     PageId allocate_page();
 
-    int read_page(PageId pid, char *buffer_ptr);
-    int read_page(PageNum pnum, char *buffer_ptr);
+    int read_page(PageId pid, byte *buffer_ptr);
+    int read_page(PageNum pnum, byte *buffer_ptr);
 
-    int write_page(PageId pid, const char *buffer_ptr);
-    int write_page(PageNum pnum, const char *buffer_ptr);
+    int write_page(PageId pid, const byte *buffer_ptr);
+    int write_page(PageNum pnum, const byte *buffer_ptr);
 
     int free_page(PageId pid);
     int free_page(PageNum pnum);
