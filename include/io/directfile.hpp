@@ -9,6 +9,7 @@
 #include <string>
 
 #include "util/base.hpp"
+#include "util/types.hpp"
 
 namespace lsm {
 
@@ -52,7 +53,7 @@ public:
     *
     * It is the caller's responsibility to allocate memory for the buffer.
     */
-    int read(void *buffer, off_t amount, off_t offset);
+    int read(byte *buffer, off_t amount, off_t offset);
 
     /*
     * writes amount bytes from the buffer to the file, starting at offset.
@@ -66,7 +67,7 @@ public:
     *
     * It is the caller's responsibility to deallocate the buffer.
     */
-    int write(const void *buffer, off_t amount, off_t offset);
+    int write(const byte *buffer, off_t amount, off_t offset);
 
     /*
     * Allocates amount bytes at the end of the file. Returns 1 on success and 0
@@ -107,6 +108,11 @@ public:
      */
     off_t get_size();
 
+    // Testing accessors
+    #ifdef UNIT_TESTING
+    int get_fd();
+    #endif
+
 private:
     int fd;
     bool file_open;
@@ -117,8 +123,8 @@ private:
 
     bool verify_io_parms(off_t amount, off_t offset);
 };
-
 }
+
 
 }
 #endif

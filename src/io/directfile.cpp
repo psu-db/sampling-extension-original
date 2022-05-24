@@ -56,7 +56,7 @@ DirectFile::~DirectFile()
 }
 
 
-int DirectFile::read(void *buffer, off_t amount, off_t offset)
+int DirectFile::read(byte *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -70,7 +70,7 @@ int DirectFile::read(void *buffer, off_t amount, off_t offset)
 }
 
 
-int DirectFile::write(const void *buffer, off_t amount, off_t offset)
+int DirectFile::write(const byte *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -160,6 +160,7 @@ int DirectFile::remove()
         return 0;
     }
 
+    this->file_open = false;
     return 1;
 }
 
@@ -174,6 +175,14 @@ off_t DirectFile::get_size()
 {
     return this->size;
 }
+
+// testing accessors
+#ifdef UNIT_TESTING
+int DirectFile::get_fd()
+{
+    return this->fd;
+}
+#endif
 
 }
 }

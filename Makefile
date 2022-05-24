@@ -22,7 +22,7 @@ release: $(TARGET) benchmarks
 bench: CXXFLAGS += -O3 -DDETAILED_BENCHMARKS
 bench: $(TARGET) benchmarks
 
-debug: CXXFLAGS += -O0 -ggdb
+debug: CXXFLAGS += -O0 -ggdb -DUNIT_TESTING
 debug: $(TARGET) tests benchmarks
 
 .PHONY: build

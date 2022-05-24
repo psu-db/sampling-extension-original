@@ -17,7 +17,7 @@ namespace parm {
 }
 
 constexpr size_t ZEROBUF_SIZE = 8 * parm::PAGE_SIZE;
-const char ZEROBUF[ZEROBUF_SIZE] = {0};
+alignas(parm::SECTOR_SIZE) const char ZEROBUF[ZEROBUF_SIZE] = {0};
 
 
 // alignment code taken from TacoDB (file: tdb_base.h)
