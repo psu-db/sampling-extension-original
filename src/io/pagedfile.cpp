@@ -13,7 +13,7 @@ std::unique_ptr<PagedFile> PagedFile::create(std::string fname, bool new_file)
         PagedFile::initialize(dfile.get());
     }
 
-    return std::make_unique<PagedFile>(dfile, false);
+    return std::make_unique<PagedFile>(std::move(dfile), false);
 }
 
 
@@ -24,13 +24,12 @@ std::unique_ptr<PagedFile> PagedFile::create_temporary()
     auto dfile = DirectFile::create(fname, true);
     PagedFile::initialize(dfile.get());
 
-    return std::make_unique<PagedFile>(dfile, true);
+    return std::make_unique<PagedFile>(std::move(dfile), true);
 }
 
 
 PageId PagedFile::allocate_page()
 {
-    PageId pid;
     PageNum last_page = this->header_data.last_page;
     PageNum pnum = INVALID_PNUM;
 

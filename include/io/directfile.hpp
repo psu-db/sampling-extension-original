@@ -35,6 +35,12 @@ public:
     ~DirectFile();
 
     /*
+     * Create a new Directfile object. You should typically not call this
+     * constructor directly, use the static create method instead.
+     */
+    DirectFile(int fd, std::string fname, off_t size, mode_t mode);
+
+    /*
     * reads amount bytes starting at offset into buffer. Returns 1 on success,
     * and 0 on failure. The memory pointed to by buffer is not guaranteed to be
     * left unchanged by this function if it fails to perform the entire read.
@@ -46,7 +52,7 @@ public:
     *
     * It is the caller's responsibility to allocate memory for the buffer.
     */
-    int read(void *buffer, size_t amount, off_t offset);
+    int read(void *buffer, off_t amount, off_t offset);
 
     /*
     * writes amount bytes from the buffer to the file, starting at offset.
@@ -60,7 +66,7 @@ public:
     *
     * It is the caller's responsibility to deallocate the buffer.
     */
-    int write(const void *buffer, size_t amount, off_t offset);
+    int write(const void *buffer, off_t amount, off_t offset);
 
     /*
     * Allocates amount bytes at the end of the file. Returns 1 on success and 0
@@ -109,8 +115,7 @@ private:
     std::string fname;
     int flags;
 
-    DirectFile(int fd, std::string fname, off_t size, mode_t mode);
-    bool verify_io_parms(size_t amount, off_t offset);
+    bool verify_io_parms(off_t amount, off_t offset);
 };
 
 }

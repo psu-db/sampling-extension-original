@@ -56,7 +56,7 @@ DirectFile::~DirectFile()
 }
 
 
-int DirectFile::read(void *buffer, size_t amount, off_t offset)
+int DirectFile::read(void *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -70,7 +70,7 @@ int DirectFile::read(void *buffer, size_t amount, off_t offset)
 }
 
 
-int DirectFile::write(const void *buffer, size_t amount, off_t offset)
+int DirectFile::write(const void *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -105,7 +105,7 @@ int DirectFile::allocate(size_t amount)
 }
 
 
-bool DirectFile::verify_io_parms(size_t amount, off_t offset) 
+bool DirectFile::verify_io_parms(off_t amount, off_t offset) 
 {
     if (!this->file_open || amount + offset > this->size) {
         return false;

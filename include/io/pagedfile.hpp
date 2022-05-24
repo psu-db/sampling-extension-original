@@ -41,6 +41,8 @@ class PageFileIterator : public iter::GenericIterator<Page *> {
 friend PagedFile;
 
 public:
+    PageFileIterator(PagedFile *file, PageNum pnum);
+
     bool next() override;
     Page *get_item() override;
 
@@ -52,7 +54,6 @@ public:
 
     ~PageFileIterator();
 private:
-    PageFileIterator(PagedFile *file, PageNum pnum);
     PagedFile *pfile;
     PageNum current_page;
     PageOffset current_offset;
@@ -70,6 +71,8 @@ class PagedFile {
 public:
     static std::unique_ptr<PagedFile> create(std::string fname, bool new_file);
     static std::unique_ptr<PagedFile> create_temporary();
+
+    PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
 
     PageId allocate_page();
 
@@ -104,7 +107,6 @@ private:
     static inline off_t pnum_to_offset(PageNum pnum);
     static const PageNum header_page_pnum = INVALID_PNUM;
 
-    PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
 
     void flush_metadata();
     bool check_pnum(PageNum pnum);
