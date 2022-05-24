@@ -5,19 +5,40 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "util/base.hpp"
+
 
 namespace lsm {
 
 using std::byte;
 
-typedef int32_t PageId;
-typedef int16_t SlotId;
+typedef uint32_t PageNum;
+typedef uint32_t FileId;
+typedef uint16_t PageOffset;
+typedef uint16_t SlotId;
+
+struct PageId {
+    PageNum page_number;
+    FileId file_id;
+};
+
+constexpr size_t PageIdSize = MAXALIGN(sizeof(PageId));
+
+struct RecordId {
+    PageId pid;
+    PageOffset offset;
+};
+
+constexpr size_t RecordIdSize = MAXALIGN(sizeof(RecordId));
+
+typedef uint32_t FrameId;
 typedef uint64_t Timestamp;
-typedef int16_t FieldOffset;
 
-const PageId INVALID_PID = 0;
+const PageNum INVALID_PNUM = 0;
+const FileId INVALID_FLID = 0;
+const FrameId INVALID_FRID = 0;
+const PageId INVALID_PID = {0, 0};
 const SlotId INVALID_SID = 0;
-
 
 }
 #endif

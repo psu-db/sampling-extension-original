@@ -26,17 +26,18 @@ public:
     Record() : data_ref(nullptr), length(0) {}
     Record(byte *data, size_t len) : data_ref(data), length(len) {};
 
-    size_t get_length();
-    byte *get_data();
+    PageOffset &get_length();
+    byte *&get_data();
     RecordHeader *get_header();
 
     Timestamp get_timestamp();
     bool is_tombstone();
+    bool is_valid();
 
     ~Record();
 private:
     byte *data_ref;
-    size_t length;
+    PageOffset length;
 };
 
 }
