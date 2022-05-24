@@ -14,6 +14,10 @@ namespace lsm {
 
 namespace io {
 
+struct DirectFileHeaderData {
+    uint64_t reserved;
+};
+
 class DirectFile {
 public:
     /*
@@ -88,13 +92,13 @@ public:
 
 
     /*
-    * Returns true if the underlying file is open, and false if it is not.
-    */
+     * Returns true if the underlying file is open, and false if it is not.
+     */
     bool is_open();
 
     /*
-    * Returns the allocated size of the file, in bytes.
-    */
+     * Returns the allocated size of the file, in bytes.
+     */
     off_t get_size();
 
 private:
