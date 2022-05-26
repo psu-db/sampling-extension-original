@@ -14,7 +14,7 @@
 #include "io/directfile.hpp"
 #include "io/page.hpp"
 
-#define NO_BUFFER_MANAGER
+//#define NO_BUFFER_MANAGER
 
 namespace lsm {
 namespace io {
@@ -69,8 +69,11 @@ private:
 
 class PagedFile {
 public:
+    // TODO: Move these two to the file manager
     static std::unique_ptr<PagedFile> create(std::string fname, bool new_file, FileId flid);
     static std::unique_ptr<PagedFile> create_temporary(FileId flid);
+
+    static int initialize(DirectFile *dfile, FileId flid);
 
     PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
 
@@ -98,12 +101,14 @@ public:
     std::unique_ptr<PageFileIterator> start_scan(PageNum pnum=INVALID_PNUM);
 
     int remove_file();
+    int close_file();
 
     ~PagedFile();
 
 private:
-    static void initialize(DirectFile *dfile, FileId flid);
+    // TODO: move to file manager
     static FileId next_flid();
+
     static inline off_t pnum_to_offset(PageNum pnum);
     static const PageNum header_page_pnum = INVALID_PNUM;
 

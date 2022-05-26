@@ -1,5 +1,5 @@
 CXX=g++-10
-CXXFLAGS = -Wall -Wextra -Iinclude -faligned-new -std=c++17 -static $(OPTFLAGS)
+CXXFLAGS = -Wall -Wextra -Iinclude -faligned-new -std=c++17 -static $(OPTFLAGS) -DNO_BUFFER_MANAGER
 LDFLAGS = $(OPTLIBS)
 LDLIBS = -lcheck -pthread -lrt -lsubunit -lm -lgsl -lgslcblas
 

@@ -40,6 +40,14 @@ PageId PagedFile::allocate_page()
     } else {
         pnum = this->header_data.first_free_page;
     }
+
+    if (this->header_data.first_page == INVALID_PNUM) {
+        this->header_data.first_page = pnum;
+    }
+
+    if (this->header_data.last_page == INVALID_PNUM) {
+        this->header_data.last_page = pnum;
+    }
         
     #ifdef NO_BUFFER_MANAGER
     if (last_page != INVALID_PNUM) {
@@ -72,6 +80,8 @@ PageId PagedFile::allocate_page()
         return INVALID_PID;
     } 
 
+    this->header_data.last_page = pnum;
+    this->header_data.page_count++;
     return this->pnum_to_pid(pnum);
 }
 
@@ -121,7 +131,7 @@ int PagedFile::free_page(PageNum pnum)
             PageHeaderData *header = (PageHeaderData *) buffer.get();
             header->prev_page = pnum;
             this->flush_buffer(this->header_data.first_free_page);
-        }
+        } 
 
         this->dfile->read(this->buffer.get(), parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
         PageHeaderData *header = (PageHeaderData *) buffer.get();
@@ -157,6 +167,8 @@ int PagedFile::free_page(PageNum pnum)
             this->header_data.last_page = prev;
         }
 
+
+        this->header_data.first_free_page = pnum;
         this->header_data.page_count--;
         return 1;
     }
@@ -226,6 +238,12 @@ int PagedFile::remove_file()
     return res;
 }
 
+
+int PagedFile::close_file()
+{
+    return this->dfile->close_file();
+}
+
 PagedFile::~PagedFile()
 {
     this->flush_metadata();
@@ -237,24 +255,30 @@ PagedFile::~PagedFile()
 }
 
 
-void PagedFile::initialize(DirectFile *dfile, FileId flid)
+int PagedFile::initialize(DirectFile *dfile, FileId flid)
 {
-    dfile->allocate(parm::PAGE_SIZE);
+    if (dfile->allocate(parm::PAGE_SIZE)) {
+        #ifdef NO_BUFFER_MANAGER
+        std::unique_ptr<byte> page = std::unique_ptr<byte>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE));
 
-    #ifdef NO_BUFFER_MANAGER
-    byte page[parm::PAGE_SIZE];
+        PagedFileHeaderData *header = (PagedFileHeaderData *) page.get();
+        #endif
 
-    PagedFileHeaderData *header = (PagedFileHeaderData *) page;
-    #endif
+        header->last_page = INVALID_PNUM;
+        header->first_page = INVALID_PNUM;
+        header->first_free_page = INVALID_PNUM;
+        header->page_count = 0;
+        header->flid = flid;
 
-    header->last_page = INVALID_PNUM;
-    header->first_page = INVALID_PNUM;
-    header->first_free_page = INVALID_PNUM;
-    header->page_count = 0;
-    header->flid = flid;
+        auto offset = PagedFile::pnum_to_offset(PagedFile::header_page_pnum);
+        if (dfile->write(page.get(), parm::PAGE_SIZE, offset)) {
+            return 1;
+        }
 
-    auto offset = PagedFile::pnum_to_offset(PagedFile::header_page_pnum);
-    dfile->write(page, parm::PAGE_SIZE, offset);
+        return 0;
+    }
+
+    return 0;
 }
 
 
@@ -275,7 +299,6 @@ PagedFile::PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file)
 #ifdef NO_BUFFER_MANAGER
 void PagedFile::flush_buffer(PageNum pnum)
 {
-    assert(this->check_pnum(pnum));
     off_t offset = PagedFile::pnum_to_offset(pnum);
     this->dfile->write(this->buffer.get(), parm::PAGE_SIZE, offset);
 }
@@ -295,5 +318,11 @@ off_t PagedFile::pnum_to_offset(PageNum pnum)
 {
     return pnum * parm::PAGE_SIZE;
 }
+
+bool PagedFile::check_pnum(PageNum pnum)
+{
+    return pnum != INVALID_PNUM && pnum <= (this->dfile->get_size() / parm::PAGE_SIZE);
+}
+
 }
 }
