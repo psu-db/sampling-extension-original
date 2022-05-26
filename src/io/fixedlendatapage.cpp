@@ -12,12 +12,13 @@ void FixedlenDataPage::initialize(byte *page_ptr, PageOffset record_length, Page
     header->fixed_record_length = record_length;
     header->user_data_length = MAXALIGN(user_data_length);
     header->record_count = 0;
-    header->free_space_begin = (size_t) (page_ptr + MAXALIGN(user_data_length) + PageHeaderSize);
+    header->free_space_begin = (size_t) (MAXALIGN(user_data_length) + PageHeaderSize);
 }
 
 FixedlenDataPage::FixedlenDataPage(byte *page_ptr)
-    : Page(page_ptr) {}
-
+{
+    this->page_data = page_ptr;
+}
 
 
 bool FixedlenDataPage::is_occupied(SlotId sid) 
@@ -36,7 +37,7 @@ byte *FixedlenDataPage::get_record_buffer(SlotId sid, PageOffset *record_length)
             *record_length = this->get_header()->fixed_record_length;
         }
 
-        return this->get_page_data() + (sid * this->get_header()->fixed_record_length);
+        return this->get_page_data() + ((sid - 1) * this->get_header()->fixed_record_length);
     }
 
     return nullptr;
@@ -57,7 +58,7 @@ SlotId FixedlenDataPage::insert_record(Record rec)
 
     // Update the page header information
     this->get_header()->free_space_begin +=
-        this->get_header()->fixed_record_length;
+    this->get_header()->fixed_record_length;
     this->get_header()->record_count++;
 
     // The SlotId for the record will be the record count after insertion,
@@ -72,6 +73,11 @@ SlotId FixedlenDataPage::get_max_sid()
     return this->get_header()->record_count;
 }
 
+
+SlotId FixedlenDataPage::get_record_capacity()
+{
+    return (parm::PAGE_SIZE - this->get_header()->user_data_length - PageHeaderSize) / this->get_header()->fixed_record_length;
+}
 
 std::unique_ptr<iter::GenericIterator<Record>> FixedlenDataPage::start_scan(SlotId sid) 
 {
@@ -133,7 +139,7 @@ void FixedlenDataPageRecordIterator::rewind(iter::IteratorPosition position)
 }
 
 
-void end_scan() 
+void FixedlenDataPageRecordIterator::end_scan() 
 {
 
 }

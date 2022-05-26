@@ -30,6 +30,8 @@ public:
      */
     FixedlenDataPage(byte *page_ptr);
 
+    ~FixedlenDataPage() = default;
+
     /*
      * See Page::is_occupied in io/page.hpp
      */
@@ -54,6 +56,8 @@ public:
      * See page::start_scan in io/page.hpp
      */
     std::unique_ptr<iter::GenericIterator<Record>> start_scan(SlotId sid=0) override;
+
+    SlotId get_record_capacity();
 };
 
 class FixedlenDataPageRecordIterator : public iter::GenericIterator<Record> {
