@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstddef>
+#include <string>
 
 #include "util/base.hpp"
 

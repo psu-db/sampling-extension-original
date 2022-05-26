@@ -4,55 +4,14 @@
 
 #include <check.h>
 #include "io/directfile.hpp"
-
-std::string new_fname = "tests/data/new_file.dat";
-std::string existing_fname1 = "tests/data/test_file1.dat";
+#include "testing.hpp"
 
 using namespace lsm;
 using std::byte;
 
-std::unique_ptr<std::byte> test_page1()
-{
-    byte *test_page = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
-    int32_t cnt = (parm::PAGE_SIZE / sizeof(int32_t));
-    for (int32_t i=0; i<cnt; i++) {
-        ((int32_t *) test_page)[i] = i;
-    }
-
-    return std::unique_ptr<byte>(test_page);
-}
-
-
-std::unique_ptr<std::byte> test_page2()
-{
-    byte *test_page = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
-    size_t cnt = parm::PAGE_SIZE / sizeof(int16_t);
-    for (int16_t i=cnt; i>= 0; i--) {
-        ((int16_t *) test_page)[cnt - i] = i;
-    }
-
-    return std::unique_ptr<byte>(test_page);
-}
-
-
-void initialize_file1()
-{
-    auto data = test_page1();
-    auto fd = open(existing_fname1.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0640);
-    pwrite(fd, data.get(), parm::PAGE_SIZE, 0);
-    fsync(fd);
-    close(fd);
-}
-
-
-void delete_file1()
-{
-    unlink(existing_fname1.c_str());
-}
-
 START_TEST(t_create_file)
 {
-    auto new_file = io::DirectFile::create(new_fname);
+    auto new_file = io::DirectFile::create(testing::new_fname);
     ck_assert_ptr_nonnull(new_file.get());
 
     int fd = new_file->get_fd();
@@ -63,7 +22,7 @@ START_TEST(t_create_file)
     ck_assert_int_eq(buf.st_size, 0);
 
     // verify that the file is truncated properly on re-opening
-    auto data = test_page1();
+    auto data = testing::test_page1();
     pwrite(fd, data.get(), parm::PAGE_SIZE, 0);
     fsync(fd);
     
@@ -71,7 +30,7 @@ START_TEST(t_create_file)
     ck_assert_int_eq(buf.st_size, parm::PAGE_SIZE);
     new_file.release();
 
-    new_file = io::DirectFile::create(new_fname);
+    new_file = io::DirectFile::create(testing::new_fname);
     ck_assert_ptr_nonnull(new_file.get());
 
     fd = new_file->get_fd();
@@ -83,7 +42,7 @@ END_TEST
 
 START_TEST(t_open_file)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
 
     ck_assert_ptr_nonnull(new_file.get());
     struct stat sbuf;
@@ -92,7 +51,7 @@ START_TEST(t_open_file)
 
     byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
     pread(new_file->get_fd(), buf, parm::PAGE_SIZE, 0);
-    auto ground_truth = test_page1();
+    auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
     delete buf;
@@ -102,7 +61,7 @@ END_TEST
 
 START_TEST(t_get_size_empty)
 {
-    auto new_file = io::DirectFile::create(new_fname);
+    auto new_file = io::DirectFile::create(testing::new_fname);
     auto test_size = new_file->get_size();
 
     ck_assert_int_eq(test_size, 0);
@@ -112,7 +71,7 @@ END_TEST
 
 START_TEST(t_get_size_existing)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
     auto test_size = new_file->get_size();
 
     ck_assert_int_eq(test_size, parm::PAGE_SIZE);
@@ -122,7 +81,7 @@ END_TEST
 
 START_TEST(t_allocate_empty)
 {
-    auto new_file = io::DirectFile::create(new_fname);
+    auto new_file = io::DirectFile::create(testing::new_fname);
     ck_assert_int_eq(new_file->get_size(), 0);
 
     ck_assert_int_eq(new_file->allocate(parm::PAGE_SIZE), 1);
@@ -167,7 +126,7 @@ END_TEST
 
 START_TEST(t_allocate_existing)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
     ck_assert_int_eq(new_file->get_size(), parm::PAGE_SIZE);
 
     ck_assert_int_eq(new_file->allocate(parm::PAGE_SIZE), 1);
@@ -180,7 +139,7 @@ START_TEST(t_allocate_existing)
     // Validate that the correct data is still in the first page
     byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
     pread(new_file->get_fd(), buf, parm::PAGE_SIZE, 0);
-    auto ground_truth = test_page1();
+    auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
     delete buf;
@@ -190,7 +149,7 @@ END_TEST
 
 START_TEST(t_open_close)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
 
     // file should begin open
     ck_assert(new_file->is_open());
@@ -218,7 +177,7 @@ END_TEST
 
 START_TEST(t_remove)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
 
     ck_assert_int_eq(new_file->remove(), 1);
 
@@ -234,16 +193,16 @@ START_TEST(t_remove)
     new_file.release();
 
     // should not be able to reopen the file
-    new_file = io::DirectFile::create(existing_fname1, false);
+    new_file = io::DirectFile::create(testing::existing_fname1, false);
     ck_assert_ptr_null(new_file.get());
 }
 
 
 START_TEST(t_write_empty)
 {
-    auto new_file = io::DirectFile::create(new_fname);
+    auto new_file = io::DirectFile::create(testing::new_fname);
 
-    auto buf = test_page1();
+    auto buf = testing::test_page1();
 
     // writing to an empty file should fail.
     ck_assert_int_eq(new_file->write(buf.get(), parm::PAGE_SIZE, 0), 0);
@@ -268,7 +227,7 @@ START_TEST(t_write_empty)
     // validate that the data was written properly
     byte *rbuf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
     pread(new_file->get_fd(), rbuf, parm::PAGE_SIZE, 0);
-    auto ground_truth = test_page1();
+    auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(rbuf, ground_truth.get(), parm::PAGE_SIZE);
     delete rbuf;
@@ -293,10 +252,10 @@ START_TEST(t_write_empty)
 
 START_TEST(t_read_write_existing)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
 
-    auto ground_truth1 = test_page1();
-    auto ground_truth2 = test_page2();
+    auto ground_truth1 = testing::test_page1();
+    auto ground_truth2 = testing::test_page2();
 
     new_file->allocate(2*parm::PAGE_SIZE);
     ck_assert_int_eq(new_file->write(ground_truth2.get(), parm::PAGE_SIZE, parm::PAGE_SIZE), 1);
@@ -317,7 +276,7 @@ START_TEST(t_read_write_existing)
 
     // delete and recreate object
     new_file.reset();
-    new_file = io::DirectFile::create(existing_fname1, false);
+    new_file = io::DirectFile::create(testing::existing_fname1, false);
     ck_assert_int_eq(new_file->get_size(), old_sz);
 
     // validate data is still present
@@ -336,7 +295,7 @@ START_TEST(t_read_write_existing)
 
 START_TEST(t_read_empty) 
 {
-    auto new_file = io::DirectFile::create(new_fname);
+    auto new_file = io::DirectFile::create(testing::new_fname);
     byte *buf = (byte *) aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE + parm::SECTOR_SIZE);
 
     // reading from an empty file w/o any allocated size should fail.
@@ -373,10 +332,10 @@ END_TEST
 
 START_TEST(t_read_existing)
 {
-    auto new_file = io::DirectFile::create(existing_fname1, false);
+    auto new_file = io::DirectFile::create(testing::existing_fname1, false);
     byte *buf = (byte *) aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE + parm::SECTOR_SIZE);
 
-    auto ground_truth = test_page1();
+    auto ground_truth = testing::test_page1();
 
     ck_assert_int_eq(new_file->read(buf, parm::PAGE_SIZE, 0), 1);
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
@@ -390,7 +349,7 @@ Suite *unit_testing()
 {
     Suite *unit = suite_create("Direct File Unit Testing");
     TCase *create = tcase_create("lsm::io::DirectFile::create Testing");
-    tcase_add_checked_fixture(create, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(create, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(create, t_create_file);
     tcase_add_test(create, t_open_file);
 
@@ -398,7 +357,7 @@ Suite *unit_testing()
 
 
     TCase *get_size = tcase_create("lsm::io::DirectFile::get_size Testing");
-    tcase_add_checked_fixture(get_size, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(get_size, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(get_size, t_get_size_empty);
     tcase_add_test(get_size, t_get_size_existing);
 
@@ -406,7 +365,7 @@ Suite *unit_testing()
 
 
     TCase *allocate = tcase_create("lsm::io::DirectFile::allocate Testing");
-    tcase_add_checked_fixture(allocate, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(allocate, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(allocate, t_allocate_empty);
     tcase_add_test(allocate, t_allocate_existing);
 
@@ -414,21 +373,21 @@ Suite *unit_testing()
 
 
     TCase *openclose = tcase_create("lsm::io::DirectFile::{open, close_file, is_open} Testing");
-    tcase_add_checked_fixture(openclose, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(openclose, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(openclose, t_open_close);
 
     suite_add_tcase(unit, openclose);
 
 
     TCase *remove = tcase_create("lsm::io::DirectFile::remove Testing");
-    tcase_add_checked_fixture(remove, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(remove, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(remove, t_remove);
 
     suite_add_tcase(unit, remove);
 
 
     TCase *write = tcase_create("lsm::io::DirectFile::write Testing");
-    tcase_add_checked_fixture(write, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(write, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(write, t_write_empty);
     tcase_add_test(write, t_read_write_existing);
 
@@ -436,7 +395,7 @@ Suite *unit_testing()
 
 
     TCase *read = tcase_create("lsm::io::DirectFile::read Testing");
-    tcase_add_checked_fixture(read, initialize_file1, delete_file1);
+    tcase_add_checked_fixture(read, testing::initialize_file1, testing::delete_file1);
     tcase_add_test(read, t_read_empty);
     tcase_add_test(read, t_read_existing);
 

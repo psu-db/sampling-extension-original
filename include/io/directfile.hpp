@@ -108,6 +108,9 @@ public:
      */
     off_t get_size();
 
+
+    std::string get_fname();
+
     // Testing accessors
     #ifdef UNIT_TESTING
     int get_fd();

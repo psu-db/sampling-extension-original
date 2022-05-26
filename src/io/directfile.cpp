@@ -176,6 +176,12 @@ off_t DirectFile::get_size()
     return this->size;
 }
 
+
+std::string DirectFile::get_fname()
+{
+    return this->fname;
+}
+
 // testing accessors
 #ifdef UNIT_TESTING
 int DirectFile::get_fd()
