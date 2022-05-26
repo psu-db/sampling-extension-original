@@ -69,8 +69,8 @@ private:
 
 class PagedFile {
 public:
-    static std::unique_ptr<PagedFile> create(std::string fname, bool new_file);
-    static std::unique_ptr<PagedFile> create_temporary();
+    static std::unique_ptr<PagedFile> create(std::string fname, bool new_file, FileId flid);
+    static std::unique_ptr<PagedFile> create_temporary(FileId flid);
 
     PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
 
@@ -102,7 +102,7 @@ public:
     ~PagedFile();
 
 private:
-    static void initialize(DirectFile *dfile);
+    static void initialize(DirectFile *dfile, FileId flid);
     static FileId next_flid();
     static inline off_t pnum_to_offset(PageNum pnum);
     static const PageNum header_page_pnum = INVALID_PNUM;

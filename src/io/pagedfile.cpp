@@ -6,23 +6,23 @@
 namespace lsm {
 namespace io {
 
-std::unique_ptr<PagedFile> PagedFile::create(std::string fname, bool new_file)
+std::unique_ptr<PagedFile> PagedFile::create(std::string fname, bool new_file, FileId flid)
 {
     auto dfile = DirectFile::create(fname, new_file);
     if (new_file) {
-        PagedFile::initialize(dfile.get());
+        PagedFile::initialize(dfile.get(), flid);
     }
 
     return std::make_unique<PagedFile>(std::move(dfile), false);
 }
 
 
-std::unique_ptr<PagedFile> PagedFile::create_temporary()
+std::unique_ptr<PagedFile> PagedFile::create_temporary(FileId flid)
 {
     std::string fname; // TODO: name generation
     
     auto dfile = DirectFile::create(fname, true);
-    PagedFile::initialize(dfile.get());
+    PagedFile::initialize(dfile.get(), flid);
 
     return std::make_unique<PagedFile>(std::move(dfile), true);
 }
@@ -237,7 +237,7 @@ PagedFile::~PagedFile()
 }
 
 
-void PagedFile::initialize(DirectFile *dfile)
+void PagedFile::initialize(DirectFile *dfile, FileId flid)
 {
     dfile->allocate(parm::PAGE_SIZE);
 
@@ -251,7 +251,7 @@ void PagedFile::initialize(DirectFile *dfile)
     header->first_page = INVALID_PNUM;
     header->first_free_page = INVALID_PNUM;
     header->page_count = 0;
-    header->flid = next_flid();
+    header->flid = flid;
 
     auto offset = PagedFile::pnum_to_offset(PagedFile::header_page_pnum);
     dfile->write(page, parm::PAGE_SIZE, offset);
