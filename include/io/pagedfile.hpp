@@ -26,6 +26,21 @@ struct PagedFileHeaderData {
     DirectFileHeaderData file_header;
     FileId flid;
     PageNum page_count;
+    PageNum virtual_header_page;
+};
+
+/*
+ * The sorts of allocation call supported by a given PagedFile type.
+ * Not all paged files support all allocation. 
+ */
+enum PageAllocSupport {
+    // No allocation can be done--static file
+    NONE,
+    // Can allocate pages using allocate()
+    SINGLE,
+
+    // Can allocate pages using allocate and allocate_bulk
+    BULK
 };
 
 constexpr size_t PagedFileHeaderSize = MAXALIGN(sizeof(PagedFileHeaderData));
@@ -33,14 +48,16 @@ static_assert(PagedFileHeaderSize <= parm::PAGE_SIZE);
 
 class PagedFile {
 public:
-    PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
+    PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file, bool free_supported, PageAllocSupport alloc_supported, bool virtualization_supported);
+    PagedFile() = default;
 
     /*
      * Add new_page to the file and return its associated PageId. Note that
      * PageIds are not necessarily monotonic, as freed pages will be recycled.
      *
-     * If the allocation fails due to an IO error, or for some other reason,
-     * returns INVALID_PID.
+     * If the allocation fails, returns INVALID_PID. Also returns INVALID_PID
+     * if allocation is not supported by the implementation. This can be
+     * checked via the supports_allocation method.
      */
     virtual PageId allocate_page() = 0;
 
@@ -48,9 +65,16 @@ public:
      * Add new_page_count new pages to the file in bulk, and returns the
      * PageId of the first page in the new range. 
      *
-     * If the allocation fails, returns INVALID_PID.
+     * If the allocation fails, returns INVALID_PID. Also returns INVALID_PID
+     * if bulk allocation is not supported by the implementation. This can be
+     * checked via the supports_allocation method.
      */
     virtual PageId allocate_page_bulk(PageNum new_page_count) = 0;
+
+    /*
+     * Returns the types of page allocation supported by this object.
+     */
+    virtual PageAllocSupport supports_allocation();
 
     /*
      * Reads data from the specified page into a buffer pointed to by
@@ -107,7 +131,7 @@ public:
      * Returns true if the class supports deleting pages via free_page, and
      * false if not.
      */
-    virtual bool supports_free() = 0;
+    virtual bool supports_free();
 
     /*
      * Converts a given PageNum into a PageId that is associated with this
@@ -167,15 +191,31 @@ public:
     virtual int remove_file();
 
     /*
-     * Close this file. Returns 1 on success and 0 on failure.
+     * Returns whether the file is initialized to support the creation of
+     * virtual files within it. If this returns False, the file can be
+     * initialized be calling its intialize_for_virtualization method, if
+     * one is defined.
      */
-    virtual int close_file() = 0;
-
+    virtual bool virtual_header_initialized() = 0;
 
     /*
-     * Open the file if it is currently closed. Returns 1 on success and 0 on failure.
+     * Returns whether the file object is capable of being a container for virtual files,
+     * whether it is currently initialized as such or not. Not all PagedFile implementations
+     * are required to support virtualization.
      */
-    virtual int reopen_file() = 0;
+    bool supports_virtualization();
+
+    /*
+     * If the PagedFile implementation supports being a virtual file container, initializes
+     * the file for this purpose. This entails creating a virtual header page, and storing 
+     * its PageNum in the virtual_header_page attribute of the paged file header. Note that
+     * calling this method on a file that is not empty is undefined, and may overwrite data
+     * stored in the file. Returns 1 if the initialization is successful, and 0 if it fails,
+     * or if the operation is not supported. If initialization is not supported, the contents
+     * of the file are guaranteed to not change. If initialization fails due to an error, the
+     * contents of the file are undefined.
+     */
+    virtual int initialize_for_virtualization() = 0;
 
     /*
      *  
@@ -186,11 +226,14 @@ protected:
     static int initialize_pagedfile(byte *header_page_buf, FileId flid);
 
     static off_t pnum_to_offset(PageNum pnum);
-
     bool check_pnum(PageNum pnum);
 
     std::unique_ptr<DirectFile> dfile;
     bool is_temp_file;
+    bool free_supported;
+    PageAllocSupport alloc_supported;
+    bool virtualizable;
+    DirectFile *dfile_ptr;
 };
 
 }}

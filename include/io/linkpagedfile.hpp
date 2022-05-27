@@ -128,12 +128,6 @@ public:
     int free_page(PageNum pnum) override;
 
     /*
-     * Returns true if the class supports deleting pages via free_page, and
-     * false if not.
-     */
-    bool supports_free() override;
-
-    /*
      * Converts a given PageNum into a PageId that is associated with this
      * file.
      */
@@ -171,12 +165,15 @@ public:
     virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum pnum=INVALID_PNUM) override;
 
     /*
-     * Close this file. Returns 1 on success and 0 on failure.
+     * See page.hpp
      */
-    int close_file() override;
+    bool virtual_header_initialized() override;
 
+    /*
+     * See page.hpp
+     */
+    int initialize_for_virtualization() override;
 
-    int reopen_file() override;
 
     /*
      *  

@@ -101,12 +101,6 @@ int LinkPagedFile::free_page(PageId pid)
 }
 
 
-bool LinkPagedFile::supports_free()
-{
-    return true;
-}
-
-
 int LinkPagedFile::free_page(PageNum pnum)
 {
     #ifdef NO_BUFFER_MANAGER
@@ -202,18 +196,6 @@ std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum
 }
 
 
-int LinkPagedFile::close_file()
-{
-    this->flush_metadata();
-    return this->dfile->close_file();
-}
-
-
-int LinkPagedFile::reopen_file()
-{
-    return this->dfile->reopen();
-}
-
 LinkPagedFile::~LinkPagedFile()
 {
     this->flush_metadata();
@@ -253,7 +235,7 @@ int LinkPagedFile::initialize(DirectFile *dfile, FileId flid)
 
 
 LinkPagedFile::LinkPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file)
-: PagedFile(std::move(dfile), is_temp_file)
+: PagedFile(std::move(dfile), is_temp_file, true, PageAllocSupport::SINGLE, false)
 {
     #ifdef NO_BUFFER_MANAGER
     this->buffer = std::unique_ptr<byte>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE));
@@ -279,6 +261,17 @@ void LinkPagedFile::flush_metadata()
     memcpy(buffer.get(), &this->header_data, LinkPagedFileHeaderSize);
     this->flush_buffer(LinkPagedFile::header_page_pnum);
     #endif
+}
+
+bool LinkPagedFile::virtual_header_initialized()
+{
+    return false;
+}
+
+
+int LinkPagedFile::initialize_for_virtualization()
+{
+    return 0;
 }
 
 }}

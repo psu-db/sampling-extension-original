@@ -64,6 +64,16 @@ struct PageIdHash {
 // as the moment (8 bytes).
 constexpr size_t PageIdSize = MAXALIGN(sizeof(PageId));
 
+
+// Unique identifier for a virtual file, including both the id of the
+// underlying physical file, as well as the virtual file id within that file.
+// Note that the virtual file IDs will be unique within a given physical file,
+// but will not be globally unique.
+struct VirtualFileId {
+    FileId phys_flid;
+    FileId virt_flid;
+};
+
 // A unique identifier for a record. Not currently used for
 // anything.
 struct RecordId {

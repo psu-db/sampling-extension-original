@@ -58,12 +58,6 @@ int IndexPagedFile::free_page(PageId pid)
 }
 
 
-bool IndexPagedFile::supports_free()
-{
-    return false;
-}
-
-
 int IndexPagedFile::free_page(PageNum pnum)
 {
     return 0;
@@ -113,19 +107,6 @@ std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageNu
 }
 
 
-int IndexPagedFile::close_file()
-{
-    this->flush_metadata();
-    return this->dfile->close_file();
-}
-
-
-int IndexPagedFile::reopen_file()
-{
-    return this->dfile->reopen();
-}
-
-
 IndexPagedFile::~IndexPagedFile()
 {
     this->flush_metadata();
@@ -161,7 +142,7 @@ int IndexPagedFile::initialize(DirectFile *dfile, FileId flid)
 
 
 IndexPagedFile::IndexPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file)
-: PagedFile(std::move(dfile), is_temp_file)
+: PagedFile(std::move(dfile), is_temp_file, false, PageAllocSupport::BULK, true)
 {
     #ifdef NO_BUFFER_MANAGER
     this->buffer = std::unique_ptr<byte>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE));
@@ -187,6 +168,18 @@ void IndexPagedFile::flush_metadata()
     memcpy(buffer.get(), &this->header_data, IndexPagedFileHeaderSize);
     this->flush_buffer(IndexPagedFile::header_page_pnum);
     #endif
+}
+
+
+bool IndexPagedFile::virtual_header_initialized()
+{
+    return this->header_data.paged_header.virtual_header_page != INVALID_PNUM;
+}
+
+
+int IndexPagedFile::initialize_for_virtualization()
+{
+    return 0;
 }
 
 }}
