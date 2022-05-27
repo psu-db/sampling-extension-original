@@ -241,6 +241,7 @@ int PagedFile::remove_file()
 
 int PagedFile::close_file()
 {
+    this->flush_metadata();
     return this->dfile->close_file();
 }
 
