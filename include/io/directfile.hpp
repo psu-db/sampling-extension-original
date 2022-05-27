@@ -124,6 +124,10 @@ private:
     std::string fname;
     int flags;
 
+    /* Verify that the specified amount and offset are valid. Namely, ensures that
+     * they are properly aligned, and that they are within the allocated size
+     * of the file. Also checks if the file is open.
+     */
     bool verify_io_parms(off_t amount, off_t offset);
 };
 }

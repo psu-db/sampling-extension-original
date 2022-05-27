@@ -57,6 +57,12 @@ public:
      */
     std::unique_ptr<iter::GenericIterator<Record>> start_scan(SlotId sid=0) override;
 
+    /*
+     * Returns the total number of records that this page can store. Note that
+     * this is the total capacity, not the current capacity, and will reflect
+     * the number of inserts that can be successfully performed upon an empty
+     * page, account for the header and user data.
+     */
     SlotId get_record_capacity();
 };
 
