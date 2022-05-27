@@ -82,7 +82,7 @@ PageNum IndexPagedFile::get_page_count()
 PageId IndexPagedFile::get_first_pid()
 {
     if (this->header_data.paged_header.page_count == 0) {
-        return INVALID_PID;
+        return this->pnum_to_pid(INVALID_PNUM);
     } 
 
     return this->pnum_to_pid(1);
