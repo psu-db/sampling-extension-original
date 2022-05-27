@@ -92,38 +92,6 @@ PageId LinkPagedFile::allocate_page_bulk(PageNum new_page_count)
 }
 
 
-/*
-int LinkPagedFile::read_page(PageId pid, byte *buffer_ptr)
-{
-    return this->read_page(pid.page_number, buffer_ptr);
-}
-
-
-int LinkPagedFile::read_page(PageNum pnum, byte *buffer_ptr)
-{
-    return (this->PagedFile::check_pnum(pnum)) 
-             ? this->dfile->read(buffer_ptr, parm::PAGE_SIZE,
-                                 PagedFile::pnum_to_offset(pnum))
-             : 0;
-}
-
-
-int LinkPagedFile::write_page(PageId pid, const byte *buffer_ptr)
-{
-    return this->write_page(pid.page_number, buffer_ptr);
-}
-
-
-int LinkPagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
-{
-    return (this->PagedFile::check_pnum(pnum)) 
-             ? this->dfile->write(buffer_ptr, parm::PAGE_SIZE,
-                                 PagedFile::pnum_to_offset(pnum))
-             : 0;
-}
-*/
-
-
 int LinkPagedFile::free_page(PageId pid)
 {
     return this->free_page(pid.page_number);
@@ -201,20 +169,6 @@ PageId LinkPagedFile::pnum_to_pid(PageNum pnum)
 }
 
 
-/*
-bool LinkPagedFile::is_temporary()
-{
-    return this->is_temp_file;
-}
-
-
-void LinkPagedFile::make_permanent()
-{
-   this->is_temp_file = false; 
-}
-*/
-
-
 PageNum LinkPagedFile::get_page_count()
 {
     return this->header_data.paged_header.page_count;
@@ -243,18 +197,6 @@ std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum
 {
     return nullptr;
 }
-
-/*
-int LinkPagedFile::remove_file()
-{
-    auto res = this->dfile->remove();
-    if (res) {
-        this->dfile.release();
-    }
-
-    return res;
-}
-*/
 
 
 int LinkPagedFile::close_file()

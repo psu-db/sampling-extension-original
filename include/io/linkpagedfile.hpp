@@ -118,40 +118,6 @@ public:
     PageId allocate_page_bulk(PageNum new_page_count) override;
 
     /*
-     * Reads data from the specified page into a buffer pointed to by
-     * buffer_ptr. It is necessary for buffer_ptr to be parm::SECTOR_SIZE
-     * aligned, and also for it to be large enough to accommodate
-     * parm::PAGE_SIZE bytes. If the read succeeds, returns 1. Otherwise
-     * returns 0. The contents of the input buffer are undefined in the case of
-     * an error.
-     */
-    //int read_page(PageId pid, byte *buffer_ptr);
-
-    /*
-     * Same as read_page(PageId, byte*), but accepts a PageNum rather than a
-     * PageId.
-     */
-    //int read_page(PageNum pnum, byte *buffer_ptr);
-
-    /*
-     * Writes data from the provided buffer into the specified page within the
-     * file. It is necessary for buffer_ptr to be parm::SECTOR_SIZE aligned,
-     * and also for it to be at least parm::PAGE_SIZE bytes large. If it is
-     * larger, only the first parm::PAGE_SIZE bytes will be written. If it is
-     * smaller, the result is undefined.
-     *
-     * If the write succeeds, returns 1. Otherwise returns 0. The contents of
-     * the specified page within the file are undefined in the case of an error.
-     */
-    //.int write_page(PageId pid, const byte *buffer_ptr);
-
-    /*
-     * Same as write_page(PageId, const byte *), but accepts a PageNum rather
-     * than a PageId.
-     */
-    //int write_page(PageNum pnum, const byte *buffer_ptr);
-
-    /*
      * Delete a specified page and add it to the free list. The page can
      * still be accessed directly by PageId/PageNum, however it will no
      * longer appear in iterators over the page. Freed pages can be recycled
