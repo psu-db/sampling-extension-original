@@ -1,11 +1,13 @@
 /*
-*
-*/
+ * directfile.cpp
+ * Douglas Rumbaugh
+ *
+ * DirectFile implementation
+ */
 
 #include "io/directfile.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 std::unique_ptr<DirectFile> DirectFile::create(const std::string fname, bool new_file)
 {
@@ -190,5 +192,4 @@ int DirectFile::get_fd()
 }
 #endif
 
-}
-}
+}}

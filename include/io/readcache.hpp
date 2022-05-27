@@ -24,8 +24,7 @@
 
 #include "io/pagedfile.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 struct FrameMeta {
     PageId pid;          // the id of the page stored in this frame
@@ -130,7 +129,5 @@ private:
     FrameId find_frame_to_evict();
 };
 
-}
-}
-
+}}
 #endif

@@ -9,6 +9,7 @@
 #include "util/base.hpp"
 
 namespace lsm { namespace catalog {
+
 class Field {
 public:
     Field(byte *field_ptr, PageOffset length=0) : field_ptr(field_ptr), length(length) {};

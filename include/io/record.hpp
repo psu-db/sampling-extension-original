@@ -15,8 +15,7 @@
 #include "util/types.hpp"
 #include "util/base.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 struct RecordHeader {
     Timestamp time;
@@ -119,7 +118,5 @@ private:
     PageOffset length;
 };
 
-}
-}
-
+}}
 #endif

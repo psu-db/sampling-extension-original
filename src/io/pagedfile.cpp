@@ -1,10 +1,13 @@
 /*
+ * pagedfile.cpp
+ * DouglasRumbaugh
  *
+ * PagedFile ABC partial implementation
  */
+
 #include "io/pagedfile.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 PagedFile::PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file)
 : dfile(std::move(dfile)), is_temp_file(is_temp_file) {}
@@ -86,5 +89,4 @@ off_t PagedFile::pnum_to_offset(PageNum pnum)
     return pnum * parm::PAGE_SIZE;
 }
 
-}
-}
+}}

@@ -1,10 +1,13 @@
 /*
+ * linkpagedfile.cpp
+ * Douglas Rumbaugh
  *
+ * LinkPagedFile Implementation
  */
+ 
 #include "io/linkpagedfile.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 std::unique_ptr<LinkPagedFile> LinkPagedFile::create(std::string fname, bool new_file, FileId flid)
 {
@@ -278,12 +281,4 @@ void LinkPagedFile::flush_metadata()
     #endif
 }
 
-/*
-bool LinkPagedFile::PagedFile::check_pnum(PageNum pnum)
-{
-    return pnum != INVALID_PNUM && pnum <= (this->dfile->get_size() / parm::PAGE_SIZE);
-}
-*/
-
-}
-}
+}}

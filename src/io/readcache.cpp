@@ -1,10 +1,13 @@
 /*
-*
-*/
+ * readcache.cpp
+ * DouglasRumbaugh
+ *
+ * ReadCache implementation
+ */
 
 #include "io/readcache.hpp"
-namespace lsm {
-namespace io {
+
+namespace lsm { namespace io {
 
 ReadCache::ReadCache(size_t frame_capacity)
 {
@@ -126,5 +129,4 @@ byte *ReadCache::get_frame_ptr(FrameId frid)
     return this->get_frame(frid);
 }
 
-}
-}
+}}

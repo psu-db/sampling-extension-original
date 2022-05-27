@@ -11,9 +11,7 @@
 #include "util/base.hpp"
 #include "util/types.hpp"
 
-namespace lsm {
-
-namespace io {
+namespace lsm { namespace io {
 
 struct DirectFileHeaderData {
     uint64_t reserved;
@@ -130,8 +128,6 @@ private:
      */
     bool verify_io_parms(off_t amount, off_t offset);
 };
-}
 
-
-}
+}}
 #endif

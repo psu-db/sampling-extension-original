@@ -1,10 +1,13 @@
 /*
+ * indexpagedfile.cpp
+ * Douglas Rumbaugh
  *
+ * IndexPagedFile implementation
  */
+
 #include "io/indexpagedfile.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 std::unique_ptr<IndexPagedFile> IndexPagedFile::create(std::string fname, bool new_file, FileId flid)
 {
@@ -186,5 +189,4 @@ void IndexPagedFile::flush_metadata()
     #endif
 }
 
-}
-}
+}}

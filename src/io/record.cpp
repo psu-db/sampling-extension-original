@@ -1,12 +1,13 @@
-
 /*
-*
-*/
+ * record.cpp
+ * Douglas Rumbaugh
+ *
+ * Record implementation
+ */
 
 #include "io/record.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 Record::Record(byte *data, size_t len, Timestamp time, bool tombstone)
 {
@@ -72,5 +73,4 @@ Record Record::deep_copy()
     return Record(new_buf, this->length);
 }
 
-}
-}
+}}

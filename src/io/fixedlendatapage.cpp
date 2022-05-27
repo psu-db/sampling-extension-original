@@ -1,10 +1,13 @@
 /*
+ * fixedlendatapage.cpp
+ * Douglas Rumbaugh
  *
+ * FixedlenDataPage implementation
  */
+
 #include "io/fixedlendatapage.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 void FixedlenDataPage::initialize(byte *page_ptr, PageOffset record_length, PageOffset user_data_length) 
 {
@@ -144,5 +147,4 @@ void FixedlenDataPageRecordIterator::end_scan()
 
 }
 
-}
-}
+}}

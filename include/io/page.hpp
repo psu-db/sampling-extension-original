@@ -8,8 +8,7 @@
 #include "io/record.hpp"
 #include "util/iterator.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 struct PageHeaderData {
     PageNum next_page;
@@ -107,6 +106,5 @@ private:
     SlotId min_slot_id = 1;
 };
 
-}
-}
+}}
 #endif 

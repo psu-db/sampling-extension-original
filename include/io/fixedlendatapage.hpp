@@ -7,8 +7,7 @@
 #include "io/page.hpp"
 #include "io/record.hpp"
 
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 class FixedlenDataPage : public Page {
 public:
@@ -66,6 +65,7 @@ public:
     SlotId get_record_capacity();
 };
 
+
 class FixedlenDataPageRecordIterator : public iter::GenericIterator<Record> {
 public:
     FixedlenDataPageRecordIterator(FixedlenDataPage *dpage, SlotId starting_slot);
@@ -81,7 +81,5 @@ private:
     FixedlenDataPage *page;
 };
 
-}
-}
-
+}}
 #endif

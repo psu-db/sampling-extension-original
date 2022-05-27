@@ -18,10 +18,7 @@
 #include "io/directfile.hpp"
 #include "io/page.hpp"
 
-//#define NO_BUFFER_MANAGER
-
-namespace lsm {
-namespace io {
+namespace lsm { namespace io {
 
 // The header stored in Page 0 of the file, not file-level
 // header information stored on each page.
@@ -196,7 +193,5 @@ protected:
     bool is_temp_file;
 };
 
-}
-}
-
+}}
 #endif
