@@ -14,7 +14,7 @@
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "io/directfile.hpp"
-#include "io/pagedfile.hpp"
+#include "io/linkpagedfile.hpp"
 #include "io/fixedlendatapage.hpp"
 #include "catalog/schema.hpp"
 
@@ -68,7 +68,7 @@ std::unique_ptr<io::DirectFile> create_dfile_empty()
     FileId flid = 123;
 
     auto dfile = io::DirectFile::create(fname);
-    io::PagedFile::initialize(dfile.get(), flid);
+    io::LinkPagedFile::initialize(dfile.get(), flid);
 
     return dfile;
 }
@@ -77,8 +77,8 @@ std::string existing_fname2 = "tests/data/pagedfile_test_existing.dat";
 void initialize_file2()
 {
     auto dfile = io::DirectFile::create(existing_fname2);
-    io::PagedFile::initialize(dfile.get(), 123);
-    auto pfile = new io::PagedFile(std::move(dfile), false);
+    io::LinkPagedFile::initialize(dfile.get(), 123);
+    auto pfile = new io::LinkPagedFile(std::move(dfile), false);
 
     auto data1 = testing::test_page1();
     auto data2 = testing::test_page2();
