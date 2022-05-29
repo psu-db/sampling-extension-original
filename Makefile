@@ -31,6 +31,7 @@ build:
 	mkdir -p lib
 	mkdir -p build/ds
 	mkdir -p build/io
+	mkdir -p build/util
 
 
 build/%.o: src/%.cpp

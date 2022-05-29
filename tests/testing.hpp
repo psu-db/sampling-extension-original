@@ -17,8 +17,12 @@
 #include "io/linkpagedfile.hpp"
 #include "io/fixedlendatapage.hpp"
 #include "catalog/schema.hpp"
+#include "io/filemanager.hpp"
 
 namespace lsm { namespace testing {
+
+
+std::unique_ptr<io::FileManager> g_fm;
 
 std::unique_ptr<std::byte> test_page1()
 {
@@ -129,6 +133,212 @@ std::unique_ptr<catalog::FixedKVSchema> test_schema1(size_t val_len=sizeof(int64
     return std::make_unique<catalog::FixedKVSchema>(sizeof(int64_t), val_len, io::RecordHeaderLength);
 }
 
+
+std::string fm_root_dir = "tests/data/filemanager/";
+std::unique_ptr<io::FileManager> create_test_fm()
+{
+    return std::make_unique<io::FileManager>(fm_root_dir);
+}
+
+
+std::string generate_test_file1()
+{
+    auto fm = create_test_fm(); 
+    auto test_file = fm->create_indexed_pfile();
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = -100;
+    int64_t val = 8;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<10; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 1;
+            val += 1;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
+
+void initialize_global_fm()
+{
+    g_fm = create_test_fm();
+}
+
+
+std::string generate_merge_test_file1(size_t page_cnt, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("merge_test_file1");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = 0;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 3;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+    return fm->get_name(test_file->get_flid());
+}
+
+
+std::string generate_merge_test_file2(size_t page_cnt, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("merge_test_file2");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = 0;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 2;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+    
+    return fm->get_name(test_file->get_flid());
+}
+
+
+std::string generate_merge_test_file3(size_t page_cnt, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("merge_test_file3");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = 0;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 1;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
+std::string generate_merge_test_file4(size_t page_cnt, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("merge_test_file4");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = 10000;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key -= 1;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
+std::string generate_merge_test_file3a(size_t page_cnt, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("merge_test_file3a");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(sizeof(int64_t));
+
+    int64_t key = 100000;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 1;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
 }}
 
 #endif
