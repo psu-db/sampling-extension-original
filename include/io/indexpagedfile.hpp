@@ -26,8 +26,8 @@
 #include "util/base.hpp"
 #include "util/iterator.hpp"
 #include "io/directfile.hpp"
-#include "io/page.hpp"
-
+#include "io/fixedlendatapage.hpp"
+#include "io/readcache.hpp"
 #include "io/pagedfile.hpp"
 
 namespace lsm { namespace io {
@@ -40,6 +40,76 @@ struct IndexPagedFileHeaderData {
 
 constexpr size_t IndexPagedFileHeaderSize = MAXALIGN(sizeof(IndexPagedFileHeaderData));
 static_assert(IndexPagedFileHeaderSize <= parm::PAGE_SIZE);
+
+class IndexPagedFile;
+
+class IndexPagedFilePageIterator : public iter::GenericIterator<Page *> {
+public:
+    IndexPagedFilePageIterator(IndexPagedFile *file, PageNum pnum, ReadCache *cache, bool fixedlen=true);
+
+    bool next() override;
+    Page *get_item() override;
+
+    bool supports_rewind() override;
+    iter::IteratorPosition save_position() override;
+    void rewind(iter::IteratorPosition position) override;
+
+    void end_scan() override;
+    ~IndexPagedFilePageIterator();
+private:
+    IndexPagedFile *pfile;
+    PageNum current_pnum;
+    ReadCache *cache;
+    FrameId current_frame_id;
+    byte *current_frame_ptr;
+    bool fixedlen;
+
+    std::unique_ptr<Page> current_page;
+    std::unique_ptr<iter::GenericIterator<Record>> record_itr;
+
+    bool at_end;
+    union iter_position {
+        iter::IteratorPosition packed_position = 0;
+        struct {
+            PageNum pnum;
+            PageOffset offset;
+        };
+    };
+};
+
+class IndexPagedFileRecordIterator : public iter::GenericIterator<Record> {
+friend IndexPagedFile;
+
+public:
+    IndexPagedFileRecordIterator(IndexPagedFile *file, PageNum pnum, ReadCache *cache);
+
+    bool next() override;
+    Record get_item() override;
+
+    bool supports_rewind() override;
+    iter::IteratorPosition save_position() override;
+    void rewind(iter::IteratorPosition position) override;
+
+    void end_scan() override;
+
+    ~IndexPagedFileRecordIterator();
+private:
+    Record current_record;
+
+    Page *current_page;
+    std::unique_ptr<iter::GenericIterator<Page *>> page_itr;
+    std::unique_ptr<iter::GenericIterator<Record>> record_itr;
+
+    bool at_end;
+    union iter_position {
+        iter::IteratorPosition packed_position = 0;
+        struct {
+            PageNum pnum;
+            PageOffset offset;
+        };
+    };
+};
+
 
 class IndexPagedFile : public PagedFile {
 public:
@@ -64,8 +134,27 @@ public:
      * is_temp_file is set to true, then the file will be considered temporary,
      * and automatically deleted from the filesystem when it is closed, or when
      * the IndexPagedFile object is destructed.
+     *
+     * IndexPagedFiles created by this constructor own their associated
+     * DirectFile and will automatically destruct it when they are destructed.
      */
     IndexPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file);
+
+    /*
+     * Create a new IndexPagedFile object from a DirectFile. Note that the
+     * Directfile in question must have been passed through
+     * IndexPagedFile::initialize at some point in its existence, otherwise all
+     * operations upon the resulting IndexPagedFile object are undefined. If
+     * is_temp_file is set to true, then the file will be considered temporary,
+     * and automatically deleted from the filesystem when it is closed, or when
+     * the IndexPagedFile object is destructed.
+     *
+     * IndexPagedFiles created by this constructor do not own their associated
+     * DirectFile and will not automatically destruct it when they are
+     * destructed. Ensure that the DirectFile objects are properly managed
+     * somewhere else.
+     */
+    IndexPagedFile(DirectFile *dfile, bool is_temp_file);
 
     /*
      * Add a new page to the file and return its associated PageId. Note that
@@ -114,6 +203,11 @@ public:
      * allocated, then get_first_pid() == get_last_pid().
      */
     PageId get_last_pid() override;
+
+    /*
+     * Returns the FileId of this file, as stored in the page header
+     */
+    FileId get_flid() override;
 
     /*
      * Returns a PagefileIterator opened to the specified page. If INVALID_PID

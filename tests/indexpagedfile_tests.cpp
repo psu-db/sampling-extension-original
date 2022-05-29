@@ -171,6 +171,31 @@ START_TEST(t_read)
 END_TEST
 
 
+START_TEST(t_iterator)
+{
+    auto fname = testing::generate_test_file1();
+    auto pfile = io::IndexPagedFile::create(fname, false, 5);
+    auto rcache = std::make_unique<io::ReadCache>();
+    auto schema = testing::test_schema1(sizeof(int64_t));
+
+    auto rec_itr = io::IndexPagedFileRecordIterator(pfile.get(), INVALID_PNUM, rcache.get());
+
+    size_t rec_cnt = 0;
+    int64_t key = -100;
+    int64_t val = 8;
+
+    while (rec_itr.next()) {
+        auto rec = rec_itr.get_item();
+        ck_assert_int_eq(schema->get_key(rec.get_data()).Int64(), key++);
+        ck_assert_int_eq(schema->get_val(rec.get_data()).Int64(), val++);
+        rec_cnt++;
+    }
+
+    rec_itr.end_scan();
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("IndexPagedFile Unit Testing");
@@ -209,6 +234,13 @@ Suite *unit_testing()
     tcase_add_test(read, t_read);
 
     suite_add_tcase(unit, read);
+
+
+
+    TCase *iter = tcase_create("lsm::io::IndexPagedFile::IndexPagedFileRecordIterator Testing");
+    tcase_add_test(iter, t_iterator);
+
+    suite_add_tcase(unit, iter);
 
     return unit;
 }

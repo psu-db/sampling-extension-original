@@ -29,6 +29,8 @@ public:
      */
     FixedlenDataPage(byte *page_ptr);
 
+    FixedlenDataPage() = default;
+
     ~FixedlenDataPage() = default;
 
     /*
