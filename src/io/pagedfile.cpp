@@ -16,6 +16,10 @@ PagedFile::PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file, bool 
     virtualizable(virtualization_supported), dfile_ptr(nullptr) {}
 
 
+PagedFile::PagedFile(DirectFile *dfile, bool is_temp_file, bool free_supported, PageAllocSupport alloc_supported, bool virtualization_supported)
+: dfile(nullptr), is_temp_file(is_temp_file), free_supported(free_supported),
+    alloc_supported(alloc_supported),
+    virtualizable(virtualization_supported), dfile_ptr(dfile) {}
 
 
 int PagedFile::read_page(PageId pid, byte *buffer_ptr)
@@ -100,14 +104,15 @@ int PagedFile::remove_file()
 
 int PagedFile::initialize_pagedfile(byte *header_page_buf, FileId flid)
 {
-        if (header_page_buf) {
-            PagedFileHeaderData* header = (PagedFileHeaderData*) header_page_buf;
-            header->flid = flid;
-            header->page_count = 0;
-            return 1;
-        }
+    if (header_page_buf) {
+        PagedFileHeaderData* header = (PagedFileHeaderData*) header_page_buf;
+        header->flid = flid;
+        header->page_count = 0;
+        header->virtual_header_page = INVALID_PNUM;
+        return 1;
+    }
 
-        return 0;
+    return 0;
 }
 
 

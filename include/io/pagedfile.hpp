@@ -48,7 +48,24 @@ static_assert(PagedFileHeaderSize <= parm::PAGE_SIZE);
 
 class PagedFile {
 public:
+    /*
+     * Create a new PagedFile object that has ownership of the provided DirectFile object. When
+     * the PagedFile is destructed, the DirectFile will automatically be destructed as well.
+     */
     PagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file, bool free_supported, PageAllocSupport alloc_supported, bool virtualization_supported);
+
+    /*
+     * Create a new PagedFile object that does not own the underlying DirectFile. When the PagedFile is
+     * destructed, the DirectFile will remain unaffected. Only use if the DirectFile is managed somewhere
+     * else.
+     */
+    PagedFile(DirectFile *dfile, bool is_temp_file, bool free_supported, PageAllocSupport alloc_supported, bool virtualization_supported);
+
+    /*
+     * Default constructor. The created PagedFile object cannot be used for
+     * anything until it is manually initialized. Mostly provided to allow
+     * flexibility in sub-class implementations.
+     */
     PagedFile() = default;
 
     /*
@@ -169,6 +186,13 @@ public:
      */
     virtual PageId get_last_pid() = 0;
 
+
+    /*
+     * Returns the file ID of this PagedFile. In most implementations, this
+     * will be obtained from the header of the file.
+     */
+    virtual FileId get_flid() = 0;
+
     /*
      * Returns a PagefileIterator opened to the specified page. If INVALID_PID
      * is provided as an argument, then the iterator will be open to the first
@@ -218,7 +242,8 @@ public:
     virtual int initialize_for_virtualization() = 0;
 
     /*
-     *  
+     * Only available as a default destructor. Any specific cleanup routines must
+     * be defined by the subclass.
      */
     virtual ~PagedFile() = default;
 
