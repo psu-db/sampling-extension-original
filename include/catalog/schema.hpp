@@ -23,11 +23,11 @@ public:
 
     ~FixedKVSchema() = default;
 
-    Field get_key(byte *record_buffer) {
+    Field get_key(const byte *record_buffer) {
         return Field(record_buffer + header_length, key_length);
     };
 
-    Field get_val(byte *record_buffer){
+    Field get_val(const byte *record_buffer){
         return Field(record_buffer + key_length + header_length, value_length);
     }
 

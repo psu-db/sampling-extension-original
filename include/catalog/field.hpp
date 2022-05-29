@@ -12,7 +12,7 @@ namespace lsm { namespace catalog {
 
 class Field {
 public:
-    Field(byte *field_ptr, PageOffset length=0) : field_ptr(field_ptr), length(length) {};
+    Field(const byte *field_ptr, PageOffset length=0) : field_ptr(field_ptr), length(length) {};
     ~Field() = default;
 
     int64_t Int64() {
@@ -40,7 +40,7 @@ public:
     }
 
 private:
-    byte *field_ptr;
+    const byte *field_ptr;
     PageOffset length;
 };
 
