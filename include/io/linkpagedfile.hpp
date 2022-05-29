@@ -47,35 +47,6 @@ static_assert(LinkPagedFileHeaderSize <= parm::PAGE_SIZE);
 
 class LinkPagedFile;
 
-class PageFileIterator : public iter::GenericIterator<Page *> {
-friend LinkPagedFile;
-
-public:
-    PageFileIterator(LinkPagedFile *file, PageNum pnum);
-
-    bool next() override;
-    Page *get_item() override;
-
-    bool supports_rewind() override;
-    iter::IteratorPosition save_position() override;
-    void rewind(iter::IteratorPosition position) override;
-
-    void end_scan() override;
-
-    ~PageFileIterator();
-private:
-    LinkPagedFile *pfile;
-    PageNum current_page;
-    PageOffset current_offset;
-
-    union iter_position {
-        iter::IteratorPosition packed_position = 0;
-        struct {
-            PageNum pnum;
-            PageOffset offset;
-        };
-    };
-};
 
 class LinkPagedFile : public PagedFile {
 public:
@@ -150,6 +121,11 @@ public:
      * allocated, then get_first_pid() == get_last_pid().
      */
     PageId get_last_pid() override;
+
+    /*
+     * Returns the FileId of this file, as stored in the page header
+     */
+    FileId get_flid() override;
 
     /*
      * Returns a PagefileIterator opened to the specified page. If INVALID_PID

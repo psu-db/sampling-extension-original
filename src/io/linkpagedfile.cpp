@@ -274,4 +274,10 @@ int LinkPagedFile::initialize_for_virtualization()
     return 0;
 }
 
+
+FileId LinkPagedFile::get_flid()
+{
+    return this->header_data.paged_header.flid;
+}
+
 }}
