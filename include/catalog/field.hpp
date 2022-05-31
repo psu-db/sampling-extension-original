@@ -35,9 +35,14 @@ public:
         return *((double *) this->field_ptr);
     }
 
+    const byte *Bytes() {
+        return this->field_ptr;
+    }
+
     void SetInt64(int64_t new_val) {
         *((int64_t *) this->field_ptr) = new_val;
     }
+
 
 private:
     const byte *field_ptr;
