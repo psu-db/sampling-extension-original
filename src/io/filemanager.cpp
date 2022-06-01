@@ -34,7 +34,6 @@ DirectFile *FileManager::create_dfile(const std::string fname, FileId *flid)
 
     auto flags = O_RDWR | O_DIRECT | O_CREAT | O_TRUNC;
     mode_t mode = 0644;
-    off_t size = 0;
 
     int fd = open(file.c_str(), flags, mode);
     if (fd == -1) {

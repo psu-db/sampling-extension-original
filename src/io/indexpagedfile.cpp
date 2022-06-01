@@ -51,13 +51,13 @@ PageId IndexPagedFile::allocate_page_bulk(PageNum new_page_count)
 }
 
 
-int IndexPagedFile::free_page(PageId pid)
+int IndexPagedFile::free_page(PageId /*pid*/)
 {
     return 0;
 }
 
 
-int IndexPagedFile::free_page(PageNum pnum)
+int IndexPagedFile::free_page(PageNum /*pnum*/)
 {
     return 0;
 }
@@ -99,7 +99,7 @@ std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageId
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageNum pnum)
+std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageNum /*pnum*/)
 {
     return nullptr;
 }
@@ -124,7 +124,6 @@ int IndexPagedFile::initialize(DirectFile *dfile, FileId flid)
         #ifdef NO_BUFFER_MANAGER
         std::unique_ptr<byte> page = std::unique_ptr<byte>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE));
 
-        IndexPagedFileHeaderData *header = (IndexPagedFileHeaderData *) page.get();
         #endif
 
         PagedFile::initialize_pagedfile(page.get(), flid);
@@ -261,7 +260,7 @@ iter::IteratorPosition IndexPagedFilePageIterator::save_position()
 }
 
 
-void IndexPagedFilePageIterator::rewind(iter::IteratorPosition position)
+void IndexPagedFilePageIterator::rewind(iter::IteratorPosition /*position*/)
 {
     return;
 }
@@ -335,7 +334,7 @@ iter::IteratorPosition IndexPagedFileRecordIterator::save_position()
 }
 
 
-void IndexPagedFileRecordIterator::rewind(iter::IteratorPosition position)
+void IndexPagedFileRecordIterator::rewind(iter::IteratorPosition /*position*/)
 {
 
 }

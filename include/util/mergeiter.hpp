@@ -48,7 +48,7 @@ public:
 
     bool supports_rewind() override;
     IteratorPosition save_position() override;
-    void rewind(IteratorPosition position) override;
+    void rewind(IteratorPosition /*position*/) override;
 
     void end_scan() override;
 

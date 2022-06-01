@@ -61,7 +61,7 @@ IteratorPosition MergeIterator::save_position()
 }
 
 
-void MergeIterator::rewind(IteratorPosition position)
+void MergeIterator::rewind(IteratorPosition /*position*/)
 {
     return;
 }

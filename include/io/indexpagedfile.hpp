@@ -52,7 +52,7 @@ public:
 
     bool supports_rewind() override;
     iter::IteratorPosition save_position() override;
-    void rewind(iter::IteratorPosition position) override;
+    void rewind(iter::IteratorPosition /*position*/) override;
 
     void end_scan() override;
     ~IndexPagedFilePageIterator();
@@ -88,7 +88,7 @@ public:
 
     bool supports_rewind() override;
     iter::IteratorPosition save_position() override;
-    void rewind(iter::IteratorPosition position) override;
+    void rewind(iter::IteratorPosition /*position*/) override;
 
     void end_scan() override;
 
@@ -173,12 +173,12 @@ public:
      * longer appear in iterators over the page. Freed pages can be recycled
      * by allocate. Returns 1 on success and 0 on failure.
      */
-    int free_page(PageId pid) override;
+    int free_page(PageId /*pid*/) override;
 
     /*
      * Same as free_page(PageId), but accepts a PageNum rather than a PageId.
      */
-    int free_page(PageNum pnum) override;
+    int free_page(PageNum /*pnum*/) override;
 
     /*
      * Converts a given PageNum into a PageId that is associated with this
@@ -216,11 +216,11 @@ public:
      * then returns nullptr. If the specified page exists on the free list,
      * then all operations on the returned iterator are undefined.
      */
-    std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId pid=INVALID_PID) override;
+    std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId /*pid=INVALID_PID*/) override;
     /*
      * Same as start_scan(PageId), but accepts a PageNum as an argument instead.
      */
-    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum pnum=INVALID_PNUM) override;
+    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum /*pnum=INVALID_PNUM*/) override;
 
     /*
      * See page.hpp

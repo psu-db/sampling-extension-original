@@ -83,7 +83,7 @@ public:
      */
     PageId allocate_page() override;
 
-    PageId allocate_page_bulk(PageNum new_page_count) override;
+    PageId allocate_page_bulk(PageNum /*new_page_count*/) override;
 
     /*
      * Delete a specified page and add it to the free list. The page can
@@ -138,7 +138,7 @@ public:
     /*
      * Same as start_scan(PageId), but accepts a PageNum as an argument instead.
      */
-    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum pnum=INVALID_PNUM) override;
+    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum /*pnum=INVALID_PNUM*/) override;
 
     /*
      * See page.hpp

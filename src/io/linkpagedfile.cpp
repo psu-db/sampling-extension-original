@@ -89,7 +89,7 @@ PageId LinkPagedFile::allocate_page()
 }
 
 
-PageId LinkPagedFile::allocate_page_bulk(PageNum new_page_count)
+PageId LinkPagedFile::allocate_page_bulk(PageNum /*new_page_count*/)
 {
     return INVALID_PID;
 }
@@ -190,7 +190,7 @@ std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageId 
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum pnum)
+std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum /*pnum*/)
 {
     return nullptr;
 }

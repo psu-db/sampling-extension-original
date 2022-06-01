@@ -35,7 +35,6 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
 
     PageNum leaf_page_cnt = 0;
     PageNum internal_page_cnt = 0;
-    bool first_iteration = true;
     PageNum new_page;
     PageNum new_internal_page;
 

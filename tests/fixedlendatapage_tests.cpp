@@ -17,9 +17,6 @@ START_TEST(t_initialize)
     auto buf1 = testing::empty_aligned_buffer();
     auto schema = testing::test_schema1(sizeof(int64_t));
 
-    int64_t key1 = 1234;
-    int64_t val1 = 5678;
-    auto test_rec = schema->create_record((byte *) &key1, (byte *) &val1);
     io::FixedlenDataPage::initialize(buf1.get(), schema->record_length(), 0);
 
     auto page1 = io::FixedlenDataPage(buf1.get());
