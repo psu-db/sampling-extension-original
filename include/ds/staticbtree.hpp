@@ -8,6 +8,7 @@
 #include "util/base.hpp"
 #include "io/pagedfile.hpp"
 #include "util/mergeiter.hpp"
+#include "util/mem.hpp"
 #include "catalog/schema.hpp"
 #include "catalog/field.hpp"
 #include "io/fixedlendatapage.hpp"

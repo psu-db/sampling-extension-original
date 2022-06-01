@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
-#include "util/types.hpp"
 
 namespace lsm {
 
@@ -59,18 +58,5 @@ TYPEALIGN(uint64_t ALIGNVAL, T LEN) {
 #define MAXALIGN(LEN)           TYPEALIGN(8, (LEN))
 #define CACHELINEALIGN(LEN)     TYPEALIGN(parm::CACHELINE_SIZE, (LEN))
 #define MAXALIGN_OF             8
-
-
-namespace mem {
-
-inline byte* page_alloc(PageNum page_cnt=1) {
-    return (byte *) std::aligned_alloc(parm::SECTOR_SIZE, page_cnt*parm::PAGE_SIZE);
 }
-
-inline std::unique_ptr<byte> page_alloc_unique(PageNum page_cnt=1) {
-    return std::unique_ptr<byte>(page_alloc(page_cnt));
-}
-
-}}
-
 #endif
