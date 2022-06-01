@@ -10,7 +10,8 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
                                                      std::unique_ptr<iter::MergeIterator> record_iter, 
                                                      PageNum data_page_cnt,
                                                      catalog::FixedKVSchema *record_schema,
-                                                     iter::CompareFunc key_cmp)
+                                                     iter::CompareFunc key_cmp,
+                                                     io::ReadCache *cache)
 {
     auto internal_schema = StaticBTree::generate_internal_schema(record_schema);
 
@@ -30,59 +31,59 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     io::FixedlenDataPage leaf_page = io::FixedlenDataPage(leaf_output_buffer.get());
     io::FixedlenDataPage internal_page = io::FixedlenDataPage(internal_output_buffer.get());
 
-    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->first_child = first_leaf.page_number;
     ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = INVALID_PNUM;
-
-
-    // we want to keep track of the first key for each node (the one associated with first_child),
-    // as these keys are the ones that get pushed up to the parent levels. For the moment, this is
-    // hardcoded as int64_t. If I'm to keep it fully generic, I'll need to do an extra memcpy on each
-    // key and manage that memory--we'll leave that aside for the moment.
-    std::vector<std::pair<PageNum, int64_t>> leading_keys;
 
     PageNum leaf_page_cnt = 0;
     PageNum internal_page_cnt = 0;
     bool first_iteration = true;
+    PageNum new_page;
+    PageNum new_internal_page;
+
     while (record_iter->next() && leaf_page_cnt < data_page_cnt) {
         auto rec = record_iter->get_item();
 
-        if (first_iteration) {
-            first_iteration = false;
-            leading_keys.push_back({first_internal.page_number, record_schema->get_key(rec.get_data()).Int64()});
-        }
-
         if (!leaf_page.insert_record(rec)) {
             // write the full page to the file
-            PageNum new_page = first_leaf.page_number + leaf_page_cnt++;
+            new_page = first_leaf.page_number + leaf_page_cnt++;
             pfile->write_page(new_page, leaf_output_buffer.get());
 
-            // create a new page and load the record into it.
-            io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
-            leaf_page = io::FixedlenDataPage(leaf_output_buffer.get()); // probably not necessary
-            leaf_page.insert_record(rec);
+            // the last key of the just-written page should be inserted into the internal node
+            // above.
+            auto new_key_record = leaf_page.get_record(leaf_page.get_max_sid());
+            auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
 
-            // insert the separator key into the parent leaf node.
-            auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(rec.get_data()).Bytes(), (byte *) &new_page);
             if (!internal_page.insert_record(io::Record(internal_recbuf.get(), internal_schema->record_length()))) {
-                PageNum new_internal_page = pfile->allocate_page().page_number;
+                new_internal_page = pfile->allocate_page().page_number;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
                 pfile->write_page(new_internal_page, internal_output_buffer.get());
-
-                leading_keys.push_back({new_internal_page, record_schema->get_key(rec.get_data()).Int64()});
 
                 internal_page_cnt++;
 
                 io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length());
                 internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
-                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->first_child = new_page;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
             }
+
+            // create a new leaf page and load the record into it
+            io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
+            leaf_page = io::FixedlenDataPage(leaf_output_buffer.get()); // probably not necessary
+            leaf_page.insert_record(rec);
         }
     }
 
-    auto root_pnum = StaticBTree::generate_next_internal_level(pfile, first_internal.page_number, first_internal.page_number + internal_page_cnt, internal_schema.get());
+    pfile->write_page(new_page, leaf_output_buffer.get());
+    pfile->write_page(new_internal_page, internal_output_buffer.get());
 
-    return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp);
+    auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
+
+    pfile->read_page(meta, internal_output_buffer.get());
+    auto metadata = (StaticBTreeMetaHeader *) internal_output_buffer.get();
+    metadata->root_node = root_pnum;
+    metadata->first_data_page = first_leaf.page_number;
+    metadata->last_data_page = new_page;
+    pfile->write_page(meta, internal_output_buffer.get());
+
+    return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp, cache);
 }
 
 
@@ -95,6 +96,7 @@ int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *firs
         *first_leaf = pfile->allocate_page();
         for (size_t i=1; i<page_cnt; i++) {
             if (pfile->allocate_page() == INVALID_PID) {
+
                 return 0;
             }
         }
@@ -119,18 +121,65 @@ std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedK
 }
 
 
-PageNum generate_next_internal_level(io::PagedFile *pfile, catalog::FixedKVSchema *schema, std::vector<std::pair<PageNum, int64_t>> leading_keys)
+PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, catalog::FixedKVSchema *schema)
 {
-   if (leading_keys.size() == 0) {
-        return 0;
-    } 
+    // NOTE: We could just take advantage of the ReadCache, rather than
+    // defining a new input buffer here
+    auto input_buf = mem::page_alloc_unique();
+    auto output_buf = mem::page_alloc_unique();
 
-    auto internal_page_buf = mem::page_alloc_unique();
-    io::FixedlenDataPage::initialize(internal_page_buf.get(), schema->record_length(), StaticBTreeInternalNodeHeaderSize);
-    PageNum new_level_first_page = pfile->allocate_page().page_number;
-    PageNum new_level_page_cnt = 0;
+    PageNum current_pnum = first_internal;
+    pfile->read_page(current_pnum, input_buf.get());
+    auto input_page = io::FixedlenDataPage(input_buf.get());
+    auto input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
 
-    return INVALID_PNUM;
+    while (input_header->next_sibling != INVALID_PNUM) {
+        auto new_output_pid = pfile->allocate_page();
+        auto current_output_pid = new_output_pid;
+
+        io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length());
+        auto output_page = io::FixedlenDataPage(output_buf.get());
+        auto output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
+        output_header->prev_sibling = INVALID_PNUM;
+
+        while (input_header->next_sibling != INVALID_PNUM) {
+            // move the last key value on this node up to the next level of the tree
+            auto key_record = input_page.get_record(input_page.get_max_sid());
+
+            // insert record into output page
+            if (!output_page.insert_record(key_record)) {
+                auto new_pid = pfile->allocate_page();
+                output_header->next_sibling = new_pid.page_number;
+                pfile->write_page(current_output_pid, output_buf.get());
+
+                io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length());
+                output_page = io::FixedlenDataPage(output_buf.get());
+                output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
+                output_header->prev_sibling = current_output_pid.page_number;
+
+                output_page.insert_record(key_record);
+                current_output_pid = new_pid;
+            }
+
+            // advance to next page at this level
+            pfile->read_page(input_header->next_sibling, input_buf.get());
+            input_page = io::FixedlenDataPage(input_buf.get());
+            input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
+        }
+
+        // Make sure that the output buffer is flushed before the next iteration
+        pfile->write_page(current_output_pid, output_buf.get());
+
+        // Set up to begin processing the newly created level in the next iteration
+        current_pnum = new_output_pid.page_number;
+        pfile->read_page(current_pnum, input_buf.get());
+        input_page = io::FixedlenDataPage(input_buf.get());
+        input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
+    }
+
+    // The last pnum processed will belong to the page in the level with only 1 node,
+    // i.e., the root node.
+    return current_pnum;
 }
 
 
@@ -173,9 +222,23 @@ PageId StaticBTree::get_upper_bound(const byte *key)
     // The leaf pages are all allocated contiguously at the start of the file,
     // so we'll know when we have a pointer to one when the pnum is no larger
     // than the last data page.
-    while (current_page > this->last_data_page) {
+    while (current_page >= this->last_data_page) {
         current_page = search_internal_node_upper(current_page, key);
     }
+
+    // Because the keys in the internal nodes represent maxes, and not mins,
+    // it is possible for there to be keys falling into the range in an adjacent
+    // data page to the one found. So we need to check this out first.
+    if (current_page < this->last_data_page) {
+        byte *buf;
+        auto frid = this->cache->pin(current_page + 1, this->pfile, &buf);
+        if (this->search_leaf_page(buf, key) != INVALID_SID) {
+            current_page = current_page + 1;
+        }
+
+        this->cache->unpin(frid);
+    }
+        
 
     return this->pfile->pnum_to_pid(current_page);
 }
@@ -183,72 +246,45 @@ PageId StaticBTree::get_upper_bound(const byte *key)
 
 bool StaticBTree::tombstone_exists(const byte *key, Timestamp time) 
 {
+    // Because we can have duplicate keys with differing timestamps, we need to
+    // establish a range of pages over which the tombstone could be located.
     PageId first_page = this->get_lower_bound(key);
-    PageNum current_pnum = first_page.page_number;
-    byte *page_buf;
-    auto frid = this->cache->pin(current_pnum, this->pfile, &page_buf);
+    PageId last_page = this->get_upper_bound(key);
 
-    auto current_sid = this->search_leaf_page(page_buf, key);
-
-    // Because the lower_bound check is conservative and may include the
-    // first_child page even if the desired value isn't there, we may need to
-    // check the page beside if too.
-    if (current_sid == INVALID_SID) {
-        this->cache->unpin(frid);
-        current_pnum++;
-        frid = this->cache->pin(current_pnum, this->pfile, &page_buf);
-        current_sid = this->search_leaf_page(page_buf, key);
+    // if the first and last page are not both defined, then the record doesn't exist within
+    // the tree, and so no tombstone is present.
+    if (first_page.page_number == INVALID_PNUM || last_page.page_number == INVALID_PNUM) {
+        return false;
     }
 
-    if (current_sid == INVALID_SID) {
-        this->cache->unpin(frid);
-        return false; // record doesn't exist to begin with
-    }
-
-    auto leaf_page = io::FixedlenDataPage(page_buf);
-    auto leaf_record = leaf_page.get_record(current_sid);
+    // For now, I'm not going to assume that the provided comparison function necessarily sorts
+    // by timestamp, so we'll do a scan of the valid record targets.
     Timestamp newest_tombstone = 0;
     Timestamp newest_record = 0;
     bool tombstone_found = false;
-    while (this->key_cmp(key, this->record_schema->get_key(leaf_record.get_data()).Bytes()) == 0) {
-        // The records may not be sorted in timestamp order. It would be a lot easier here if
-        // that ordering were enforced. This could be done by modifying the comparator passed into
-        // MergeIterator to account for this--which I will probably do later. But for now, we'll 
-        // do it this way.
-        if (leaf_record.get_timestamp() <= time) {
-           if (leaf_record.get_timestamp() > newest_record) {
-                newest_record = leaf_record.get_timestamp();
-            } 
 
-            if (leaf_record.is_tombstone()) {
-                tombstone_found = true;
-                if (leaf_record.get_timestamp() > newest_tombstone) {
-                    newest_tombstone = leaf_record.get_timestamp();
+    for (PageNum i=first_page.page_number; i<=last_page.page_number; i++) {
+        byte *page_buf;
+        auto frid = this->cache->pin(i, this->pfile, &page_buf);
+        auto sid = this->search_leaf_page(page_buf, key);
+        auto leaf_page = io::FixedlenDataPage(page_buf);
+        while (sid != INVALID_SID && sid <= leaf_page.get_max_sid() 
+          && this->key_cmp(key, this->record_schema->get_key(leaf_page.get_record(sid).get_data()).Bytes()) == 0) {
+            auto leaf_record = leaf_page.get_record(sid++);
+            auto record_time = leaf_record.get_timestamp();
+
+            if (record_time <= time) {
+                newest_record = std::max(record_time, newest_record);
+                if (leaf_record.is_tombstone()) {
+                    tombstone_found = true;
+                    newest_tombstone = std::max(record_time, newest_tombstone);
                 }
             }
-        } 
-
-        current_sid++;
-        leaf_record = leaf_page.get_record(current_sid);
-
-        // if we've run to the end of the page, we should check the next one,
-        // as the key range may span multiple pages. The break will hit when we
-        // finish checking the last leaf page, and the while conditional will
-        // stop the loop when the keys cease to match.
-        if (!leaf_record.is_valid()) {
-            this->cache->unpin(frid);
-            if (++current_pnum > this->last_data_page) {
-                break;
-            }
-            
-            frid = this->cache->pin(current_pnum, this->pfile, &page_buf);
-            leaf_page = io::FixedlenDataPage(page_buf);
-            current_sid = leaf_page.get_min_sid();
-            leaf_record = leaf_page.get_record(current_sid);
         }
+
+        this->cache->unpin(frid);
     }
 
-    this->cache->unpin(frid);
     return tombstone_found && (newest_tombstone == newest_record);
 }
 
@@ -258,43 +294,26 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
     byte *page_buf;
     auto frid = this->cache->pin(pnum, this->pfile, &page_buf);
     auto page = io::FixedlenDataPage(page_buf);
-    auto first_child = ((StaticBTreeInternalNodeHeader *) page.get_user_data())->first_child;
 
     SlotId min = page.get_min_sid();
     SlotId max = page.get_max_sid();
 
-    // the page has no records, or if the input key is smaller than the first
-    // key record, then we return the first_child reference.
-    if (page.get_record_count() == 0) {
+    // If the entire range of numbers falls below the target key, the algorithm
+    // will return max as its bound, even though there actually isn't a valid
+    // bound. So we need to check this case manually and return INVALID_PNUM.
+    auto node_key = this->internal_index_schema->get_key(page.get_record(max).get_data()).Bytes();
+    if (this->key_cmp(key, node_key) > 0) {
         this->cache->unpin(frid);
-        return first_child;
+        return INVALID_PNUM;
     }
 
-    // NOTE: We can't know, based on the way that the first pointer on a node
-    // is set up, whether our lower bound should be in the first_child or in
-    // the first internal record (second child), as we don't track the key
-    // value for the first child. Consider finding the lower bound of 30 in the
-    // following case,
-    // |34|50|...
-    // If anything between 30 and 34 exists within the first child, that page
-    // should be our lower bound, but if not, then the page associated with the
-    // key 34 is. Here I am being conservative and assuming that the first
-    // child contains elements within the range. This will result, potentially,
-    // in increasing the rejection rate.
-    auto first_key = this->internal_index_schema->get_key(page.get_record(min).get_data()).Bytes();
-    if (this->key_cmp(first_key, key) > 0) {
-        this->cache->unpin(frid);
-        return first_child;
-    }
-
-    // otherwise, we do a full binary search
     while (min < max) {
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(node_key, key) >= 0) {
-            max = mid;
-        } else {
+        if (this->key_cmp(key, node_key) > 0) {
             min = mid + 1;
+        } else {
+            mid = max;
         }
     }
 
@@ -311,36 +330,30 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     byte *page_buf;
     auto frid = this->cache->pin(pnum, this->pfile, &page_buf);
     auto page = io::FixedlenDataPage(page_buf);
-    auto first_child = ((StaticBTreeInternalNodeHeader *) page.get_user_data())->first_child;
 
     SlotId min = page.get_min_sid();
     SlotId max = page.get_max_sid();
-
-    // the page has no records, or if the input key is smaller than the first
-    // key record, then we return the first_child reference.
-    if (page.get_record_count() == 0) {
+    
+    // If the entire range of numbers falls above the target key, the algorithm
+    // will return min as its bound, even though there actually isn't a valid
+    // bound. So we need to check this case manually and return INVALID_PNUM.
+    auto node_key = this->internal_index_schema->get_key(page.get_record(min).get_data()).Bytes();
+    if (this->key_cmp(key, node_key) < 0) {
         this->cache->unpin(frid);
-        return first_child;
+        return INVALID_PNUM;
     }
 
-    auto first_key = this->internal_index_schema->get_key(page.get_record(min).get_data()).Bytes();
-    if (this->key_cmp(first_key, key) > 0) {
-        this->cache->unpin(frid);
-        return first_child;
-    }
-
-    // otherwise, we do a full binary search
     while (min < max) {
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(node_key, key) > 0) {
-            max = mid;
+        if (this->key_cmp(key, node_key) < 0) {
+            max = mid - 1;
         } else {
-            min = mid + 1;
+            mid = min;
         }
     }
 
-    auto index_record = page.get_record(max - 1);
+    auto index_record = page.get_record(min);
     auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
@@ -358,18 +371,25 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
 
     SlotId min = page.get_min_sid();
     SlotId max = page.get_max_sid();
+    const byte * record_key;
 
     while (min < max) {
-        SlotId mid = (max + min) / 2;
-        auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(node_key, key) > 0) {
-            max = mid;
-        } else {
+        SlotId mid = (min + max) / 2;
+        record_key = this->record_schema->get_key(page.get_record(mid).get_data()).Bytes();
+        if (this->key_cmp(key, record_key) > 0) {
             min = mid + 1;
+        } else {
+            mid = max;
         }
     }
 
-    return max - 1;
+    // Check if the thing that we found matches the target. If so, we've
+    // found it. If not, the target doesn't exist on the page.
+    if (this->key_cmp(key, record_key) == 0) {
+        return min;
+    }
+
+    return INVALID_SID;
 }
 
 }}

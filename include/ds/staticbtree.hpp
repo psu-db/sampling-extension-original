@@ -26,8 +26,6 @@ struct StaticBTreeMetaHeader {
 struct StaticBTreeInternalNodeHeader {
     PageNum next_sibling;
     PageNum prev_sibling;
-
-    PageNum first_child;
 };
 
 constexpr PageOffset StaticBTreeInternalNodeHeaderSize = MAXALIGN(sizeof(StaticBTreeInternalNodeHeader));
@@ -58,7 +56,8 @@ public:
                                                    std::unique_ptr<iter::MergeIterator>
                                                    record_iter, PageNum data_page_cnt, 
                                                    catalog::FixedKVSchema *record_schema,
-                                                   iter::CompareFunc key_cmp);
+                                                   iter::CompareFunc key_cmp,
+                                                   io::ReadCache *cache);
 
     /*
      * Return a Static BTree object created from pfile. prfile is assumed to
@@ -112,7 +111,7 @@ private:
 
     static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta);
     static std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedKVSchema *record_schema);
-    static PageNum generate_next_internal_level(io::PagedFile *pfile, PageNum first_page, PageNum last_page, catalog::FixedKVSchema *schema);
+    static PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_page, catalog::FixedKVSchema *schema);
 };
 
 }}
