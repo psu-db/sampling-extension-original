@@ -90,7 +90,7 @@ typedef uint32_t FrameId;
 
 // A unique timestamp for use in MVCC concurrency control. Currently stored in
 // record headers, but not used by anything.
-typedef uint64_t Timestamp;
+typedef uint32_t Timestamp;
 
 // Invalid values for various IDs. Used throughout the code base to indicate
 // uninitialized values and error conditions.

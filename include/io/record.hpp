@@ -18,7 +18,7 @@
 namespace lsm { namespace io {
 
 struct RecordHeader {
-    Timestamp time;
+    Timestamp time : 32;
     bool is_tombstone : 1;
 };
 
