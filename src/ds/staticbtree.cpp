@@ -32,13 +32,16 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     io::FixedlenDataPage internal_page = io::FixedlenDataPage(internal_output_buffer.get());
 
     ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = INVALID_PNUM;
+    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
 
     PageNum leaf_page_cnt = 0;
     PageNum internal_page_cnt = 0;
     PageNum new_page;
-    PageNum new_internal_page;
+    PageNum cur_internal_page = first_internal.page_number;
 
+    size_t i=0;
     while (record_iter->next() && leaf_page_cnt < data_page_cnt) {
+        i++;
         auto rec = record_iter->get_item();
 
         if (!leaf_page.insert_record(rec)) {
@@ -52,15 +55,17 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
             auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
 
             if (!internal_page.insert_record(io::Record(internal_recbuf.get(), internal_schema->record_length()))) {
-                new_internal_page = pfile->allocate_page().page_number;
+                auto new_internal_page = pfile->allocate_page().page_number;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
-                pfile->write_page(new_internal_page, internal_output_buffer.get());
+                pfile->write_page(cur_internal_page, internal_output_buffer.get());
+                cur_internal_page = new_internal_page;
 
                 internal_page_cnt++;
 
-                io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length());
+                io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
                 internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
+                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
             }
 
             // create a new leaf page and load the record into it
@@ -71,7 +76,7 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     }
 
     pfile->write_page(new_page, leaf_output_buffer.get());
-    pfile->write_page(new_internal_page, internal_output_buffer.get());
+    pfile->write_page(cur_internal_page, internal_output_buffer.get());
 
     auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
 
@@ -79,14 +84,14 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     auto metadata = (StaticBTreeMetaHeader *) internal_output_buffer.get();
     metadata->root_node = root_pnum;
     metadata->first_data_page = first_leaf.page_number;
-    metadata->last_data_page = new_page;
+    metadata->last_data_page = new_page + 1;
     pfile->write_page(meta, internal_output_buffer.get());
 
     return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp, cache);
 }
 
 
-int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta)
+int StaticBTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta)
 {
     *meta = pfile->allocate_page();
     if (pfile->supports_allocation() == io::PageAllocSupport::BULK) {
@@ -111,7 +116,7 @@ int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *firs
 }
 
 
-std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedKVSchema *record_schema)
+std::unique_ptr<catalog::FixedKVSchema> StaticBTree::generate_internal_schema(catalog::FixedKVSchema *record_schema)
 {
     PageOffset key_length = record_schema->key_len();
     PageOffset value_length = sizeof(PageNum);
@@ -120,7 +125,7 @@ std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedK
 }
 
 
-PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, catalog::FixedKVSchema *schema)
+PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, catalog::FixedKVSchema *schema)
 {
     // NOTE: We could just take advantage of the ReadCache, rather than
     // defining a new input buffer here
@@ -136,22 +141,27 @@ PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, c
         auto new_output_pid = pfile->allocate_page();
         auto current_output_pid = new_output_pid;
 
-        io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length());
+        io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), StaticBTreeInternalNodeHeaderSize);
         auto output_page = io::FixedlenDataPage(output_buf.get());
         auto output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
         output_header->prev_sibling = INVALID_PNUM;
 
-        while (input_header->next_sibling != INVALID_PNUM) {
+        while (true) {
             // move the last key value on this node up to the next level of the tree
             auto key_record = input_page.get_record(input_page.get_max_sid());
+            auto key = schema->get_key(key_record.get_data()).Bytes();
+            auto value = current_pnum;
+
+            auto new_record_buf = schema->create_record_unique(key, (byte *) &value);
+            auto new_record = io::Record(new_record_buf.get(), schema->record_length());
 
             // insert record into output page
-            if (!output_page.insert_record(key_record)) {
+            if (!output_page.insert_record(new_record)) {
                 auto new_pid = pfile->allocate_page();
                 output_header->next_sibling = new_pid.page_number;
                 pfile->write_page(current_output_pid, output_buf.get());
 
-                io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length());
+                io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), StaticBTreeInternalNodeHeaderSize);
                 output_page = io::FixedlenDataPage(output_buf.get());
                 output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
                 output_header->prev_sibling = current_output_pid.page_number;
@@ -161,10 +171,15 @@ PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, c
             }
 
             // advance to next page at this level
-            pfile->read_page(input_header->next_sibling, input_buf.get());
+            if (input_header->next_sibling == INVALID_PNUM) {
+                break;
+            }
+
+            current_pnum = input_header->next_sibling;
+            pfile->read_page(current_pnum, input_buf.get());
             input_page = io::FixedlenDataPage(input_buf.get());
             input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
-        }
+        } 
 
         // Make sure that the output buffer is flushed before the next iteration
         pfile->write_page(current_output_pid, output_buf.get());
@@ -312,7 +327,7 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
         if (this->key_cmp(key, node_key) > 0) {
             min = mid + 1;
         } else {
-            mid = max;
+            max = mid;
         }
     }
 
@@ -346,13 +361,13 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
         if (this->key_cmp(key, node_key) < 0) {
-            max = mid - 1;
+            max = mid;
         } else {
-            mid = min;
+            min = mid + 1;
         }
     }
 
-    auto index_record = page.get_record(min);
+    auto index_record = page.get_record(min - 1);
     auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);

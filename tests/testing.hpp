@@ -21,7 +21,6 @@
 
 namespace lsm { namespace testing {
 
-
 std::unique_ptr<io::FileManager> g_fm;
 
 std::unique_ptr<std::byte> test_page1()
@@ -339,6 +338,109 @@ std::string generate_merge_test_file3a(size_t page_cnt, size_t *reccnt)
 
     return fm->get_name(test_file->get_flid());
 }
+
+
+std::string generate_btree_test_data1(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("btree_data_1");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(val_len);
+
+    int64_t key = -10;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 2;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
+
+std::string generate_btree_test_data2(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("btree_data_2");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(val_len);
+
+    int64_t key = -10;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 3;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
+
+std::string generate_btree_test_data3(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+{
+    auto fm = g_fm.get();
+
+    auto test_file = fm->create_indexed_pfile("btree_data_3");
+    auto buf = empty_aligned_buffer();
+    auto schema = test_schema1(val_len);
+
+    int64_t key = 5;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf, length});
+            key += 1;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return fm->get_name(test_file->get_flid());
+}
+
 }}
 
 #endif

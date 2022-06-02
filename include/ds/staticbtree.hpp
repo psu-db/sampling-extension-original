@@ -103,11 +103,9 @@ private:
     PageNum last_data_page;
     io::ReadCache *cache;
 
-
     PageNum search_internal_node_lower(PageNum pnum, const byte *key);
     PageNum search_internal_node_upper(PageNum pnum, const byte *key);
     SlotId search_leaf_page(byte *page_buf, const byte *key);
-
 
     static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta);
     static std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedKVSchema *record_schema);
