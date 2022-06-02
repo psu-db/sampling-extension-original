@@ -31,7 +31,7 @@ public:
      * Returns the record located as the specified SlotId. If the specified
      * SlotId is invalid or unoccupied, the returned Record will be invalid.
      */
-    Record get_record(SlotId sid);
+    virtual Record get_record(SlotId sid);
 
     /*
      * Returns a pointer to the start of the user data region of this page.

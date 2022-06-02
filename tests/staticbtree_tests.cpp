@@ -80,7 +80,7 @@ START_TEST(t_initialize)
     auto pfile = testing::g_fm->create_indexed_pfile();
     const iter::CompareFunc cmp = std::bind(&compare_func_key, _1, _2);
 
-    ds::StaticBTree::initialize(pfile, std::move(iterator), 400, schema.get(), cmp, g_cache);
+    ds::StaticBTree::initialize(pfile, std::move(iterator), 400, schema.get(), cmp, nullptr);
 
     auto btree = ds::StaticBTree(pfile, schema.get(), cmp, g_cache);
 
@@ -88,6 +88,43 @@ START_TEST(t_initialize)
 
     btree.get_lower_bound((byte *) &testkey);
     btree.get_upper_bound((byte *) &testkey);
+
+}
+END_TEST
+
+
+START_TEST(t_bounds_duplicates)
+{
+    testing::initialize_global_fm();
+    auto my_cache = io::ReadCache(1024);
+    PageOffset value_size = 8;
+    g_schema = testing::test_schema1(value_size);
+
+    std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
+    size_t cnt1 = 0;
+    auto fname1 = testing::generate_btree_test_data_all_dupes(100, value_size, &cnt1);
+    auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
+    iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, INVALID_PNUM, g_cache);
+
+    size_t cnt2 = 0;
+    auto fname2 = testing::generate_btree_test_data_all_dupes(100, value_size, &cnt2);
+    auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
+    iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, INVALID_PNUM, g_cache);
+
+    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
+
+    auto pfile = testing::g_fm->create_indexed_pfile();
+    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    ds::StaticBTree::initialize(pfile, std::move(iterator), 200, g_schema.get(), key_cmp, nullptr);
+    auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, &my_cache);
+
+    auto buf = mem::page_alloc_unique();
+    pfile->read_page(202, buf.get());
+
+    int64_t key = 5;
+    auto lb = btree.get_lower_bound((byte *) &key);
+    auto up = btree.get_upper_bound((byte *) &key);
 
 }
 END_TEST
@@ -101,6 +138,12 @@ Suite *unit_testing()
     tcase_add_test(iter, t_initialize);
 
     suite_add_tcase(unit, iter);
+
+
+    TCase *bounds = tcase_create("lsm::ds::StaticBTree::get_{upper,lower}_bound");
+    tcase_add_test(bounds, t_bounds_duplicates);
+
+    suite_add_tcase(unit, bounds);
 
     return unit;
 }

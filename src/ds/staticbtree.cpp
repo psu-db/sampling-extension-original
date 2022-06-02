@@ -53,8 +53,9 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
             // above.
             auto new_key_record = leaf_page.get_record(leaf_page.get_max_sid());
             auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
+            auto key_rec = io::Record(internal_recbuf.get(), internal_schema->record_length()); 
 
-            if (!internal_page.insert_record(io::Record(internal_recbuf.get(), internal_schema->record_length()))) {
+            if (!internal_page.insert_record(key_rec)) {
                 auto new_internal_page = pfile->allocate_page().page_number;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
                 pfile->write_page(cur_internal_page, internal_output_buffer.get());
@@ -75,7 +76,7 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
         }
     }
 
-    pfile->write_page(new_page, leaf_output_buffer.get());
+    pfile->write_page(new_page + 1, leaf_output_buffer.get());
     pfile->write_page(cur_internal_page, internal_output_buffer.get());
 
     auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
@@ -87,7 +88,8 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     metadata->last_data_page = new_page + 1;
     pfile->write_page(meta, internal_output_buffer.get());
 
-    return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp, cache);
+    return nullptr;
+    //return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp, cache);
 }
 
 
