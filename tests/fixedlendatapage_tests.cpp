@@ -37,7 +37,7 @@ START_TEST(t_insert)
 
     for (size_t i=0; i<100; i++) {
         size_t val = i+3;
-        auto recbuf = schema->create_record_unique((byte*) &i, (byte*) &val);
+        auto recbuf = schema->create_record((byte*) &i, (byte*) &val);
         auto rec = io::Record(recbuf.get(), schema->record_length());
         ck_assert_int_eq(page.insert_record(rec), i+1);
         ck_assert_int_eq(page.get_min_sid(), 1);

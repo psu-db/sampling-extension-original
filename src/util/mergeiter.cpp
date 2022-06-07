@@ -6,7 +6,7 @@
 
 namespace lsm { namespace iter {
 
-MergeIterator::MergeIterator(std::vector<std::unique_ptr<GenericIterator<Record>>> &iters_to_merge, const CompareFunc cmp)
+MergeIterator::MergeIterator(std::vector<std::unique_ptr<GenericIterator<Record>>> &iters_to_merge, const catalog::RecordCmpFunc cmp)
 {
     this->cmp = HeapCompareFunc{cmp};
     this->merge_heap = std::make_unique<std::priority_queue<std::pair<Record, size_t>, std::vector<std::pair<Record, size_t>>, HeapCompareFunc>>(this->cmp);
@@ -66,6 +66,17 @@ void MergeIterator::rewind(IteratorPosition /*position*/)
     return;
 }
 
+
+size_t MergeIterator::element_count()
+{
+    return 0;
+}
+
+
+bool MergeIterator::supports_element_count()
+{
+    return false;
+}
 
 
 void MergeIterator::end_scan()

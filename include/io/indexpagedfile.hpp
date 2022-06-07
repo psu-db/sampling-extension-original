@@ -25,6 +25,7 @@
 #include "util/types.hpp"
 #include "util/base.hpp"
 #include "util/iterator.hpp"
+#include "util/pageutils.hpp"
 #include "io/directfile.hpp"
 #include "io/fixedlendatapage.hpp"
 #include "io/readcache.hpp"
@@ -52,7 +53,10 @@ public:
 
     bool supports_rewind() override;
     iter::IteratorPosition save_position() override;
-    void rewind(iter::IteratorPosition /*position*/) override;
+    void rewind(iter::IteratorPosition position) override;
+
+    size_t element_count() override;
+    bool supports_element_count() override;
 
     void end_scan() override;
     ~IndexPagedFilePageIterator();
@@ -60,6 +64,7 @@ private:
     IndexPagedFile *pfile;
     PageNum current_pnum;
     PageNum final_pnum;
+    PageNum first_pnum;
     ReadCache *cache;
     FrameId current_frame_id;
     byte *current_frame_ptr;
@@ -90,6 +95,9 @@ public:
     bool supports_rewind() override;
     iter::IteratorPosition save_position() override;
     void rewind(iter::IteratorPosition /*position*/) override;
+
+    size_t element_count() override;
+    bool supports_element_count() override;
 
     void end_scan() override;
 

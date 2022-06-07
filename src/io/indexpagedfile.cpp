@@ -215,6 +215,7 @@ IndexPagedFilePageIterator::IndexPagedFilePageIterator(IndexPagedFile *file, Rea
 {
     this->pfile = file;
     this->current_pnum = (start_page == INVALID_PNUM) ? 0 : start_page - 1;
+    this->first_pnum = this->current_pnum + 1;
     this->final_pnum = (stop_page == INVALID_PNUM) ? this->pfile->get_last_pid().page_number : stop_page;
     this->cache = cache;
     this->current_frame_id = INVALID_FRID;
@@ -232,7 +233,8 @@ bool IndexPagedFilePageIterator::next()
         }
 
         this->current_frame_id = this->cache->pin(++this->current_pnum, this->pfile, &this->current_frame_ptr);
-        this->current_page = std::make_unique<FixedlenDataPage>(this->current_frame_ptr);
+        this->current_page = wrap_page(this->current_frame_ptr); 
+
         return true;
     }
 
@@ -250,19 +252,25 @@ Page *IndexPagedFilePageIterator::get_item()
 
 bool IndexPagedFilePageIterator::supports_rewind()
 {
-    return false;
+    return true;
 }
 
 
 iter::IteratorPosition IndexPagedFilePageIterator::save_position()
 {
-    return 0;
+    return (iter::IteratorPosition) this->current_pnum;
 }
 
 
-void IndexPagedFilePageIterator::rewind(iter::IteratorPosition /*position*/)
+void IndexPagedFilePageIterator::rewind(iter::IteratorPosition position)
 {
-    return;
+    if (this->current_frame_id != INVALID_FRID) {
+        this->cache->unpin(this->current_frame_id);
+    }
+
+    this->current_pnum = (PageNum) position;
+    this->current_frame_id = this->cache->pin(this->current_pnum, this->pfile, &this->current_frame_ptr);
+    this->current_page = wrap_page(this->current_frame_ptr);
 }
 
 
@@ -279,6 +287,17 @@ IndexPagedFilePageIterator::~IndexPagedFilePageIterator()
     this->end_scan();
 }
 
+
+size_t IndexPagedFilePageIterator::element_count()
+{
+    return this->final_pnum - this->first_pnum + 1;
+}
+
+
+bool IndexPagedFilePageIterator::supports_element_count()
+{
+    return true;
+}
 
 IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page)
 {
@@ -337,6 +356,18 @@ iter::IteratorPosition IndexPagedFileRecordIterator::save_position()
 void IndexPagedFileRecordIterator::rewind(iter::IteratorPosition /*position*/)
 {
 
+}
+
+
+size_t IndexPagedFileRecordIterator::element_count()
+{
+    return 0;
+}
+
+
+bool IndexPagedFileRecordIterator::supports_element_count()
+{
+    return false;
 }
 
 void IndexPagedFileRecordIterator::end_scan()

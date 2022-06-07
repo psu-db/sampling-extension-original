@@ -142,6 +142,18 @@ void FixedlenDataPageRecordIterator::rewind(iter::IteratorPosition position)
 }
 
 
+size_t FixedlenDataPageRecordIterator::element_count()
+{
+    return this->page->get_max_sid();
+}
+
+
+bool FixedlenDataPageRecordIterator::supports_element_count()
+{
+    return true;
+}
+
+
 void FixedlenDataPageRecordIterator::end_scan() 
 {
 

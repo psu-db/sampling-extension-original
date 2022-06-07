@@ -57,13 +57,12 @@ std::unique_ptr<iter::MergeIterator> test_merge_iterator(PageOffset value_size, 
     auto pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
-
     size_t cnt3 = 0;
     auto fname3 = testing::generate_btree_test_data3(200, value_size, &cnt3);
     auto pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
 
     if (rec_cnt) {
         *rec_cnt = cnt1 + cnt2 + cnt3;
@@ -84,7 +83,7 @@ START_TEST(t_initialize)
     g_schema = testing::test_schema1(value_size);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::KeyCmpFunc cmp = std::bind(&compare_func_key, _1, _2);
 
     ds::StaticBTree::initialize(pfile, std::move(iterator), 400, schema.get());
 
@@ -115,15 +114,15 @@ START_TEST(t_bounds_duplicates)
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::RecordCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     ds::StaticBTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get());
     auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, my_cache.get());
 
-    auto buf = mem::page_alloc_unique();
+    auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
 
     int64_t key = 5;
@@ -160,15 +159,15 @@ START_TEST(t_bounds_lower_out_of_range)
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     ds::StaticBTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get());
     auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, my_cache.get());
 
-    auto buf = mem::page_alloc_unique();
+    auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
 
     int64_t key = 7;
@@ -205,15 +204,15 @@ START_TEST(t_bounds_upper_out_of_range)
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     ds::StaticBTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get());
     auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, my_cache.get());
 
-    auto buf = mem::page_alloc_unique();
+    auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
 
     int64_t key = 2;
@@ -260,11 +259,11 @@ START_TEST(t_bounds_general)
     auto *pfile4 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname4);
     iters[3] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile4, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     ds::StaticBTree::initialize(pfile, std::move(iterator), 4*pages_per_file, g_schema.get());
     auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, my_cache.get());
 
@@ -313,11 +312,11 @@ START_TEST(t_iterator)
     auto *pfile4 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname4);
     iters[3] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile4, g_cache);
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
-    const iter::CompareFunc key_cmp = std::bind(&compare_func_key, _1, _2);
+    const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     ds::StaticBTree::initialize(pfile, std::move(iterator), 4*pages_per_file, g_schema.get());
     auto btree = ds::StaticBTree(pfile, g_schema.get(), key_cmp, my_cache.get());
 
@@ -348,6 +347,7 @@ Suite *unit_testing()
     tcase_add_test(init, t_initialize);
 
     suite_add_tcase(unit, init);
+
 
     TCase *bounds = tcase_create("lsm::ds::StaticBTree::get_{upper,lower}_bound");
     tcase_add_test(bounds, t_bounds_duplicates);

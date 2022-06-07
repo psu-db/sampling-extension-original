@@ -6,14 +6,22 @@
 
 namespace lsm { namespace ds {
 
+std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state)
+{
+    auto pfile = state->file_manager->create_indexed_pfile();
+    StaticBTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state);
+
+    return std::make_unique<StaticBTree>(pfile, state);
+}
+
 void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
                              PageNum data_page_cnt, catalog::FixedKVSchema *record_schema)
 {
     auto internal_schema = StaticBTree::generate_internal_schema(record_schema);
 
-    auto leaf_output_buffer = mem::page_alloc_unique();
-    auto internal_output_buffer = mem::page_alloc_unique();
-    auto input_buffer = mem::page_alloc_unique();
+    auto leaf_output_buffer = mem::page_alloc();
+    auto internal_output_buffer = mem::page_alloc();
+    auto input_buffer = mem::page_alloc();
 
     io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
     io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
@@ -49,7 +57,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
             // the last key of the just-written page should be inserted into the internal node
             // above.
             auto new_key_record = leaf_page.get_record(leaf_page.get_max_sid());
-            auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
+            auto internal_recbuf = internal_schema->create_record(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
             auto key_rec = io::Record(internal_recbuf.get(), internal_schema->record_length()); 
 
             if (!internal_page.insert_record(key_rec)) {
@@ -84,7 +92,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     // at the end of that loop.
     new_page = first_leaf.page_number + leaf_page_cnt;
     auto new_key_record = leaf_page.get_record(leaf_page.get_max_sid());
-    auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
+    auto internal_recbuf = internal_schema->create_record(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
     auto key_rec = io::Record(internal_recbuf.get(), internal_schema->record_length()); 
 
     if (!internal_page.insert_record(key_rec)) {
@@ -115,6 +123,12 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     metadata->first_data_page = first_leaf.page_number;
     metadata->last_data_page = new_page;
     pfile->write_page(meta, internal_output_buffer.get());
+}
+
+void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
+                             PageNum data_page_cnt, global::g_state *state) 
+{
+    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema);
 }
 
 
@@ -156,8 +170,8 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
 {
     // NOTE: We could just take advantage of the ReadCache, rather than
     // defining a new input buffer here
-    auto input_buf = mem::page_alloc_unique();
-    auto output_buf = mem::page_alloc_unique();
+    auto input_buf = mem::page_alloc();
+    auto output_buf = mem::page_alloc();
 
     PageNum current_pnum = first_internal;
     pfile->read_page(current_pnum, input_buf.get());
@@ -179,7 +193,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
             auto key = schema->get_key(key_record.get_data()).Bytes();
             auto value = current_pnum;
 
-            auto new_record_buf = schema->create_record_unique(key, (byte *) &value);
+            auto new_record_buf = schema->create_record(key, (byte *) &value);
             auto new_record = io::Record(new_record_buf.get(), schema->record_length());
 
             // insert record into output page, writing the old and creating a new if
@@ -229,11 +243,33 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
 
 
 StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
-                iter::CompareFunc key_cmp, io::ReadCache *cache)
+                catalog::KeyCmpFunc key_cmp, io::ReadCache *cache)
 {
     this->cache = cache;
     this->key_cmp = key_cmp;
     this->record_schema = record_schema;
+    this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
+
+    this->pfile = pfile;
+
+    byte *frame_ptr;
+    auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);
+    this->root_page = ((StaticBTreeMetaHeader *) frame_ptr)->root_node;
+    this->first_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->first_data_page;
+    this->last_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->last_data_page;
+    this->cache->unpin(frame_id);
+
+    frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
+    this->rec_cnt = ((StaticBTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
+    this->cache->unpin(frame_id);
+}
+
+
+StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
+{
+    this->cache = state->cache;
+    this->key_cmp = state->record_schema->get_key_cmp();
+    this->record_schema = state->record_schema;
     this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
 
     this->pfile = pfile;

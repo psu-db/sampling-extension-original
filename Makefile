@@ -32,6 +32,8 @@ build:
 	mkdir -p build/ds
 	mkdir -p build/io
 	mkdir -p build/util
+	mkdir -p build/sampling
+	mkdir -p tests/data/filemanager
 
 
 build/%.o: src/%.cpp

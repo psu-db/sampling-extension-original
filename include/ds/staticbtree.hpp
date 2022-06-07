@@ -14,6 +14,7 @@
 #include "io/fixedlendatapage.hpp"
 #include "io/readcache.hpp"
 #include "io/indexpagedfile.hpp"
+#include "util/global.hpp"
 
 namespace lsm { namespace ds {
 
@@ -22,7 +23,6 @@ struct StaticBTreeMetaHeader {
     PageNum first_data_page;
     PageNum last_data_page;
 };
-
 
 struct StaticBTreeInternalNodeHeader {
     PageNum next_sibling;
@@ -36,6 +36,8 @@ const PageNum BTREE_META_PNUM = 1;
 
 class StaticBTree {
 public:
+    static std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state);
+
     /*
      * Initialize a StaticBTree structure within the file specified by pfile.
      * The file is assumed to be empty and the resulting file contents are
@@ -46,24 +48,24 @@ public:
      * header page appropriately.
      *
      * record_schema is used for parsing and comparing the records.
-     *
-     * TODO: A bulk-write interface for pages would make this a lot more
-     * efficient, rather than doing IOs one page at a time. I could punch
-     * through to directfile, but it might be better to add that functionality
-     * to the PagedFile interface directly. For now, we'll just do page-by-page
-     * and make it more efficient later.
      */
     static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
                            PageNum data_page_cnt, catalog::FixedKVSchema *record_schema);
 
+    static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
+                           PageNum data_page_cnt, global::g_state *state);
+
+
     /*
-     * Return a Static BTree object created from pfile. prfile is assumed to
+     * Return a Static BTree object created from pfile. pfile is assumed to
      * have already been properly initialized bia a call to
      * StaticBTree::initialize at some point in its existence. If this is not
      * the case, all method calls to the returned object are undefined.
      */
     StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
-                iter::CompareFunc key_cmp, io::ReadCache *cache);
+                catalog::KeyCmpFunc key_cmp, io::ReadCache *cache);
+
+    StaticBTree(io::IndexPagedFile *pfile, global::g_state *state); 
 
     /*
      * Returns the first leaf page pid within the tree that contains a key greater than
@@ -98,13 +100,23 @@ public:
      */
     size_t get_record_count();
 
+    /*
+     * Returns the number of leaf pages within this tree
+     */
+    PageNum get_leaf_page_count();
+
+    /*
+     * Returns a pointer to the file representing this BTree object.
+     */
+    io::PagedFile *get_pfile();
+
 private:
     StaticBTreeMetaHeader *get_metapage();
 
     io::IndexPagedFile *pfile;
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
-    iter::CompareFunc key_cmp;
+    catalog::KeyCmpFunc key_cmp;
     PageNum root_page;
     PageNum first_data_page;
     PageNum last_data_page;

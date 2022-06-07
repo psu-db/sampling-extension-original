@@ -23,9 +23,9 @@ START_TEST(t_create)
     auto schema2 = testing::test_schema1(sizeof(int16_t));
     auto schema3 = testing::test_schema1(strlen(value3));
 
-    byte *test = schema1->create_record((byte *) &key1, (byte *) &value1); 
-    byte *tombstone_test = schema2->create_record((byte *) &key2, (byte *) &value2);
-    byte *timestamp_test = schema3->create_record((byte *) &key3, (byte *) value3);
+    byte *test = schema1->create_record_raw((byte *) &key1, (byte *) &value1); 
+    byte *tombstone_test = schema2->create_record_raw((byte *) &key2, (byte *) &value2);
+    byte *timestamp_test = schema3->create_record_raw((byte *) &key3, (byte *) value3);
 
     auto test_rec1 = io::Record(test, schema1->record_length());
     auto test_rec2 = io::Record(tombstone_test, schema2->record_length(), 0, true);
@@ -82,7 +82,7 @@ START_TEST(t_deep_copy)
     const char *value = "this is just a test of this.";
 
     auto schema1 = testing::test_schema1(strlen(value));
-    byte *buf = schema1->create_record((byte *) &key, (byte *) value);
+    byte *buf = schema1->create_record_raw((byte *) &key, (byte *) value);
 
     auto rec1 = io::Record(buf, schema1->record_length());
     auto copy = rec1.deep_copy();

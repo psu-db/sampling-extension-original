@@ -5,7 +5,6 @@
 #define FIXEDLENDATAPAGE_H
 
 #include "io/page.hpp"
-#include "io/record.hpp"
 
 namespace lsm { namespace io {
 
@@ -77,6 +76,8 @@ public:
     iter::IteratorPosition save_position() override;
     void rewind(iter::IteratorPosition position) override;
     void end_scan() override;
+    size_t element_count() override;
+    bool supports_element_count() override;
 
 private:
     SlotId current_slot;

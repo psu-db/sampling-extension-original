@@ -54,7 +54,7 @@ START_TEST(t_iterator)
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, rcache.get());
 
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
 
 
     size_t rec_cnt = 0;
@@ -100,7 +100,7 @@ START_TEST(t_iterator_btree_data_512)
     auto pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, rcache.get());
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
 
     size_t rec_cnt = 0;
     auto merge_itr = iter::MergeIterator(iters, cmp);
@@ -145,7 +145,7 @@ START_TEST(t_iterator_btree_data_1024)
     auto pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, rcache.get());
 
-    const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
+    const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
 
     size_t rec_cnt = 0;
     auto merge_itr = iter::MergeIterator(iters, cmp);
