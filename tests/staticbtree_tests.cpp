@@ -147,7 +147,6 @@ START_TEST(t_bounds_lower_out_of_range)
     PageOffset value_size = 8;
     g_schema = testing::test_schema1(value_size);
 
-
     PageNum pages_per_file = 1000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
@@ -193,7 +192,6 @@ START_TEST(t_bounds_upper_out_of_range)
     PageOffset value_size = 8;
     g_schema = testing::test_schema1(value_size);
 
-
     PageNum pages_per_file = 1000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
@@ -238,7 +236,6 @@ START_TEST(t_bounds_general)
     auto my_cache = std::make_unique<io::ReadCache>(1024);
     PageOffset value_size = 8;
     g_schema = testing::test_schema1(value_size);
-
 
     PageNum pages_per_file = 10000;
 
@@ -293,7 +290,6 @@ START_TEST(t_iterator)
     PageOffset value_size = 8;
     g_schema = testing::test_schema1(value_size);
 
-
     PageNum pages_per_file = 2;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(4);
@@ -339,6 +335,7 @@ START_TEST(t_iterator)
     }
 
     ck_assert_int_eq(reccnt, cnt1 + cnt2 + cnt3 + cnt4);
+    ck_assert_int_eq(reccnt, btree.get_record_count());
 }
 END_TEST
 
