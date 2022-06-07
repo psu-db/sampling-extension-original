@@ -4,7 +4,7 @@
 
 #include "sampling/level.hpp"
 
-namespace lsm { namespace sample {
+namespace lsm { namespace sampling {
 
 BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity, 
                        std::vector<io::IndexPagedFile *> files, 
@@ -169,6 +169,24 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
 
     // This level could not support the merge due to being at run and/or record capacity.
     return 0;
+}
+
+std::vector<std::unique_ptr<SampleRange>> BTreeLevel::create_sample_ranges(byte *lower_key, byte *upper_key)
+{
+    std::vector<std::unique_ptr<SampleRange>> ranges;
+    for (size_t i=0; i<this->run_capacity; i++) {
+        if (this->runs[i]) {
+            auto lb_page = this->runs[i]->get_lower_bound(lower_key);
+            auto ub_page = this->runs[i]->get_upper_bound(upper_key);
+
+            auto page_count = ub_page.page_number - lb_page.page_number;
+            if (page_count > 0) {
+                ranges.emplace_back(std::make_unique<BTreeSampleRange>(this->runs[i].get(), this->state, lb_page.page_number, ub_page.page_number, lower_key, upper_key));
+            }
+        }
+    }
+
+    return ranges;
 }
 
 

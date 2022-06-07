@@ -12,9 +12,9 @@
 namespace lsm { namespace global {
 
 struct g_state {
-    io::ReadCache *cache;
-    catalog::FixedKVSchema *record_schema;
-    io::FileManager *file_manager;
+    std::unique_ptr<io::ReadCache> cache;
+    std::unique_ptr<catalog::FixedKVSchema> record_schema;
+    std::unique_ptr<io::FileManager> file_manager;
 };
 
 }}

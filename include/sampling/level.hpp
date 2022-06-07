@@ -11,8 +11,9 @@
 #include "util/global.hpp"
 
 #include "ds/staticbtree.hpp"
+#include "sampling/btree_samplerange.hpp"
 
-namespace lsm { namespace sample {
+namespace lsm { namespace sampling {
 
 class BTreeLevel {
 public:
@@ -85,7 +86,7 @@ public:
      */
     std::unique_ptr<ds::StaticBTree> merge_runs();
 
-    //std::vector<std::unique_ptr<SampleRange>> sample_ranges(size_t start, size_t stop, gsl_rng *rng);
+    std::vector<std::unique_ptr<SampleRange>> create_sample_ranges(byte *lower_key, byte *upper_key);
 
     /*
      * Remove the references to all runs within the level, and
