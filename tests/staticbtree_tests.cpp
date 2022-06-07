@@ -42,7 +42,7 @@ int compare_func_key(const byte *a, const byte * b)
     return 1;
 }
 
-std::unique_ptr<iter::MergeIterator> test_merge_iterator(PageOffset value_size)
+std::unique_ptr<iter::MergeIterator> test_merge_iterator(PageOffset value_size, size_t *rec_cnt=nullptr)
 {
     auto schema = testing::test_schema1(value_size);
 
@@ -65,6 +65,10 @@ std::unique_ptr<iter::MergeIterator> test_merge_iterator(PageOffset value_size)
 
     const iter::CompareFunc cmp = std::bind(&compare_func, _1, _2);
 
+    if (rec_cnt) {
+        *rec_cnt = cnt1 + cnt2 + cnt3;
+    }
+
     return std::make_unique<iter::MergeIterator>(iters, cmp);
 }
 
@@ -74,7 +78,9 @@ START_TEST(t_initialize)
     testing::initialize_global_fm();
     PageOffset value_size = 8;
     auto schema = testing::test_schema1(value_size);
-    auto iterator = test_merge_iterator(value_size);
+
+    size_t rec_cnt;
+    auto iterator = test_merge_iterator(value_size, &rec_cnt);
     g_schema = testing::test_schema1(value_size);
 
     auto pfile = testing::g_fm->create_indexed_pfile();
@@ -83,6 +89,8 @@ START_TEST(t_initialize)
     ds::StaticBTree::initialize(pfile, std::move(iterator), 400, schema.get());
 
     auto btree = ds::StaticBTree(pfile, schema.get(), cmp, g_cache);
+
+    ck_assert_int_eq(btree.get_record_count(), rec_cnt);
 }
 END_TEST
 
@@ -93,7 +101,6 @@ START_TEST(t_bounds_duplicates)
     auto my_cache = std::make_unique<io::ReadCache>(1024);
     PageOffset value_size = 8;
     g_schema = testing::test_schema1(value_size);
-
 
     PageNum pages_per_file = 1000;
 

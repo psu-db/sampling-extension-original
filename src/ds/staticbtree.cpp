@@ -29,18 +29,19 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
 
     ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = INVALID_PNUM;
     ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
 
     PageNum leaf_page_cnt = 0;
     PageNum internal_page_cnt = 0;
     PageNum new_page;
     PageNum cur_internal_page = first_internal.page_number;
 
-    size_t i=0;
     while (record_iter->next() && leaf_page_cnt < data_page_cnt) {
-        i++;
         auto rec = record_iter->get_item();
 
-        if (!leaf_page.insert_record(rec)) {
+        if (leaf_page.insert_record(rec)) {
+            ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
+        } else {
             // write the full page to the file
             new_page = first_leaf.page_number + leaf_page_cnt++;
             pfile->write_page(new_page, leaf_output_buffer.get());
@@ -63,6 +64,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
                 internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
 
                 internal_page.insert_record(key_rec);
             }
@@ -71,6 +73,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
             io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
             leaf_page = io::FixedlenDataPage(leaf_output_buffer.get()); // probably not necessary
             leaf_page.insert_record(rec);
+            ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
         }
     }
 
@@ -96,6 +99,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
         internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
         ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
         ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 1;
 
         internal_page.insert_record(key_rec);
     }
@@ -159,9 +163,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
     pfile->read_page(current_pnum, input_buf.get());
     auto input_page = io::FixedlenDataPage(input_buf.get());
     auto input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
-    size_t i = 0;
     while (input_header->next_sibling != INVALID_PNUM) {
-        i++;
         auto new_output_pid = pfile->allocate_page();
         auto current_output_pid = new_output_pid;
 
@@ -169,6 +171,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
         auto output_page = io::FixedlenDataPage(output_buf.get());
         auto output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
         output_header->prev_sibling = INVALID_PNUM;
+        output_header->leaf_rec_cnt = 0;
 
         while (true) {
             // move the last key value on this node up to the next level of the tree
@@ -179,8 +182,11 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
             auto new_record_buf = schema->create_record_unique(key, (byte *) &value);
             auto new_record = io::Record(new_record_buf.get(), schema->record_length());
 
-            // insert record into output page
-            if (!output_page.insert_record(new_record)) {
+            // insert record into output page, writing the old and creating a new if
+            // it is full
+            if (output_page.insert_record(new_record)) {
+                output_header->leaf_rec_cnt += ((StaticBTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
+            } else {
                 auto new_pid = pfile->allocate_page();
                 output_header->next_sibling = new_pid.page_number;
                 pfile->write_page(current_output_pid, output_buf.get());
@@ -189,6 +195,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
                 output_page = io::FixedlenDataPage(output_buf.get());
                 output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
                 output_header->prev_sibling = current_output_pid.page_number;
+                output_header->leaf_rec_cnt = ((StaticBTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
 
                 output_page.insert_record(key_record);
                 current_output_pid = new_pid;
@@ -236,6 +243,10 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *reco
     this->root_page = ((StaticBTreeMetaHeader *) frame_ptr)->root_node;
     this->first_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->first_data_page;
     this->last_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->last_data_page;
+    this->cache->unpin(frame_id);
+
+    frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
+    this->rec_cnt = ((StaticBTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
     this->cache->unpin(frame_id);
 }
 
@@ -436,6 +447,12 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
 std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
 {
     return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page);
+}
+
+
+size_t StaticBTree::get_record_count()
+{
+    return this->rec_cnt;
 }
 
 }}

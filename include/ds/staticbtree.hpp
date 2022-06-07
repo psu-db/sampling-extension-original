@@ -27,6 +27,7 @@ struct StaticBTreeMetaHeader {
 struct StaticBTreeInternalNodeHeader {
     PageNum next_sibling;
     PageNum prev_sibling;
+    size_t leaf_rec_cnt;
 };
 
 constexpr PageOffset StaticBTreeInternalNodeHeaderSize = MAXALIGN(sizeof(StaticBTreeInternalNodeHeader));
@@ -91,6 +92,12 @@ public:
      */
     std::unique_ptr<iter::GenericIterator<Record>> start_scan();
 
+    /*
+     * Returns the number of records contained within the leaf nodes of
+     * this B Tree.
+     */
+    size_t get_record_count();
+
 private:
     StaticBTreeMetaHeader *get_metapage();
 
@@ -102,6 +109,7 @@ private:
     PageNum first_data_page;
     PageNum last_data_page;
     io::ReadCache *cache;
+    size_t rec_cnt;
 
     PageNum search_internal_node_lower(PageNum pnum, const byte *key);
     PageNum search_internal_node_upper(PageNum pnum, const byte *key);
