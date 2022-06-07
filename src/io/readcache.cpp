@@ -69,13 +69,12 @@ FrameId ReadCache::find_frame_to_evict()
 {
     // find a frame to evict
     auto starting_clock = this->clock_hand;
-    bool passed_starting = false;
+    int passed_starting = 0;
     // for now, once we do two complete sweeps we'll stop and
     // return an error. Once concurrency is active, it'll make
     // sense to keep looping here until something opens up.
-    while (!passed_starting && clock_hand != starting_clock) {
+    while (passed_starting < 2 || clock_hand != starting_clock) {
         auto meta = &this->metadata[this->clock_hand]; 
-        this->clock_hand = (this->clock_hand + 1) % this->frame_cap;
 
         if (meta->pin_cnt == 0) {
             if (meta->clock_value) {
@@ -85,9 +84,11 @@ FrameId ReadCache::find_frame_to_evict()
             meta->clock_value = 1;
         }
 
-        if (!passed_starting && clock_hand == starting_clock) {
-            passed_starting = true;
+        if (clock_hand == starting_clock) {
+            passed_starting++;
         }
+
+        this->clock_hand = (this->clock_hand + 1) % this->frame_cap;
     }
 
     return INVALID_FRID;

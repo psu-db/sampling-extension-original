@@ -134,11 +134,12 @@ public:
      * then returns nullptr. If the specified page exists on the free list,
      * then all operations on the returned iterator are undefined.
      */
-    std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId pid=INVALID_PID) override;
+    std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId start_page=INVALID_PID, PageId stop_page=INVALID_PID) override;
+
     /*
      * Same as start_scan(PageId), but accepts a PageNum as an argument instead.
      */
-    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum /*pnum=INVALID_PNUM*/) override;
+    std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum start_page=INVALID_PNUM, PageNum stop_page=INVALID_PNUM) override;
 
     /*
      * See page.hpp

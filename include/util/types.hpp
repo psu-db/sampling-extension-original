@@ -86,7 +86,7 @@ struct RecordId {
 constexpr size_t RecordIdSize = MAXALIGN(sizeof(RecordId));
 
 // A unique identifier for a frame within a buffer or cache.
-typedef uint32_t FrameId;
+typedef int32_t FrameId;
 
 // A unique timestamp for use in MVCC concurrency control. Currently stored in
 // record headers, but not used by anything.
@@ -96,7 +96,7 @@ typedef uint32_t Timestamp;
 // uninitialized values and error conditions.
 const PageNum INVALID_PNUM = 0;
 const FileId INVALID_FLID = 0;
-const FrameId INVALID_FRID = 0;
+const FrameId INVALID_FRID = -1;
 const PageId INVALID_PID = {0, 0};
 const SlotId INVALID_SID = 0;
 

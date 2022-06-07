@@ -442,7 +442,7 @@ std::string generate_btree_test_data3(size_t page_cnt, PageOffset val_len, size_
 }
 
 
-std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_len, int64_t key, size_t *reccnt)
 {
     auto fm = g_fm.get();
 
@@ -450,7 +450,6 @@ std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_l
     auto buf = empty_aligned_buffer();
     auto schema = test_schema1(val_len);
 
-    int64_t key = 5;
     int64_t val = 8;
     Timestamp time = 0;
     size_t cnt = 0;

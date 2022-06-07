@@ -13,6 +13,7 @@
 #include "catalog/field.hpp"
 #include "io/fixedlendatapage.hpp"
 #include "io/readcache.hpp"
+#include "io/indexpagedfile.hpp"
 
 namespace lsm { namespace ds {
 
@@ -43,8 +44,7 @@ public:
      * and constructs an BTree index structure atop this, initializing the
      * header page appropriately.
      *
-     * record_schema and key_cmp are used for parsing and comparing the
-     * records.
+     * record_schema is used for parsing and comparing the records.
      *
      * TODO: A bulk-write interface for pages would make this a lot more
      * efficient, rather than doing IOs one page at a time. I could punch
@@ -52,12 +52,8 @@ public:
      * to the PagedFile interface directly. For now, we'll just do page-by-page
      * and make it more efficient later.
      */
-    static std::unique_ptr<StaticBTree> initialize(io::PagedFile *pfile,
-                                                   std::unique_ptr<iter::MergeIterator>
-                                                   record_iter, PageNum data_page_cnt, 
-                                                   catalog::FixedKVSchema *record_schema,
-                                                   iter::CompareFunc key_cmp,
-                                                   io::ReadCache *cache);
+    static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
+                           PageNum data_page_cnt, catalog::FixedKVSchema *record_schema);
 
     /*
      * Return a Static BTree object created from pfile. prfile is assumed to
@@ -65,7 +61,7 @@ public:
      * StaticBTree::initialize at some point in its existence. If this is not
      * the case, all method calls to the returned object are undefined.
      */
-    StaticBTree(io::PagedFile *pfile, catalog::FixedKVSchema *record_schema,
+    StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
                 iter::CompareFunc key_cmp, io::ReadCache *cache);
 
     /*
@@ -75,7 +71,6 @@ public:
      */
     PageId get_lower_bound(const byte *key);
 
-
     /*
      * Returns the last leaf page pid within the tree that contains a key
      * less than or equal to the specified boundary key. Returns INVALID_PID
@@ -83,18 +78,23 @@ public:
      */
     PageId get_upper_bound(const byte *key);
 
-
     /*
      * Returns true if this tree contains a tombstone for a record with a matching
      * key that has a timestamp less-than-or-equal-to the provided one.
      */
     bool tombstone_exists(const byte *key, Timestamp time=0);
 
+    /*
+     * Returns an iterator over all of the records within the leaf nodes of
+     * this B Tree. The iterator is not required to support rewinding, but must
+     * emit records in sorted order.
+     */
+    std::unique_ptr<iter::GenericIterator<Record>> start_scan();
 
 private:
     StaticBTreeMetaHeader *get_metapage();
 
-    io::PagedFile *pfile;
+    io::IndexPagedFile *pfile;
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
     iter::CompareFunc key_cmp;

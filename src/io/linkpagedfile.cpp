@@ -184,13 +184,13 @@ PageId LinkPagedFile::get_last_pid()
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageId pid)
+std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageId start_page, PageId stop_page)
 {
-    return start_scan(pid.page_number);
+    return start_scan(start_page.page_number, stop_page.page_number);
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum /*pnum*/)
+std::unique_ptr<iter::GenericIterator<Page *>> LinkPagedFile::start_scan(PageNum /*start_page*/, PageNum /*stop_page*/)
 {
     return nullptr;
 }

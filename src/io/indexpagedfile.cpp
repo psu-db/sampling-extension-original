@@ -93,13 +93,13 @@ PageId IndexPagedFile::get_last_pid()
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageId pid)
+std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageId start_page, PageId stop_page)
 {
-    return start_scan(pid.page_number);
+    return start_scan(start_page.page_number, stop_page.page_number);
 }
 
 
-std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageNum /*pnum*/)
+std::unique_ptr<iter::GenericIterator<Page *>> IndexPagedFile::start_scan(PageNum /*start_page*/, PageNum /*stop_page*/)
 {
     return nullptr;
 }
@@ -211,22 +211,22 @@ FileId IndexPagedFile::get_flid()
 }
 
 
-IndexPagedFilePageIterator::IndexPagedFilePageIterator(IndexPagedFile *file, PageNum pnum, ReadCache *cache, bool fixedlen) 
+IndexPagedFilePageIterator::IndexPagedFilePageIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page) 
 {
     this->pfile = file;
-    this->current_pnum = (pnum == INVALID_PNUM) ? 0 : pnum - 1;
+    this->current_pnum = (start_page == INVALID_PNUM) ? 0 : start_page - 1;
+    this->final_pnum = (stop_page == INVALID_PNUM) ? this->pfile->get_last_pid().page_number : stop_page;
     this->cache = cache;
     this->current_frame_id = INVALID_FRID;
     this->current_frame_ptr = nullptr;
     this->current_page = nullptr;
-    this->fixedlen = fixedlen;
     this->at_end = false;
 }
 
 
 bool IndexPagedFilePageIterator::next()
 {
-    while (this->current_pnum < this->pfile->get_last_pid().page_number) {
+    while (this->current_pnum < this->final_pnum) {
         if (this->current_frame_id != INVALID_FRID) {
             this->cache->unpin(this->current_frame_id);
         }
@@ -280,9 +280,9 @@ IndexPagedFilePageIterator::~IndexPagedFilePageIterator()
 }
 
 
-IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, PageNum pnum, ReadCache *cache)
+IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page)
 {
-    this->page_itr = std::make_unique<IndexPagedFilePageIterator>(file, pnum, cache);
+    this->page_itr = std::make_unique<IndexPagedFilePageIterator>(file, cache, start_page, stop_page);
     this->page_itr->next();
     this->current_page = this->page_itr->get_item();
     if (this->current_page) {

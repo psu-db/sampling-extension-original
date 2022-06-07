@@ -178,7 +178,7 @@ START_TEST(t_iterator)
     auto rcache = std::make_unique<io::ReadCache>();
     auto schema = testing::test_schema1(sizeof(int64_t));
 
-    auto rec_itr = io::IndexPagedFileRecordIterator(pfile.get(), INVALID_PNUM, rcache.get());
+    auto rec_itr = io::IndexPagedFileRecordIterator(pfile.get(), rcache.get());
 
     size_t rec_cnt = 0;
     int64_t key = -100;

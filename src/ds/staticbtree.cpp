@@ -6,12 +6,8 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
-                                                     std::unique_ptr<iter::MergeIterator> record_iter, 
-                                                     PageNum data_page_cnt,
-                                                     catalog::FixedKVSchema *record_schema,
-                                                     iter::CompareFunc key_cmp,
-                                                     io::ReadCache *cache)
+void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
+                             PageNum data_page_cnt, catalog::FixedKVSchema *record_schema)
 {
     auto internal_schema = StaticBTree::generate_internal_schema(record_schema);
 
@@ -25,7 +21,7 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     // Allocate initial pages for data and for metadata
     PageId first_leaf, first_internal, meta;
     if (!StaticBTree::initial_page_allocation(pfile, data_page_cnt, &first_leaf, &first_internal, &meta)) {
-        return nullptr;
+        return;
     }
 
     io::FixedlenDataPage leaf_page = io::FixedlenDataPage(leaf_output_buffer.get());
@@ -67,6 +63,8 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
                 internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
                 ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+
+                internal_page.insert_record(key_rec);
             }
 
             // create a new leaf page and load the record into it
@@ -76,7 +74,33 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
         }
     }
 
-    pfile->write_page(new_page + 1, leaf_output_buffer.get());
+    // We need to ensure that the last leaf page has an internal record pointing to it. As we're tracking
+    // the end of the range of values for a page, we will always need to do this. The above loop inserts
+    // new internal records when it writes a full leaf page, but it always writes a new record to a new
+    // leaf page immediately afterward--hence there will always be a leaf page with no internal record
+    // at the end of that loop.
+    new_page = first_leaf.page_number + leaf_page_cnt;
+    auto new_key_record = leaf_page.get_record(leaf_page.get_max_sid());
+    auto internal_recbuf = internal_schema->create_record_unique(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
+    auto key_rec = io::Record(internal_recbuf.get(), internal_schema->record_length()); 
+
+    if (!internal_page.insert_record(key_rec)) {
+        auto new_internal_page = pfile->allocate_page().page_number;
+        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
+        pfile->write_page(cur_internal_page, internal_output_buffer.get());
+        cur_internal_page = new_internal_page;
+
+        internal_page_cnt++;
+
+        io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+        internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
+        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
+        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+
+        internal_page.insert_record(key_rec);
+    }
+
+    pfile->write_page(new_page, leaf_output_buffer.get());
     pfile->write_page(cur_internal_page, internal_output_buffer.get());
 
     auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
@@ -85,11 +109,8 @@ std::unique_ptr<StaticBTree> StaticBTree::initialize(io::PagedFile *pfile,
     auto metadata = (StaticBTreeMetaHeader *) internal_output_buffer.get();
     metadata->root_node = root_pnum;
     metadata->first_data_page = first_leaf.page_number;
-    metadata->last_data_page = new_page + 1;
+    metadata->last_data_page = new_page;
     pfile->write_page(meta, internal_output_buffer.get());
-
-    return nullptr;
-    //return std::make_unique<StaticBTree>(pfile, record_schema, key_cmp, cache);
 }
 
 
@@ -138,8 +159,9 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
     pfile->read_page(current_pnum, input_buf.get());
     auto input_page = io::FixedlenDataPage(input_buf.get());
     auto input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
-
+    size_t i = 0;
     while (input_header->next_sibling != INVALID_PNUM) {
+        i++;
         auto new_output_pid = pfile->allocate_page();
         auto current_output_pid = new_output_pid;
 
@@ -199,7 +221,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
 }
 
 
-StaticBTree::StaticBTree(io::PagedFile *pfile, catalog::FixedKVSchema *record_schema,
+StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
                 iter::CompareFunc key_cmp, io::ReadCache *cache)
 {
     this->cache = cache;
@@ -238,14 +260,16 @@ PageId StaticBTree::get_upper_bound(const byte *key)
     // The leaf pages are all allocated contiguously at the start of the file,
     // so we'll know when we have a pointer to one when the pnum is no larger
     // than the last data page.
-    while (current_page >= this->last_data_page) {
+    while (current_page > this->last_data_page) {
         current_page = search_internal_node_upper(current_page, key);
     }
 
-    // Because the keys in the internal nodes represent maxes, and not mins,
-    // it is possible for there to be keys falling into the range in an adjacent
-    // data page to the one found. So we need to check this out first.
-    if (current_page < this->last_data_page) {
+    // It is possible, because the internal records contain max values for each
+    // run, that an adjacent page to the one reported above may contain valid
+    // keys within the range. This can only occur in this case of the internal
+    // key being equal to the boundary key, and the next page containing
+    // duplicate values of that same key.
+    if (current_page < this->last_data_page && current_page != INVALID_PNUM) {
         byte *buf;
         auto frid = this->cache->pin(current_page + 1, this->pfile, &buf);
         if (this->search_leaf_page(buf, key) != INVALID_SID) {
@@ -369,7 +393,7 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
         }
     }
 
-    auto index_record = page.get_record(min - 1);
+    auto index_record = page.get_record(min);
     auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
@@ -395,7 +419,7 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
         if (this->key_cmp(key, record_key) > 0) {
             min = mid + 1;
         } else {
-            mid = max;
+            max = mid;
         }
     }
 
@@ -406,6 +430,12 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
     }
 
     return INVALID_SID;
+}
+
+
+std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
+{
+    return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page);
 }
 
 }}

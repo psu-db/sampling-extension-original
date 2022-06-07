@@ -194,18 +194,23 @@ public:
     virtual FileId get_flid() = 0;
 
     /*
-     * Returns a PagefileIterator opened to the specified page. If INVALID_PID
-     * is provided as an argument, then the iterator will be open to the first
-     * page. If the provided page does not exist, or if the file has no pages,
-     * then returns nullptr. If the specified page exists on the free list,
-     * then all operations on the returned iterator are undefined.
+     * Returns a PagefileIterator opened to the specified page. The arguments
+     * start_pid and stop_id define the range of pages within the file over
+     * which the iterator will iterate. If INVALID_PID is passed as the start_pid,
+     * the iterator will begin on the first page in sequence, and if INVALID_PID
+     * is passed as the stop_pid, the iterator will stop on the last page of the 
+     * file.
+     *
+     * stop_pid must come after start_pid in the sequence of pages within the
+     * file. If this condition is violated, the iterator's stopping position is
+     * undefined.
      */
-    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId pid=INVALID_PID) = 0;
+    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageId start_pid=INVALID_PID, PageId stop_pid=INVALID_PID) = 0;
 
     /*
      * Same as start_scan(PageId), but accepts a PageNum as an argument instead.
      */
-    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum pnum=INVALID_PNUM) = 0;
+    virtual std::unique_ptr<iter::GenericIterator<Page *>> start_scan(PageNum start_pnum=INVALID_PNUM, PageNum stop_pnum=INVALID_PNUM) = 0;
 
     /*
      * Delete this file from the underlying filesystem. Once this has been called,
