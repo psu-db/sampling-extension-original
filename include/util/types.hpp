@@ -78,7 +78,7 @@ struct VirtualFileId {
 // anything.
 struct RecordId {
     PageId pid;
-    PageOffset offset;
+    SlotId sid;
 };
 
 // Aligned size of a RecordID, for use when writing it into a buffer

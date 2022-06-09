@@ -128,7 +128,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
 void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
                              PageNum data_page_cnt, global::g_state *state) 
 {
-    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema);
+    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state);
 }
 
 
@@ -267,9 +267,9 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *reco
 
 StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
 {
-    this->cache = state->cache;
+    this->cache = state->cache.get();
     this->key_cmp = state->record_schema->get_key_cmp();
-    this->record_schema = state->record_schema;
+    this->record_schema = state->record_schema.get();
     this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
 
     this->pfile = pfile;
@@ -489,6 +489,37 @@ std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
 size_t StaticBTree::get_record_count()
 {
     return this->rec_cnt;
+}
+
+
+PageNum StaticBTree::get_leaf_page_count()
+{
+    return this->last_data_page - this->first_data_page + 1;
+}
+
+
+io::PagedFile *StaticBTree::get_pfile() 
+{
+    return this->pfile;
+}
+
+
+bool StaticBTree::is_fixed_length()
+{
+    return this->fixed_length;
+}
+
+
+catalog::KeyCmpFunc StaticBTree::get_key_cmp()
+{
+    return this->key_cmp;
+}
+
+
+// TODO: Implement bitmap for deletion tracking
+bool is_deleted(RecordId rid, Timestamp time=0) 
+{
+    return false;
 }
 
 }}

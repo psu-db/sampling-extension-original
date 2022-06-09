@@ -110,6 +110,25 @@ public:
      */
     io::PagedFile *get_pfile();
 
+    /*
+     * Returns true if the data stored in this BTree is fixed length,
+     * and false if not.
+     */
+    bool is_fixed_length();
+    
+    /*
+     * Returns an instance of the key comparison function used by
+     * this BTree.
+     */
+    catalog::KeyCmpFunc get_key_cmp();
+
+    /*
+     * Returns if the record at a given RID has been deleted based on a 
+     * timestamp. If the newest record older than the time stamp has been deleted,
+     * the record is considered deleted. Otherwise, it is considered alive.
+     */
+    bool is_deleted(RecordId rid, Timestamp time=0);
+
 private:
     StaticBTreeMetaHeader *get_metapage();
 
@@ -122,6 +141,7 @@ private:
     PageNum last_data_page;
     io::ReadCache *cache;
     size_t rec_cnt;
+    bool fixed_length;
 
     PageNum search_internal_node_lower(PageNum pnum, const byte *key);
     PageNum search_internal_node_upper(PageNum pnum, const byte *key);

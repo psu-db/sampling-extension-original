@@ -56,6 +56,11 @@ public:
     Record(byte *data, size_t len, Timestamp time, bool tombstone);
 
     /*
+     * Returns a reference to the ID of the record
+     */
+    RecordId &get_id();
+
+    /*
      * Returns a reference to the length of this record.
      */
     PageOffset &get_length();
@@ -116,6 +121,7 @@ public:
 private:
     byte *data_ref;
     PageOffset length;
+    RecordId rid;
 };
 
 }}

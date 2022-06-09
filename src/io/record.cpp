@@ -18,9 +18,16 @@ Record::Record(byte *data, size_t len, Timestamp time, bool tombstone)
     this->get_header()->is_tombstone = tombstone;
 }
 
+
 PageOffset &Record::get_length()
 {
     return this->length;
+}
+
+
+RecordId &Record::get_id()
+{
+    return this->rid;
 }
 
 
