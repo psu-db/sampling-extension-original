@@ -59,6 +59,7 @@ public:
 
     int merge_with(BTreeLevel *level);
     int merge_with(std::unique_ptr<ds::StaticBTree> run);
+    int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr);
 
     /*
      * Determine if a run containing incoming_record_count records can be
@@ -86,7 +87,7 @@ public:
      */
     std::unique_ptr<ds::StaticBTree> merge_runs();
 
-    std::vector<std::unique_ptr<SampleRange>> create_sample_ranges(byte *lower_key, byte *upper_key);
+    std::vector<std::unique_ptr<SampleRange>> get_sample_ranges(byte *lower_key, byte *upper_key);
 
     /*
      * Remove the references to all runs within the level, and

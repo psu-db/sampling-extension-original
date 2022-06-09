@@ -171,17 +171,15 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
     return 0;
 }
 
-std::vector<std::unique_ptr<SampleRange>> BTreeLevel::create_sample_ranges(byte *lower_key, byte *upper_key)
+std::vector<std::unique_ptr<SampleRange>> BTreeLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
 {
     std::vector<std::unique_ptr<SampleRange>> ranges;
     for (size_t i=0; i<this->run_capacity; i++) {
         if (this->runs[i]) {
-            auto lb_page = this->runs[i]->get_lower_bound(lower_key);
-            auto ub_page = this->runs[i]->get_upper_bound(upper_key);
+            auto range = BTreeSampleRange::create(this->runs[i].get(), lower_key, upper_key, this->state);
 
-            auto page_count = ub_page.page_number - lb_page.page_number;
-            if (page_count > 0) {
-                ranges.emplace_back(std::make_unique<BTreeSampleRange>(this->runs[i].get(), this->state, lb_page.page_number, ub_page.page_number, lower_key, upper_key));
+            if (range) {
+                ranges.emplace_back(std::move(range));
             }
         }
     }

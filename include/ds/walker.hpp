@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <gsl/gsl_rng.h>
 
-namespace walker {
+namespace lsm { namespace walker {
     class AliasStructure {
     private:
         std::vector<size_t> alias_table;
@@ -20,6 +20,6 @@ namespace walker {
         AliasStructure(std::vector<double> *weights, gsl_rng *rng);
         size_t get();
     };
-}
+}}
 
 #endif

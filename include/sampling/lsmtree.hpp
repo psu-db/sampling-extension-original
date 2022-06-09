@@ -10,7 +10,10 @@
 #include "util/global.hpp"
 #include "io/record.hpp"
 #include "sampling/sample.hpp"
+#include "sampling/level.hpp"
 #include "catalog/schema.hpp"
+#include "ds/memtable.hpp"
+#include "ds/walker.hpp"
 
 namespace lsm { namespace sampling {
 
@@ -85,7 +88,8 @@ public:
 
 private:
     global::g_state state;
-    std::map<byte *, byte *> memtable;
+    std::vector<std::unique_ptr<BTreeLevel>> levels;
+    std::unique_ptr<ds::MemoryTable> memtable;
 
     size_t record_count;
     size_t memtable_capacity;
@@ -102,7 +106,7 @@ private:
             bool bloom_filters=false, bool range_filers=false, double max_deleted_proportion=1.0);
 
     void merge_memtable();
-    void grow();
+    size_t grow();
 };
 
 }}

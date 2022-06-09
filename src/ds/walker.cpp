@@ -3,8 +3,9 @@
 */
 #include "ds/walker.hpp"
 
+namespace lsm { namespace walker {
 
-walker::AliasStructure::AliasStructure(std::vector<double> *weights, gsl_rng *rng)
+AliasStructure::AliasStructure(std::vector<double> *weights, gsl_rng *rng)
 {
    size_t size = weights->size();
 
@@ -44,7 +45,7 @@ walker::AliasStructure::AliasStructure(std::vector<double> *weights, gsl_rng *rn
 }
 
 
-size_t walker::AliasStructure::get()
+size_t AliasStructure::get()
 {
     /*
     * On the topic of random number generation. The Wikipedia article lists an algorithm
@@ -60,3 +61,5 @@ size_t walker::AliasStructure::get()
 
     return y < this->probability_table[i] ? i : this->alias_table[i];
 }
+
+}}
