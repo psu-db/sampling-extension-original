@@ -60,7 +60,7 @@ START_TEST(t_iterator)
     size_t rec_cnt = 0;
     auto merge_itr = iter::MergeIterator(iters, cmp);
 
-    int64_t last_key = -1;
+    int64_t last_key = INT64_MIN;
     while (merge_itr.next()) {
         auto rec = merge_itr.get_item();
         ck_assert_int_ge(schema->get_key(rec.get_data()).Int64(), last_key);

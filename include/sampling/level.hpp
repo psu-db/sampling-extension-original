@@ -148,6 +148,11 @@ public:
      */
     void print_level();
 
+    /*
+     * Opens an iterator on this level.
+     */
+    std::unique_ptr<iter::GenericIterator<Record>> start_scan();
+
 private:
     size_t record_capacity; // the maximum number of records on this level
     size_t record_count;    // the current number of records on this level

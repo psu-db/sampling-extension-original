@@ -56,6 +56,7 @@ BTreeSampleRange::BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, b
     this->state = state;
     this->record_count = record_count;
     this->cmp = btree->get_key_cmp();
+    this->range_len = stop_page - start_page + 1;
 }
 
 
@@ -63,14 +64,17 @@ io::Record BTreeSampleRange::get(FrameId *frid)
 {
     auto record = this->get_random_record(frid);
 
-    if (!frid) {
+    if (!frid || !record.is_valid()) {
+        //fprintf(stderr, "invalid frid or record\n");
         return io::Record();
     }
 
     auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
+    auto tkey = this->state->record_schema->get_key(record.get_data()).Int64();
 
     // Reject if the record selected is outside of the specified key range.
     if (this->cmp(key, this->lower_key) < 0 || this->cmp(key, this->upper_key) > 0) {
+        //fprintf(stderr, "%ld\t was sampled, but out of range.\n", tkey);
         this->state->cache->unpin(*frid);
         *frid = INVALID_FRID;
         return io::Record();
@@ -78,11 +82,13 @@ io::Record BTreeSampleRange::get(FrameId *frid)
 
     // Reject if the record select is deleted, or is a tombstone.
     if (this->btree->is_deleted(record.get_id()) || record.is_tombstone()) {
+        //fprintf(stderr, "%ld\t was sampled, but deleted.\n", tkey);
         this->state->cache->unpin(*frid);
         *frid = INVALID_FRID;
         return io::Record();
     }
 
+    //fprintf(stderr, "%ld\t was sampled successfully.\n", tkey);
     // Otherwise, we're good to return the record.
     return record;
 }

@@ -339,10 +339,87 @@ START_TEST(t_iterator)
 END_TEST
 
 
+START_TEST(t_iterator2)
+{
+    size_t cnt = 0;
+    auto state = testing::make_state1();
+    auto btree1 = testing::test_btree1(100, state.get(), &cnt);
+
+    auto tree_iterator1 = btree1->start_scan();
+
+    int64_t prev_key = INT64_MIN;
+    size_t reccnt = 0;
+    while (tree_iterator1->next()) {
+        auto rec = tree_iterator1->get_item();
+        auto key_val = state->record_schema->get_key(rec.get_data()).Int64();
+
+        ck_assert_int_ge(key_val, prev_key);
+        prev_key = key_val;
+        reccnt++;
+    }
+
+    ck_assert_int_eq(cnt, reccnt);
+    ck_assert_int_eq(reccnt, btree1->get_record_count());
+
+    cnt = 0;
+    auto btree2 = testing::test_btree2(100, state.get(), &cnt);
+    auto tree_iterator2 = btree2->start_scan();
+    prev_key = INT64_MIN;
+    reccnt = 0;
+    while (tree_iterator2->next()) {
+        auto rec = tree_iterator2->get_item();
+        auto key_val = state->record_schema->get_key(rec.get_data()).Int64();
+
+        ck_assert_int_ge(key_val, prev_key);
+        prev_key = key_val;
+        reccnt++;
+    }
+
+    ck_assert_int_eq(cnt, reccnt);
+    ck_assert_int_eq(reccnt, btree2->get_record_count());
+}
+END_TEST
+
+
+START_TEST(t_iterator3)
+{
+    size_t cnt = 0;
+    auto state = testing::make_state1();
+    auto btree1 = testing::test_btree1(1, state.get(), &cnt);
+
+    auto tree_iterator1 = btree1->start_scan();
+
+    size_t cnt2 = 0;
+    auto btree2 = testing::test_btree2(1, state.get(), &cnt2);
+    auto tree_iterator2 = btree2->start_scan();
+
+    std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters(2);
+    iters[0] = std::move(tree_iterator1);
+    iters[1] = std::move(tree_iterator2);
+
+    auto merged = iter::MergeIterator(iters, state->record_schema->get_record_cmp());
+
+    int64_t prev_key = INT64_MIN;
+    size_t reccnt = 0;
+    while (merged.next()) {
+        auto rec = merged.get_item();
+        auto key_val = state->record_schema->get_key(rec.get_data()).Int64();
+
+        ck_assert_int_ge(key_val, prev_key);
+        prev_key = key_val;
+        reccnt++;
+    }
+
+    ck_assert_int_eq(reccnt, cnt + cnt2);
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("Static BTree Unit Testing");
 
+    /*
     TCase *init = tcase_create("lsm::ds::StaticBTree::initialize");
     tcase_add_test(init, t_initialize);
 
@@ -358,10 +435,13 @@ Suite *unit_testing()
     tcase_set_timeout(bounds, 100);
 
     suite_add_tcase(unit, bounds);
+    */
 
 
     TCase *iter = tcase_create("lsm::ds::StaticBTree::start_scan");
-    tcase_add_test(iter, t_iterator);
+    //tcase_add_test(iter, t_iterator);
+    //tcase_add_test(iter, t_iterator2);
+    tcase_add_test(iter, t_iterator3);
 
     tcase_set_timeout(iter, 100);
 

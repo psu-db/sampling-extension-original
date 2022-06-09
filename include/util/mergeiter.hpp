@@ -60,9 +60,9 @@ public:
     ~MergeIterator();
 private:
     struct HeapCompareFunc {
-        catalog::RecordCmpFunc cmp;
+        catalog::RecordCmpFunc rec_cmp;
         bool operator()(std::pair<Record, size_t> a, std::pair<Record, size_t> b) {
-            return this->cmp(a.first.get_data(), b.first.get_data()) >= 0;
+            return this->rec_cmp(a.first.get_data(), b.first.get_data()) > 0;
         }
     };
 

@@ -6,7 +6,7 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state)
+std::unique_ptr<StaticBTree> StaticBTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state)
 {
     auto pfile = state->file_manager->create_indexed_pfile();
     StaticBTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state);
@@ -128,7 +128,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
 void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
                              PageNum data_page_cnt, global::g_state *state) 
 {
-    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state);
+    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema.get());
 }
 
 
@@ -517,7 +517,7 @@ catalog::KeyCmpFunc StaticBTree::get_key_cmp()
 
 
 // TODO: Implement bitmap for deletion tracking
-bool is_deleted(RecordId rid, Timestamp time=0) 
+bool StaticBTree::is_deleted(RecordId rid, Timestamp time) 
 {
     return false;
 }

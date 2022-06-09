@@ -18,6 +18,12 @@
 #include "io/fixedlendatapage.hpp"
 #include "catalog/schema.hpp"
 #include "io/filemanager.hpp"
+#include "ds/staticbtree.hpp"
+
+#include <gsl/gsl_rng.h>
+#include <functional>
+
+using namespace std::placeholders;
 
 namespace lsm { namespace testing {
 
@@ -474,6 +480,199 @@ std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_l
 
     return fm->get_name(test_file->get_flid());
 }
+
+std::string generate_btree_test_data_a(size_t page_cnt, global::g_state *state, size_t *reccnt)
+{
+    auto test_file = state->file_manager->create_indexed_pfile("btree_data_1");
+    auto buf = empty_aligned_buffer();
+    auto schema = state->record_schema.get();
+
+    int64_t key = -10;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf.get(), length});
+            key += 2;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return state->file_manager->get_name(test_file->get_flid());
+}
+
+
+std::string generate_btree_test_data_b(size_t page_cnt, global::g_state *state, size_t *reccnt)
+{
+    auto test_file = state->file_manager->create_indexed_pfile("btree_data_2");
+    auto buf = empty_aligned_buffer();
+    auto schema = state->record_schema.get();
+
+    int64_t key = -10;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf.get(), length});
+            key += 3;
+            val += 2;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return state->file_manager->get_name(test_file->get_flid());
+}
+
+
+std::string generate_contiguous_test_data(PageNum page_cnt, global::g_state *state, size_t *reccnt)
+{
+    auto test_file = state->file_manager->create_indexed_pfile("btree_contiguous");
+    auto buf = empty_aligned_buffer();
+    auto schema = state->record_schema.get();
+
+    int64_t key = 0;
+    int64_t val = 8;
+    size_t cnt = 0;
+    PageOffset length = schema->record_length();
+    for (size_t i=0; i<page_cnt; i++) {
+        auto new_pid = test_file->allocate_page(); 
+        io::FixedlenDataPage::initialize(buf.get(), length, 0);
+        auto datapage = io::FixedlenDataPage(buf.get());
+        for (size_t i=0; i<datapage.get_record_capacity(); i++) {
+            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            datapage.insert_record({recbuf.get(), length});
+            key += 1;
+            val += 1;
+            cnt++;
+        }
+        test_file->write_page(new_pid, buf.get());
+    }
+
+    if (reccnt) {
+        *reccnt = cnt;
+    }
+
+    return state->file_manager->get_name(test_file->get_flid());
+}
+
+
+std::unique_ptr<ds::StaticBTree> test_btree1(size_t page_cnt, global::g_state *state, size_t *cnt)
+{
+    std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
+    auto fname1 = testing::generate_btree_test_data_a(page_cnt, state, cnt);
+    auto *pfile1 = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(fname1);
+    iter[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, state->cache.get());
+
+    auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
+
+    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+}
+
+
+std::unique_ptr<ds::StaticBTree> test_btree2(size_t page_cnt, global::g_state *state, size_t *cnt)
+{
+    std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
+    auto fname1 = testing::generate_btree_test_data_b(page_cnt, state, cnt);
+    auto *pfile1 = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(fname1);
+    iter[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, state->cache.get());
+
+    auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
+
+    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+}
+
+
+std::unique_ptr<ds::StaticBTree> test_btree_cont(size_t page_cnt, global::g_state *state, size_t *cnt)
+{
+    std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
+    auto fname1 = testing::generate_contiguous_test_data(page_cnt, state, cnt);
+    auto *pfile1 = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(fname1);
+    iter[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, state->cache.get());
+
+    auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
+
+    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+}
+
+
+
+
+
+
+
+int keycmp1(const byte * a, const byte *b) {
+    if (*((int64_t*) a) > *((int64_t*) b)) {
+        return 1;
+    } else if (*((int64_t*) a) < *((int64_t*) b)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
+int reccmp1(const byte *a, const byte *b) {
+    int64_t key1 = *((int64_t*) (a + io::RecordHeaderLength));
+    int64_t key2 = *((int64_t*) (b + io::RecordHeaderLength));
+
+    if (key1 < key2) {
+        return -1;
+    } else if (key1 > key2) {
+        return 1;
+    }
+
+    Timestamp time1 = ((io::RecordHeader *) a)->time;
+    Timestamp time2 = ((io::RecordHeader *) b)->time;
+
+    if (time1 < time2) {
+        return -1;
+    } else if (time1 < time2) {
+        return 1;
+    }
+
+    return 0;
+}
+
+std::unique_ptr<global::g_state> make_state1()
+{
+
+    auto new_state = new global::g_state();
+
+    const catalog::RecordCmpFunc reccmp = std::bind(&reccmp1, _1, _2);
+    const catalog::KeyCmpFunc keycmp = std::bind(&keycmp1, _1, _2);
+
+    gsl_rng_env_setup();
+
+    new_state->cache = std::make_unique<io::ReadCache>(1024);
+    new_state->file_manager = std::make_unique<io::FileManager>("tests/data/filemanager1/");
+    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(sizeof(int64_t), sizeof(int64_t), io::RecordHeaderLength, keycmp, reccmp);
+    new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
+
+    return std::unique_ptr<global::g_state>(new_state);
+}
+
+
 }}
 
 #endif

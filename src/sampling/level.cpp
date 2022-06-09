@@ -36,7 +36,7 @@ BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity,
 
 ds::StaticBTree *BTreeLevel::get_run(size_t idx) 
 {
-    if (idx <= this->run_capacity) {
+    if (idx > this->run_capacity) {
         return nullptr;
     }
 
@@ -109,7 +109,7 @@ void BTreeLevel::truncate()
         if (this->runs[i]) {
             auto pfile = this->runs[i]->get_pfile();
             this->runs[i] = nullptr;
-            this->state->file_manager->close_file(pfile);
+            this->state->file_manager->close_file(pfile->get_flid());
         }
     }
 
@@ -171,6 +171,7 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
     return 0;
 }
 
+
 std::vector<std::unique_ptr<SampleRange>> BTreeLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
 {
     std::vector<std::unique_ptr<SampleRange>> ranges;
@@ -223,4 +224,16 @@ void BTreeLevel::print_level()
     return;
 }
 
+std::unique_ptr<iter::GenericIterator<Record>> BTreeLevel::start_scan()
+{
+    if (this->runs.size() == 0) {
+        return nullptr;
+    }
+
+    if (this->runs[0]) {
+        return this->runs[0]->start_scan();
+    }
+
+    return nullptr;
+}
 }}

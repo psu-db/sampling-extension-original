@@ -24,7 +24,7 @@ public:
      * implementation can allow an nullptr to be based as a default argument in
      * such cases, for convenience. 
      */
-    virtual io::Record get(FrameId *frid);
+    virtual io::Record get(FrameId *frid) = 0;
 
     /*
      * Return the number of records falling within the sampling range. Note
@@ -33,7 +33,7 @@ public:
      */
     virtual size_t length() = 0;
 
-    virtual ~SampleRange() = default;
+    ~SampleRange() = default;
 };
 
 }}

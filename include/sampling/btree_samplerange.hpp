@@ -15,6 +15,9 @@ public:
     static std::unique_ptr<SampleRange> create(ds::StaticBTree *btree, byte *lower_key, 
                                                byte *upper_key, global::g_state *state);
 
+    BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
+                     byte *upper_key, size_t record_count, global::g_state *state);
+
     /*
      * Randomly select and return a record from this sample range, pinning the
      * page containing it in the cache and setting frid accordingly. It will
@@ -37,9 +40,9 @@ public:
      */
     size_t length() override;
 
+    ~BTreeSampleRange() {}
+
 private:
-    BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
-                     byte *upper_key, size_t record_count, global::g_state *state);
 
     Record get_random_record(FrameId *frid);
 

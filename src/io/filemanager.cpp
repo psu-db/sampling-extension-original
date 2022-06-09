@@ -199,4 +199,28 @@ void FileManager::process_metafile()
 
 }
 
+void FileManager::close_file(FileId flid)
+{
+    auto dfile = this->get_dfile(flid);
+
+    dfile->close_file();
+}
+
+
+void FileManager::close_file(DirectFile *dfile)
+{
+    auto flid = this->get_flid(dfile->get_fname());
+    if (flid != INVALID_FLID) {
+        this->close_file(flid);
+    }
+}
+
+void FileManager::close_file(PagedFile *pfile)
+{
+    auto flid = pfile->get_flid();
+    if (flid != INVALID_FLID) {
+        this->close_file(flid);
+    }
+}
+
 }}
