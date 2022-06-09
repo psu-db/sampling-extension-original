@@ -5,13 +5,13 @@
 #ifndef H_MEMTABLE
 #define H_MEMTABLE
 
-namespace lsm { namespace ds {
-
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "util/iterator.hpp"
 #include "io/record.hpp"
 #include "sampling/samplerange.hpp"
+
+namespace lsm { namespace ds {
 
 class MemoryTable {
 public:
