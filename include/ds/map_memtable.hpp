@@ -22,6 +22,9 @@ class MapMemTable {
     friend class MapRecordIterator;
 
 public:
+
+    MapMemTable(size_t capacity, global::g_state *state);
+
     /*
      * Attempts to insert a key-value pair into the memtable with a given
      * timestamp. Will return 1 on success and 0 on failure. The insert can

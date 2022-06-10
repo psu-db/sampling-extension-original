@@ -6,6 +6,12 @@
 
 namespace lsm { namespace ds {
 
+MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
+{
+    this->capacity = capacity;
+    this->state = state;
+}
+
 int MapMemTable::insert(byte *key, byte *value, Timestamp time) 
 {
     auto record_buffer = this->state->record_schema->create_record_raw(key, value);
@@ -77,7 +83,7 @@ size_t MapMemTable::get_capacity()
 
 bool MapMemTable::is_full()
 {
-    return this->get_record_count() < this->capacity;
+    return this->get_record_count() >= this->capacity;
 }
 
 
