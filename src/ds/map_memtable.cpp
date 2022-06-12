@@ -10,6 +10,10 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
+    this->rec_cmp = state->record_schema->get_key_cmp();
+    this->cmp = MapCompareFunc{this->rec_cmp};
+
+    this->table = std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc>(this->cmp);
 }
 
 int MapMemTable::insert(byte *key, byte *value, Timestamp time) 

@@ -146,8 +146,6 @@ START_TEST(t_iterator)
     while (iter->next()) {
         auto rec = iter->get_item();
 
-        fprintf(stderr, "%ld\n", i);
-
         auto rec_key = state->record_schema->get_key(rec.get_data()).Int64();
         ck_assert_int_eq(rec_key, keys_v[i]);
 
