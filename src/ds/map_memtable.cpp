@@ -126,6 +126,33 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
     return std::make_unique<MapRecordIterator>(this, this->state);
 }
 
+
+std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
+{
+    std::vector<byte> lower_key_bytes;
+    lower_key_bytes.insert(lower_key_bytes.end(), lower_key, lower_key + state->record_schema->key_len());
+
+    std::vector<byte> upper_key_bytes;
+    upper_key_bytes.insert(upper_key_bytes.end(), upper_key, upper_key + state->record_schema->key_len());
+
+    auto start = this->table.lower_bound(std::pair(lower_key_bytes, TIMESTAMP_MIN));
+    auto stop = this->table.upper_bound(std::pair(upper_key_bytes, TIMESTAMP_MAX));
+
+    // the range doesn't work for the memtable
+    if (start == this->table.end() || stop == this->table.end()) {
+        return nullptr;
+    }
+
+    return std::make_unique<sampling::MapMemTableSampleRange>(start, stop, this->state);
+}
+
+
+std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> *MapMemTable::get_table()
+{
+    return &this->table;
+}
+
+
 MapRecordIterator::MapRecordIterator(const MapMemTable *table, global::g_state *state)
 {
     this->iter = table->table.begin();

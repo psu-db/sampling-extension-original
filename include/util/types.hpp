@@ -91,6 +91,8 @@ typedef int32_t FrameId;
 // A unique timestamp for use in MVCC concurrency control. Currently stored in
 // record headers, but not used by anything.
 typedef uint32_t Timestamp;
+const Timestamp TIMESTAMP_MIN = 0;
+const Timestamp TIMESTAMP_MAX = UINT32_MAX;
 
 // Invalid values for various IDs. Used throughout the code base to indicate
 // uninitialized values and error conditions.

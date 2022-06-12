@@ -11,12 +11,21 @@
 #include "util/types.hpp"
 #include "ds/memtable.hpp"
 #include "io/record.hpp"
-#include "sampling/samplerange.hpp"
+#include "sampling/mapmemtable_samplerange.hpp"
 #include "util/global.hpp"
 
 namespace lsm { namespace ds {
 
 class MapRecordIterator;
+
+struct MapCompareFunc {
+    catalog::KeyCmpFunc key_cmp;
+    bool operator()(const std::pair<std::vector<byte>, const Timestamp> a, std::pair<std::vector<byte>, Timestamp> b) const {
+        auto rec_cmp = this->key_cmp(&a.first[0], &b.first[0]);
+        return (rec_cmp == 0) ? a.second < b.second : rec_cmp < 0;
+    }
+};
+
 
 class MapMemTable {
     friend class MapRecordIterator;
@@ -87,15 +96,9 @@ public:
      * sorted order.
      */
     std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan();
-private:
-    struct MapCompareFunc {
-        catalog::KeyCmpFunc key_cmp;
-        bool operator()(const std::pair<std::vector<byte>, const Timestamp> a, std::pair<std::vector<byte>, Timestamp> b) const {
-            auto rec_cmp = this->key_cmp(&a.first[0], &b.first[0]);
-            return (rec_cmp == 0) ? a.second < b.second : rec_cmp < 0;
-        }
-    };
 
+    std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> *get_table();
+private:
     MapCompareFunc cmp;
     catalog::KeyCmpFunc rec_cmp;
     size_t capacity;

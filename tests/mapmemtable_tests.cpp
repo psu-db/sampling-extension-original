@@ -157,6 +157,38 @@ START_TEST(t_iterator)
 END_TEST
 
 
+START_TEST(t_sample_range)
+{
+    size_t capacity = 500;
+
+    auto state = testing::make_state1();
+    auto table = ds::MapMemTable(capacity, state.get());
+
+    int64_t test_val = 0;
+    int64_t test_key = 0;
+    for (size_t i=0; i<capacity; i++) {
+        table.insert((byte*) &test_key, (byte *) &test_val);
+        test_val++;
+        test_key++;
+    }
+
+    int64_t start_key = 51;
+    int64_t stop_key = 150;
+
+    auto range = table.get_sample_range((byte*) &start_key, (byte*) &stop_key);
+    ck_assert_ptr_nonnull(range.get());
+    ck_assert_int_eq(range->length(), 100);
+
+    for (size_t i=0; i<1000; i++) {
+        auto rec = range->get(nullptr);
+        auto range_key = state->record_schema->get_key(rec.get_data()).Int64();
+        ck_assert_int_ge(range_key, start_key);
+        ck_assert_int_le(range_key, stop_key);
+    }
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("MapMemTable Unit Testing");
@@ -174,9 +206,15 @@ Suite *unit_testing()
 
 
     TCase *iter = tcase_create("lsm::sampling::MapMemTable::start_sorted_scan Testing");
-    tcase_add_test(insert, t_iterator);
+    tcase_add_test(iter, t_iterator);
 
     suite_add_tcase(unit, iter);
+
+
+    TCase *sampling = tcase_create("lsm::sampling::MapMemTable::create_sample_range Testing");
+    tcase_add_test(sampling, t_sample_range);
+
+    suite_add_tcase(unit, sampling);
 
     return unit;
 }
