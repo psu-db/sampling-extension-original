@@ -64,7 +64,7 @@ START_TEST(t_insert_to_full)
     }
 
     auto state = testing::make_state1();
-    auto table = ds::MapMemTable(500, state.get());
+    auto table = ds::MapMemTable(capacity, state.get());
 
     std::vector<int64_t> keys_v;
     keys_v.insert(keys_v.begin(), keys.begin(), keys.end());
@@ -73,7 +73,7 @@ START_TEST(t_insert_to_full)
     vals_v.insert(vals_v.begin(), vals.begin(), vals.end());
     
 
-    for (size_t i=0; i< capacity; i++) {
+    for (size_t i=0; i < capacity; i++) {
         auto key_ptr = (byte *) &keys_v[i];
         auto val_ptr = (byte *) &vals_v[i];
 
@@ -86,9 +86,75 @@ START_TEST(t_insert_to_full)
     int64_t new_key = -10;
     int64_t new_val = -11;
 
-    ck_assert_int_eq(table.insert())
+    ck_assert_int_eq(table.insert((byte*) &new_key, (byte *) &new_val), 0);
+
+    for (size_t i=0; i<capacity; i++) {
+        auto key_ptr = (byte *) &keys_v[i];
+        auto val_ptr = (byte *) &vals_v[i];
+
+        auto result = table.get(key_ptr);
+        ck_assert(result.is_valid());
+
+        auto table_key = state->record_schema->get_key(result.get_data()).Int64();
+        auto table_val = state->record_schema->get_val(result.get_data()).Int64();
+
+        ck_assert_int_eq(table_key, *(int64_t*) key_ptr);
+        ck_assert_int_eq(table_val, *(int64_t*) val_ptr);
+    }
+
+    ck_assert_int_eq(table.get((byte*) &new_key).is_valid(), 0);
+}
+END_TEST
 
 
+START_TEST(t_iterator)
+{
+    size_t capacity = 1000;
+    std::set<int64_t> keys;
+    std::set<int64_t> vals;
+
+    while (keys.size() < capacity) {
+        int64_t key = rand();
+        int64_t val = rand();
+
+        if (keys.find(key) == keys.end()) {
+            keys.insert(key);
+            vals.insert(val);
+        }
+    }
+
+    auto state = testing::make_state1();
+    auto table = ds::MapMemTable(capacity, state.get());
+
+    std::vector<int64_t> keys_v;
+    keys_v.insert(keys_v.begin(), keys.begin(), keys.end());
+
+    std::vector<int64_t> vals_v;
+    vals_v.insert(vals_v.begin(), vals.begin(), vals.end());
+    
+    for (size_t i=0; i < capacity; i++) {
+        auto key_ptr = (byte *) &keys_v[i];
+        auto val_ptr = (byte *) &vals_v[i];
+
+        ck_assert_int_eq(table.insert(key_ptr, val_ptr), 1);
+    }
+
+    std::sort(keys_v.begin(), keys_v.end());
+
+    auto iter = table.start_sorted_scan();
+    size_t i=0;
+    while (iter->next()) {
+        auto rec = iter->get_item();
+
+        fprintf(stderr, "%ld\n", i);
+
+        auto rec_key = state->record_schema->get_key(rec.get_data()).Int64();
+        ck_assert_int_eq(rec_key, keys_v[i]);
+
+        i++;
+    }
+
+    ck_assert_int_eq(i, capacity);
 }
 END_TEST
 
@@ -101,10 +167,18 @@ Suite *unit_testing()
 
     suite_add_tcase(unit, create);
 
+
     TCase *insert = tcase_create("lsm::sampling::MapMemTable::insert Testing");
     tcase_add_test(insert, t_insert);
+    tcase_add_test(insert, t_insert_to_full);
 
     suite_add_tcase(unit, insert);
+
+
+    TCase *iter = tcase_create("lsm::sampling::MapMemTable::start_sorted_scan Testing");
+    tcase_add_test(insert, t_iterator);
+
+    suite_add_tcase(unit, iter);
 
     return unit;
 }

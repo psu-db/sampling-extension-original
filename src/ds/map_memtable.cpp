@@ -14,9 +14,12 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 
 int MapMemTable::insert(byte *key, byte *value, Timestamp time) 
 {
+    if (this->is_full()) {
+        return 0;
+    }
+
     auto record_buffer = this->state->record_schema->create_record_raw(key, value);
     auto record = io::Record(record_buffer, this->state->record_schema->record_length(), time, false);
-
 
     auto key_buf = this->create_key_buf(record);
     std::pair<std::vector<byte>, Timestamp> memtable_record {key_buf, time};
@@ -137,6 +140,7 @@ bool MapRecordIterator::next()
     }
 
     if (first_iteration && this->iter != this->end) {
+        first_iteration = false;
         this->current_record = io::Record(this->iter->second, this->state->record_schema->record_length());
         return true;
     }
