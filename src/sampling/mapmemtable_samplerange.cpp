@@ -52,9 +52,6 @@ io::Record MapMemTableSampleRange::get(FrameId *frid)
         return io::Record();
     }
 
-    auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
-    auto tkey = this->state->record_schema->get_key(record.get_data()).Int64();
-
     // Reject if the record select is deleted, or is a tombstone.
     if (record.is_tombstone()) {
         //fprintf(stderr, "%ld\t was sampled, but deleted.\n", tkey);

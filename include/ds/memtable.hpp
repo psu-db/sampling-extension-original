@@ -15,17 +15,18 @@ namespace lsm { namespace ds {
 
 class MemoryTable {
 public:
-    int insert(byte *key, byte *value, Timestamp time=0);
-    int remove(byte *key, byte *value, Timestamp time=0);
-    io::Record get(byte *key, Timestamp time=0);
+    virtual int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) = 0;
+    virtual int remove(byte *key, byte *value, Timestamp time=0) = 0;
+    virtual io::Record get(const byte *key, Timestamp time=0) = 0;
 
-    size_t get_capacity();
-    bool is_full();
+    virtual size_t get_record_count() = 0;
+    virtual size_t get_capacity() = 0;
+    virtual bool is_full() = 0;
 
-    void truncate();
+    virtual void truncate() = 0;
 
-    std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key);
-    std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan();
+    virtual std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) = 0;
+    virtual std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() = 0;
 
 private:
 };

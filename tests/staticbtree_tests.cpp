@@ -415,6 +415,26 @@ START_TEST(t_iterator3)
 END_TEST
 
 
+START_TEST(t_get)
+{
+    size_t cnt = 0;
+    auto state = testing::make_state1();
+    auto btree1 = testing::test_btree1(100, state.get(), &cnt);
+    auto tree_iterator1 = btree1->start_scan();
+
+    while (tree_iterator1->next()) {
+        auto rec = tree_iterator1->get_item();
+        auto key_val = state->record_schema->get_key(rec.get_data()).Bytes();
+
+        FrameId frid;
+        auto res = btree1->get(key_val, &frid);
+        ck_assert_int_eq(res.is_valid(), 1);
+        ck_assert_int_eq(*(int64_t *) key_val, state->record_schema->get_key(res.get_data()).Int64());
+    }
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("Static BTree Unit Testing");
@@ -435,17 +455,25 @@ Suite *unit_testing()
     tcase_set_timeout(bounds, 100);
 
     suite_add_tcase(unit, bounds);
-    */
 
 
     TCase *iter = tcase_create("lsm::ds::StaticBTree::start_scan");
-    //tcase_add_test(iter, t_iterator);
-    //tcase_add_test(iter, t_iterator2);
+    tcase_add_test(iter, t_iterator);
+    tcase_add_test(iter, t_iterator2);
     tcase_add_test(iter, t_iterator3);
 
     tcase_set_timeout(iter, 100);
 
     suite_add_tcase(unit, iter);
+    */
+
+
+    TCase *get = tcase_create("lsm::ds::StaticBTree::get");
+    tcase_add_test(get, t_get);
+
+    tcase_set_timeout(get, 100);
+
+    suite_add_tcase(unit, get);
 
     return unit;
 }

@@ -14,6 +14,7 @@
 #include "catalog/schema.hpp"
 #include "ds/memtable.hpp"
 #include "ds/walker.hpp"
+#include "ds/map_memtable.hpp"
 
 namespace lsm { namespace sampling {
 
@@ -28,7 +29,12 @@ public:
      * Create a new, empty LSMTree index and return a unique_ptr
      * to it. If the operation fails, returns nullptr.
      */
-    std::unique_ptr<LSMTree> create();
+    static std::unique_ptr<LSMTree> create(size_t memtable_capacity, 
+                                       size_t scale_factor,
+                                       std::unique_ptr<global::g_state> state,
+                                       merge_policy policy=LEVELING,
+                                       bool bloom_filters=false, bool range_filters=false, 
+                                       double max_deleted_proportion=1.0);
 
     /*
      * Open an already existing LSMTree index from disk and return
@@ -43,7 +49,7 @@ public:
      * a timestamp less than or equal to time. If no such record is found,
      * returns and invalid record instead.
      */
-    io::Record get(byte *key, Timestamp time=0);
+    io::Record get(const byte *key, FrameId *frid, Timestamp time=0, bool skip_delete_check=false);
 
     /*
      * Insert a new record into the LSMTree. The input key and value
@@ -86,12 +92,35 @@ public:
      */
     std::unique_ptr<Sample> range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections=nullptr, size_t *attempts=nullptr);
 
+    /*
+     * Return the number of levels within the tree. Note that not all of these
+     * are necessarily populated, but the returned number is guaranteed to be
+     * the deepest level containing data.
+     */
+    size_t depth();
+
+    /*
+     * Return the number of records within the tree. Note that this includes tombstones,
+     * deactivated records, etc.
+     */
+    size_t record_count();
+
+    /*
+     * Returns the schema used for records within the LSM Tree.
+     */
+    catalog::FixedKVSchema *schema();
+
+    /*
+     * Returns a reference to the read cache used by the LSM Tree.
+     */
+    io::ReadCache *cache();
+
 private:
-    global::g_state state;
+    std::unique_ptr<global::g_state> state;
     std::vector<std::unique_ptr<BTreeLevel>> levels;
     std::unique_ptr<ds::MemoryTable> memtable;
 
-    size_t record_count;
+    size_t rec_count;
     size_t memtable_capacity;
 
     size_t scale_factor;
@@ -101,12 +130,15 @@ private:
     bool bloom_filters;
     bool range_filters;
 
-    LSMTree(size_t memtable_capacity, size_t scale_factor, std::unique_ptr<catalog::FixedKVSchema> schema,
-            std::unique_ptr<io::ReadCache> cache, std::unique_ptr<io::FileManager> filemanager, merge_policy policy=LEVELING,
-            bool bloom_filters=false, bool range_filers=false, double max_deleted_proportion=1.0);
+    LSMTree(size_t memtable_capacity, size_t scale_factor,
+            std::unique_ptr<global::g_state> state,
+           merge_policy policy=LEVELING,
+           bool bloom_filters=false, bool range_filters=false, 
+           double max_deleted_proportion=1.0);
 
     void merge_memtable();
     size_t grow();
+    bool is_deleted(io::Record rec);
 };
 
 }}

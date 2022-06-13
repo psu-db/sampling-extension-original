@@ -7,6 +7,36 @@
 namespace lsm {
 namespace sampling {
 
+std::unique_ptr<LSMTree> LSMTree::create(size_t memtable_capacity, 
+                                         size_t scale_factor,
+                                         std::unique_ptr<global::g_state> state,
+                                         merge_policy policy,
+                                         bool bloom_filters, bool range_filters, 
+                                         double max_deleted_proportion) 
+{
+    auto lsm = new LSMTree(memtable_capacity, scale_factor, std::move(state),
+                                     policy, bloom_filters, range_filters, max_deleted_proportion);
+    return std::unique_ptr<LSMTree>(lsm);
+}
+
+
+LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
+                 std::unique_ptr<global::g_state> state, merge_policy policy,
+                 bool bloom_filters, bool range_filters, 
+                 double max_deleted_proportion)
+{
+    this->rec_count = 0;
+    this->memtable_capacity = memtable_capacity;
+    this->scale_factor = scale_factor;
+    this->policy = policy;
+    this->max_deleted_proportion = max_deleted_proportion;
+    this->state = std::move(state);
+
+    this->bloom_filters = bloom_filters;
+    this->range_filters = range_filters;
+    this->memtable = std::make_unique<ds::MapMemTable>(memtable_capacity, this->state.get());
+}
+
 size_t LSMTree::grow()
 {
     ssize_t lowest_level = this->levels.size() - 1;
@@ -34,7 +64,7 @@ size_t LSMTree::grow()
         }
     }
 
-    auto new_level = std::make_unique<BTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), &this->state, this->max_deleted_proportion);
+    auto new_level = std::make_unique<BTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion);
 
     this->levels.emplace_back(std::move(new_level));
 
@@ -68,6 +98,7 @@ void LSMTree::merge_memtable()
     // climb back up the tree, merging levels down until we hit the top
     for (size_t i=merge_level_idx; i>0; i--) {
         this->levels[i]->merge_with(this->levels[i-1].get());
+        this->levels[i-1]->truncate();
     }
 
     // merge the sorted buffer into the first level
@@ -85,28 +116,25 @@ int LSMTree::insert(byte *key, byte *value, Timestamp time)
     }
 
     auto res = this->memtable->insert(key, value, time);
-    this->record_count += res;
+    this->rec_count += res;
     return res;
 }
 
 
 int LSMTree::remove(byte *key, byte *value, Timestamp time)
 {
-    if (this->memtable->remove(key, value, time)) {
-        this->record_count--;
-        return 1;
+    // NOTE: tombstone based deletion. This will not first check if a record
+    // with a matching key and value exists prior to inserting, or if other
+    // tombstones already exist. If the record being deleted exists within the
+    // memtable, it will be replaced by the tombstone.
+    if (this->memtable->is_full()) {
+        this->merge_memtable();
     }
 
-    // if it isn't there, scan through the rest of the tree and delete it if
-    // found
-    for (auto &level : this->levels) {
-        if (level && level->remove(key, value, time)) {
-            this->record_count--;
-            return 1;
-        }
-    }
+    auto res = this->memtable->insert(key, value, time, true);
+    this->rec_count += res;
 
-    return 0;
+    return res;
 }
 
 
@@ -116,19 +144,30 @@ int LSMTree::update(byte *key, byte *old_value, byte *new_value, Timestamp time)
 }
 
 
-io::Record LSMTree::get(byte *key, Timestamp time)
+io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool skip_delete_check)
 {
     // first, we check the memory table
     auto record = this->memtable->get(key, time);
     if (record.is_valid()) {
+        if (!skip_delete_check && record.is_tombstone()) {
+            *frid = INVALID_FRID;
+            return io::Record();
+        }
+
+        *frid = INVALID_FRID;
         return record;
     }
 
     // then, we search the tree from newest levels to oldest
     for (auto &level : this->levels) {
         if (level) {
-            record = level->get_by_key(key, time);
+            record = level->get_by_key(key, frid, time);
             if (record.is_valid()) {
+                if (!skip_delete_check && record.is_tombstone()) {
+                    this->state->cache->unpin(*frid);
+                    *frid = INVALID_FRID;
+                    return io::Record();
+                }
                 return record;
             }
         }
@@ -136,6 +175,11 @@ io::Record LSMTree::get(byte *key, Timestamp time)
 
     // if we get here, the desired record doesn't exist, so we
     // return an invalid record.
+    if (*frid != INVALID_FRID) {
+        this->state->cache->unpin(*frid);
+    }
+
+    *frid = INVALID_FRID;
     return io::Record();
 }
 
@@ -169,7 +213,7 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         weights[i] = (double) ranges[i]->length() / (double) total_elements;
     }
 
-    walker::AliasStructure alias(&weights, this->state.rng);
+    walker::AliasStructure alias(&weights, this->state->rng);
 
     size_t i=0;
     while (i < sample_size) {
@@ -183,8 +227,9 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         FrameId frid;
         auto record = ranges[range]->get(&frid);
 
-        if (record.is_valid()) {
+        if (record.is_valid() && !this->is_deleted(record)) {
             sample->add_record(record);
+            i++;
         } else {
            if (rejections) {
                 (*rejections)++;
@@ -199,11 +244,54 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         // it, so it is now safe to unpin the page it was drawn
         // from.
         if (frid != INVALID_FRID) {
-            this->state.cache->unpin(frid);
+            this->state->cache->unpin(frid);
         }
     }
 
     return sample;
+}
+
+
+bool LSMTree::is_deleted(io::Record record)
+{
+    auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
+    auto time = record.get_timestamp();
+
+    bool deleted = false;
+
+    FrameId frid;
+    auto res = this->get(key, &frid, time, true);
+
+    if (res.is_tombstone()) {
+        deleted = true;
+    }
+
+    this->state->cache->unpin(frid);
+    return deleted;
+}
+
+
+size_t LSMTree::record_count()
+{
+    return this->rec_count;
+}
+
+
+size_t LSMTree::depth()
+{
+    return this->levels.size();
+}
+
+
+catalog::FixedKVSchema *LSMTree::schema() 
+{
+    return this->state->record_schema.get();
+}
+
+
+io::ReadCache *LSMTree::cache()
+{
+    return this->state->cache.get();
 }
 
 }

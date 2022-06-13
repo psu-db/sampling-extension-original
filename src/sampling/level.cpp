@@ -87,13 +87,20 @@ bool BTreeLevel::can_merge_with(BTreeLevel *level)
 }
 
 
-io::Record BTreeLevel::get_by_key(byte *key, Timestamp time) 
+io::Record BTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time) 
 {
+    for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
+        auto rec = this->runs[i]->get(key, frid, time);
+        if (rec.is_valid()) {
+            return rec;
+        }
+    }
+
     return io::Record();
 }
 
 
-int BTreeLevel::remove(byte *key, std::byte *value, Timestamp time)
+int BTreeLevel::remove(byte* /*key*/, byte* /*value*/, Timestamp /*time*/)
 {
     return 0;
 }
@@ -147,9 +154,12 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
     // For leveling, we merge the new run with the run on this level (there
     // will only ever be one)
     if (this->can_merge_with(new_run->get_record_count())) {
-        std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters(2);
-        iters[0] = this->runs[0]->start_scan();
-        iters[1] = new_run->start_scan();
+        std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters;
+        if (this->runs[0]) {
+            iters.push_back(this->runs[0]->start_scan());
+        }
+        
+        iters.push_back(new_run->start_scan());
         
         auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
         PageNum page_cnt = new_run->get_leaf_page_count() + this->runs[0]->get_leaf_page_count();
@@ -168,6 +178,52 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
     }
 
     // This level could not support the merge due to being at run and/or record capacity.
+    return 0;
+}
+
+
+int BTreeLevel::merge_with(BTreeLevel *level) 
+{
+    auto temp = level->merge_runs();
+    return this->merge_with(std::move(temp));
+}
+
+
+int BTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr)
+{
+    // iterator must support element count to merge it.
+    if (!sorted_itr->supports_element_count()) {
+        return 0;
+    }
+
+    if (this->can_merge_with(sorted_itr->element_count())) {
+        std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters;
+        PageNum existing_page_cnt = 0;
+        if (this->runs[0]) {
+            iters.push_back(this->runs[0]->start_scan());
+            existing_page_cnt = this->runs[0]->get_leaf_page_count();
+        }
+
+        size_t new_element_cnt = sorted_itr->element_count();
+        iters.push_back(std::move(sorted_itr));
+        
+        auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
+        size_t records_per_page = (parm::PAGE_SIZE - io::PageHeaderSize) / this->state->record_schema->record_length();
+        PageNum page_cnt = ceil((double) new_element_cnt / (double) records_per_page) + existing_page_cnt;
+
+        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->state);
+
+        // abort if the creation of the new, merged, level failed for some reason.
+        if (!new_btree) {
+            return 0;
+        }
+
+        // FIXME: will need a different approach when concurrency comes into place
+        this->truncate();
+        this->emplace_run(std::move(new_btree));
+        return 1;
+    }
+
     return 0;
 }
 

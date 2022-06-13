@@ -54,7 +54,7 @@ START_TEST(t_open_file)
     auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
-    delete buf;
+    std::free(buf);
 }
 END_TEST
 
@@ -142,7 +142,7 @@ START_TEST(t_allocate_existing)
     auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
-    delete buf;
+    std::free(buf);
 }
 END_TEST
 
@@ -230,12 +230,12 @@ START_TEST(t_write_empty)
     auto ground_truth = testing::test_page1();
 
     ck_assert_mem_eq(rbuf, ground_truth.get(), parm::PAGE_SIZE);
-    delete rbuf;
+    std::free(rbuf);
 
     rbuf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::SECTOR_SIZE);
     pread(new_file->get_fd(), rbuf, parm::SECTOR_SIZE, parm::PAGE_SIZE + parm::SECTOR_SIZE);
     ck_assert_mem_eq(rbuf, ground_truth.get(), parm::SECTOR_SIZE);
-    delete rbuf;
+    std::free(rbuf);
 
     // writing from a buffer that isn't properly aligned should result in an error
     ck_assert_int_eq(new_file->write(buf.get() + 128, parm::PAGE_SIZE, 0), 0);
@@ -289,7 +289,7 @@ START_TEST(t_read_write_existing)
     ck_assert_int_eq(new_file->read(buf, parm::PAGE_SIZE, 2*parm::PAGE_SIZE), 1);
     ck_assert_mem_eq(buf, ground_truth1.get(), parm::PAGE_SIZE);
 
-    delete buf;
+    std::free(buf);
 }
 
 
@@ -325,7 +325,7 @@ START_TEST(t_read_empty)
     new_file->reopen();
     ck_assert_int_eq(new_file->read(buf, parm::PAGE_SIZE, 0), 1);
 
-    delete buf;
+    std::free(buf);
 }
 END_TEST
 
@@ -340,7 +340,7 @@ START_TEST(t_read_existing)
     ck_assert_int_eq(new_file->read(buf, parm::PAGE_SIZE, 0), 1);
     ck_assert_mem_eq(buf, ground_truth.get(), parm::PAGE_SIZE);
 
-    delete buf;
+    std::free(buf);
 }
 END_TEST
 

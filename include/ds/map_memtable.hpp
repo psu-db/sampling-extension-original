@@ -27,7 +27,7 @@ struct MapCompareFunc {
 };
 
 
-class MapMemTable {
+class MapMemTable : public MemoryTable {
     friend class MapRecordIterator;
 
 public:
@@ -40,7 +40,7 @@ public:
      * fail because the memtable is at capacity, or because a duplicate
      * key-timestamp pair already exists within it.
      */
-    int insert(byte *key, byte *value, Timestamp time=0);
+    int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) override;
 
     /*
      * Attempts to remove a key-value pair from the memtable with a 
@@ -53,7 +53,7 @@ public:
      * this, other methods of handling deletes, such as tombstones or
      * bitmaps, do not require the use of this function.
      */
-    int remove(byte *key, byte *value, Timestamp time=0);
+    int remove(byte *key, byte *value, Timestamp time=0) override;
 
     /*
      * Attempts to retrieve a reocrd with a given key and timestamp from the
@@ -61,41 +61,41 @@ public:
      * failure. This can fail because the desired key-timestamp pair does
      * not appear within the memtable.
      */
-    io::Record get(byte *key, Timestamp time=0);
+    io::Record get(const byte *key, Timestamp time=0) override;
 
     /*
      * Returns the maximum capacity (in records) of the memtable.
      */
-    size_t get_capacity();
+    size_t get_capacity() override;
 
     /*
      * Returns the current number of stored records in the memtable
      */
-    size_t get_record_count();
+    size_t get_record_count() override;
 
     /*
      * Returns true if the memtable is full, and false if it is not.
      */
-    bool is_full();
+    bool is_full() override;
 
 
     /*
      * Deletes all records from the memtable, and frees their associated
      * memory, leaving the memtable empty.
      */
-    void truncate();
+    void truncate() override;
 
     /*
      * Create a sample range object over the memtable for use in drawing
      * samples.
      */
-    std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key);
+    std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) override;
 
     /*
      * Returns a record iterator over the memtable that produces elements in
      * sorted order.
      */
-    std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan();
+    std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() override;
 
     std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> *get_table();
 private:
@@ -108,21 +108,22 @@ private:
 
     std::vector<byte> create_key_buf(const byte *key);
     std::vector<byte> create_key_buf(io::Record record);
+    int insert_internal(io::Record record);
 };
 
 class MapRecordIterator : public iter::GenericIterator<io::Record> {
 public:
-    MapRecordIterator(const MapMemTable *table, global::g_state *state);
+    MapRecordIterator(const MapMemTable *table, size_t record_count, global::g_state *state);
     bool next() override;
     io::Record get_item() override;
     void end_scan() override;
 
     void rewind(iter::IteratorPosition /*position*/) override {}
     iter::IteratorPosition save_position() override {return 0;}
-    size_t element_count() override {return 0;}
+    size_t element_count() override {return this->element_cnt;}
 
     bool supports_rewind() override {return false;}
-    bool supports_element_count() override {return false;}
+    bool supports_element_count() override {return true;}
 
 private:
     std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator iter;
@@ -130,6 +131,7 @@ private:
 
     bool first_iteration;
     bool at_end;
+    size_t element_cnt;
     io::Record current_record;
     global::g_state *state;
 };

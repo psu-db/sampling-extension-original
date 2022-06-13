@@ -651,6 +651,15 @@ int reccmp1(const byte *a, const byte *b) {
         return 1;
     }
 
+    bool tombstone1 = ((io::RecordHeader *) a)->is_tombstone;
+    bool tombstone2 = ((io::RecordHeader *) b)->is_tombstone;
+
+    if (tombstone1 && !tombstone2) {
+        return -1;
+    } else if (tombstone2 && !tombstone1) {
+        return 1;
+    }
+
     return 0;
 }
 

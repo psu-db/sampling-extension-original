@@ -88,6 +88,12 @@ public:
     bool tombstone_exists(const byte *key, Timestamp time=0);
 
     /*
+     * Returns the newest record within this tree with the specified key, and
+     * a timestamp no greater than time.
+     */
+    Record get(const byte *key, FrameId *frid, Timestamp time=0);
+
+    /*
      * Returns an iterator over all of the records within the leaf nodes of
      * this B Tree. The iterator is not required to support rewinding, but must
      * emit records in sorted order.
@@ -127,7 +133,9 @@ public:
      * timestamp. If the newest record older than the time stamp has been deleted,
      * the record is considered deleted. Otherwise, it is considered alive.
      */
+    /*
     bool is_deleted(RecordId rid, Timestamp time=0);
+    */
 
 private:
     StaticBTreeMetaHeader *get_metapage();

@@ -10,6 +10,8 @@
 #include "io/record.hpp"
 #include "util/global.hpp"
 
+#include <cmath>
+
 #include "ds/staticbtree.hpp"
 #include "sampling/btree_samplerange.hpp"
 
@@ -101,7 +103,7 @@ public:
      * a timestamp less than or equal to the specified one, or nullptr if no
      * match is found. 
      */
-     Record get_by_key(byte *key, Timestamp time=0);
+     Record get_by_key(const byte *key, FrameId *frid, Timestamp time=0);
 
     /*
      * Perform a search for the specified key within this level and mark the

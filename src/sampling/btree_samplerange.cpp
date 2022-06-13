@@ -20,7 +20,7 @@ std::unique_ptr<SampleRange> BTreeSampleRange::create(ds::StaticBTree *btree, by
     auto stop_page = btree->get_upper_bound(upper_key);
 
     // verify that the page range is valid
-    if (stop_page.page_number < start_page.page_number || stop_page == INVALID_PID || start_page == INVALID_PID) {
+    if (stop_page.page_number < start_page.page_number || stop_page.page_number == INVALID_PNUM || start_page.page_number == INVALID_PNUM) {
         return nullptr;
     }
 
@@ -70,7 +70,7 @@ io::Record BTreeSampleRange::get(FrameId *frid)
     }
 
     auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
-    auto tkey = this->state->record_schema->get_key(record.get_data()).Int64();
+    //auto tkey = this->state->record_schema->get_key(record.get_data()).Int64();
 
     // Reject if the record selected is outside of the specified key range.
     if (this->cmp(key, this->lower_key) < 0 || this->cmp(key, this->upper_key) > 0) {
@@ -80,8 +80,9 @@ io::Record BTreeSampleRange::get(FrameId *frid)
         return io::Record();
     }
 
-    // Reject if the record select is deleted, or is a tombstone.
-    if (this->btree->is_deleted(record.get_id()) || record.is_tombstone()) {
+    // Reject if the record is a tombstone. The deletion check will be
+    // handled at the LSM Tree level.
+    if (record.is_tombstone()) {
         //fprintf(stderr, "%ld\t was sampled, but deleted.\n", tkey);
         this->state->cache->unpin(*frid);
         *frid = INVALID_FRID;

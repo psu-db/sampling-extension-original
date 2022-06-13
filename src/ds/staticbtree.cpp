@@ -249,6 +249,7 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *reco
     this->key_cmp = key_cmp;
     this->record_schema = record_schema;
     this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
+    this->fixed_length = true;
 
     this->pfile = pfile;
 
@@ -271,6 +272,7 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
     this->key_cmp = state->record_schema->get_key_cmp();
     this->record_schema = state->record_schema.get();
     this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
+    this->fixed_length = true;
 
     this->pfile = pfile;
 
@@ -293,7 +295,7 @@ PageId StaticBTree::get_lower_bound(const byte *key)
     // The leaf pages are all allocated contiguously at the start of the file,
     // so we'll know when we have a pointer to one when the pnum is no larger
     // than the last data page.
-    while (current_page >= this->last_data_page) {
+    while (current_page > this->last_data_page) {
         current_page = search_internal_node_lower(current_page, key);
     }
 
@@ -333,46 +335,15 @@ PageId StaticBTree::get_upper_bound(const byte *key)
 
 bool StaticBTree::tombstone_exists(const byte *key, Timestamp time) 
 {
-    // Because we can have duplicate keys with differing timestamps, we need to
-    // establish a range of pages over which the tombstone could be located.
-    PageId first_page = this->get_lower_bound(key);
-    PageId last_page = this->get_upper_bound(key);
+    FrameId frid;
+    auto rec = this->get(key, &frid, time);
 
-    // if the first and last page are not both defined, then the record doesn't exist within
-    // the tree, and so no tombstone is present.
-    if (first_page.page_number == INVALID_PNUM || last_page.page_number == INVALID_PNUM) {
-        return false;
-    }
-
-    // For now, I'm not going to assume that the provided comparison function necessarily sorts
-    // by timestamp, so we'll do a scan of the valid record targets.
-    Timestamp newest_tombstone = 0;
-    Timestamp newest_record = 0;
-    bool tombstone_found = false;
-
-    for (PageNum i=first_page.page_number; i<=last_page.page_number; i++) {
-        byte *page_buf;
-        auto frid = this->cache->pin(i, this->pfile, &page_buf);
-        auto sid = this->search_leaf_page(page_buf, key);
-        auto leaf_page = io::FixedlenDataPage(page_buf);
-        while (sid != INVALID_SID && sid <= leaf_page.get_max_sid() 
-          && this->key_cmp(key, this->record_schema->get_key(leaf_page.get_record(sid).get_data()).Bytes()) == 0) {
-            auto leaf_record = leaf_page.get_record(sid++);
-            auto record_time = leaf_record.get_timestamp();
-
-            if (record_time <= time) {
-                newest_record = std::max(record_time, newest_record);
-                if (leaf_record.is_tombstone()) {
-                    tombstone_found = true;
-                    newest_tombstone = std::max(record_time, newest_tombstone);
-                }
-            }
-        }
-
+    bool has_tombstone = rec.is_valid() && rec.is_tombstone();
+    if (frid != INVALID_FRID) {
         this->cache->unpin(frid);
     }
 
-    return tombstone_found && (newest_tombstone == newest_record);
+    return has_tombstone;
 }
 
 
@@ -408,6 +379,11 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
     auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
+
+    if (target_pnum < this->first_data_page || target_pnum > this->last_data_page) {
+        target_pnum = INVALID_PNUM;
+    }
+
     return target_pnum;
 }
 
@@ -433,10 +409,10 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     while (min < max) {
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(key, node_key) < 0) {
-            max = mid;
-        } else {
+        if (this->key_cmp(key, node_key) > 0) {
             min = mid + 1;
+        } else {
+            max = mid;
         }
     }
 
@@ -444,6 +420,11 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
+
+    if (target_pnum < this->first_data_page || target_pnum > this->last_data_page) {
+        target_pnum = INVALID_PNUM;
+    }
+
     return target_pnum;
 }
 
@@ -470,8 +451,11 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
         }
     }
 
-    // Check if the thing that we found matches the target. If so, we've
-    // found it. If not, the target doesn't exist on the page.
+    auto record = page.get_record(min);
+    record_key = this->record_schema->get_key(page.get_record(min).get_data()).Bytes();
+
+    // Check if the thing that we found matches the target. If so, we've found
+    // it. If not, the target doesn't exist on the page.
     if (this->key_cmp(key, record_key) == 0) {
         return min;
     }
@@ -483,6 +467,51 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
 std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
 {
     return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page);
+}
+
+
+Record StaticBTree::get(const byte *key, FrameId *frid, Timestamp time)
+{
+    // find the first page to search
+    auto pid = this->get_lower_bound(key);
+
+    byte *frame;
+    FrameId int_frid = this->cache->pin(pid, this->pfile, &frame);
+    auto sid = this->search_leaf_page(frame, key);
+
+    if (sid == INVALID_SID) {
+        this->cache->unpin(int_frid);
+        *frid = INVALID_FRID;
+        return io::Record();
+    }
+
+    auto page = io::wrap_page(frame);
+    Record rec;
+
+    do {
+        rec = page->get_record(sid);
+
+        if (rec.get_timestamp() <= time) {
+            *frid = int_frid;
+            return rec;
+        } 
+
+        if (++sid > page->get_max_sid()) {
+            this->cache->unpin(int_frid);
+
+            pid.page_number++;
+            if (pid.page_number > this->last_data_page) {
+                *frid = INVALID_FRID;
+                return io::Record();    
+            }
+
+            int_frid = this->cache->pin(pid, this->pfile, &frame);
+        }
+    } while (this->key_cmp(key, this->record_schema->get_key(rec.get_data()).Bytes()) == 0);
+
+    this->cache->unpin(int_frid);
+    *frid = INVALID_FRID;
+    return io::Record();
 }
 
 
@@ -517,9 +546,11 @@ catalog::KeyCmpFunc StaticBTree::get_key_cmp()
 
 
 // TODO: Implement bitmap for deletion tracking
+/*
 bool StaticBTree::is_deleted(RecordId rid, Timestamp time) 
 {
     return false;
 }
+*/
 
 }}

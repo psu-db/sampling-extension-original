@@ -144,7 +144,7 @@ START_TEST(t_write)
     ck_assert_mem_eq(buf + io::PageHeaderSize, data2.get() + io::PageHeaderSize, parm::PAGE_SIZE - io::PageHeaderSize);
 
     delete pfile;
-    delete buf;
+    std::free(buf);
 }
 END_TEST
 

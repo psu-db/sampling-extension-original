@@ -140,13 +140,6 @@ START_TEST(t_sample_range)
 END_TEST
 
 
-START_TEST(t_scan)
-{
-
-}
-END_TEST
-
-
 Suite *unit_testing()
 {
     Suite *unit = suite_create("Level Unit Testing");

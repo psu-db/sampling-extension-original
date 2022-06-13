@@ -19,6 +19,7 @@ namespace lsm { namespace catalog {
 
 typedef std::function<int(const byte* item1, const byte* item2)> RecordCmpFunc;
 typedef std::function<int(const byte* item1, const byte* item2)> KeyCmpFunc;
+typedef std::function<int(const byte* item1, const byte* item2)> ValCmpFunc;
 
 class FixedKVSchema {
 public:
