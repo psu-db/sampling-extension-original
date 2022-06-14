@@ -211,7 +211,7 @@ int LinkPagedFile::initialize(DirectFile *dfile, FileId flid)
 {
     if (dfile->allocate(parm::PAGE_SIZE)) {
         #ifdef NO_BUFFER_MANAGER
-        std::unique_ptr<byte> page = std::unique_ptr<byte>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE));
+        auto page = std::unique_ptr<byte, decltype(&free)>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE), &free);
 
         LinkPagedFileHeaderData *header = (LinkPagedFileHeaderData *) page.get();
         #endif

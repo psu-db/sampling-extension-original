@@ -381,7 +381,7 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
     }
 
     auto index_record = page.get_record(min);
-    auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
+    PageNum target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
 
@@ -422,7 +422,7 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     }
 
     auto index_record = page.get_record(min);
-    auto target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
+    PageNum target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
 

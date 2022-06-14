@@ -64,7 +64,7 @@ bool Record::is_valid()
 void Record::free_data()
 {
     if (this->data_ref) {
-        delete this->get_data();
+        delete[] this->get_data();
     }
 
     this->data_ref = nullptr;

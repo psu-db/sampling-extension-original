@@ -32,7 +32,7 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
         return 1;
     }
 
-    delete record_buffer;
+    delete[] record_buffer;
     return 0;
 }
 

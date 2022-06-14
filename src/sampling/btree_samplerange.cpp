@@ -39,6 +39,9 @@ std::unique_ptr<SampleRange> BTreeSampleRange::create(ds::StaticBTree *btree, by
         state->cache->unpin(frid);
 
         record_count = (stop_page.page_number - start_page.page_number - 1) * records_per_page + record_for_last_page;
+    } else {
+        // unsupported
+        return nullptr;
     }
 
     return std::unique_ptr<BTreeSampleRange>(new BTreeSampleRange(btree, start_page.page_number, lower_key, stop_page.page_number, upper_key, record_count, state));
@@ -103,13 +106,13 @@ size_t BTreeSampleRange::length()
 
 Record BTreeSampleRange::get_random_record(FrameId *frid)
 {
-    auto pnum = this->start_page + gsl_rng_uniform_int(this->state->rng, this->range_len + 1);
+    auto pnum = this->start_page + gsl_rng_uniform_int(this->state->rng, this->range_len);
 
     byte *frame_ptr;
     *frid = this->state->cache->pin(pnum, btree->get_pfile(), &frame_ptr);
     auto page = io::wrap_page(frame_ptr);
 
-    SlotId sid = 1 + gsl_rng_uniform_int(this->state->rng, page->get_max_sid() + 1);
+    SlotId sid = 1 + gsl_rng_uniform_int(this->state->rng, page->get_max_sid());
 
     auto rec =  page->get_record(sid);
 

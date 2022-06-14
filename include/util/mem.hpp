@@ -15,8 +15,8 @@ inline byte *page_alloc_raw(PageNum page_cnt=1) {
     return (byte *) std::aligned_alloc(parm::SECTOR_SIZE, page_cnt*parm::PAGE_SIZE);
 }
 
-inline std::unique_ptr<byte> page_alloc(PageNum page_cnt=1) {
-    return std::unique_ptr<byte>(page_alloc_raw(page_cnt));
+inline std::unique_ptr<byte, decltype(&free)> page_alloc(PageNum page_cnt=1) {
+    return std::unique_ptr<byte, decltype(&free)>(page_alloc_raw(page_cnt), &free);
 }
 
 }}

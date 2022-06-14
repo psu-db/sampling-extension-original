@@ -76,8 +76,8 @@ public:
      * lengths of the provided key and value must match the requirements of the schema, or
      * the output is not defined. This version returns a unique_ptr.
      */
-    std::unique_ptr<byte> create_record(const byte *key, const byte *val) {
-        return std::unique_ptr<byte>(this->create_record_raw(key, val));
+    std::unique_ptr<byte[]> create_record(const byte *key, const byte *val) {
+        return std::unique_ptr<byte[]>(this->create_record_raw(key, val));
     }
 
     /*
