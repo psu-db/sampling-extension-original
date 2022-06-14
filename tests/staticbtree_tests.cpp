@@ -439,7 +439,6 @@ Suite *unit_testing()
 {
     Suite *unit = suite_create("Static BTree Unit Testing");
 
-    /*
     TCase *init = tcase_create("lsm::ds::StaticBTree::initialize");
     tcase_add_test(init, t_initialize);
 
@@ -465,7 +464,6 @@ Suite *unit_testing()
     tcase_set_timeout(iter, 100);
 
     suite_add_tcase(unit, iter);
-    */
 
 
     TCase *get = tcase_create("lsm::ds::StaticBTree::get");
