@@ -33,7 +33,7 @@ public:
      */
     virtual size_t length() = 0;
 
-    ~SampleRange() = default;
+    virtual ~SampleRange() = default;
 };
 
 }}

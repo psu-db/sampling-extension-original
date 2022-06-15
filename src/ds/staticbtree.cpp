@@ -281,6 +281,8 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
 
     this->pfile = pfile;
 
+    this->state = state;
+
     byte *frame_ptr;
     auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);
     this->root_page = ((StaticBTreeMetaHeader *) frame_ptr)->root_node;
@@ -291,6 +293,17 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
     frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
     this->rec_cnt = ((StaticBTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
     this->cache->unpin(frame_id);
+}
+
+
+StaticBTree::~StaticBTree()
+{
+    // FIXME: I'm leaking btrees without closing their underlying files
+    // somewhere while growing the tree. This fixes the problem for now.
+    if (this->state) {
+        auto flid = this->pfile->get_flid();
+        this->state->file_manager->close_file(flid);
+    }
 }
 
 

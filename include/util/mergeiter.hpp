@@ -57,7 +57,7 @@ public:
 
     void end_scan() override;
 
-    ~MergeIterator();
+    ~MergeIterator() override;
 private:
     struct HeapCompareFunc {
         catalog::RecordCmpFunc rec_cmp;

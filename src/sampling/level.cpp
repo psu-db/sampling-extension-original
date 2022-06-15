@@ -116,7 +116,7 @@ void BTreeLevel::truncate()
         if (this->runs[i]) {
             auto pfile = this->runs[i]->get_pfile();
             this->runs[i] = nullptr;
-            this->state->file_manager->close_file(pfile->get_flid());
+            this->state->file_manager->remove_file(pfile->get_flid());
         }
     }
 

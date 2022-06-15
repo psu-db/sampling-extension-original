@@ -59,7 +59,7 @@ public:
     bool supports_element_count() override;
 
     void end_scan() override;
-    ~IndexPagedFilePageIterator();
+    ~IndexPagedFilePageIterator() override;
 private:
     IndexPagedFile *pfile;
     PageNum current_pnum;
@@ -101,7 +101,7 @@ public:
 
     void end_scan() override;
 
-    ~IndexPagedFileRecordIterator();
+    ~IndexPagedFileRecordIterator() override;
 private:
     Record current_record;
 
@@ -257,10 +257,8 @@ private:
     void flush_metadata();
     IndexPagedFileHeaderData header_data;
 
-    #ifdef NO_BUFFER_MANAGER
     void flush_buffer(PageNum pnum);
-    std::unique_ptr<byte> buffer;
-    #endif
+    std::unique_ptr<byte, decltype(&free)> buffer = std::unique_ptr<byte, decltype(&free)>(nullptr, &free);
 };
 
 }}

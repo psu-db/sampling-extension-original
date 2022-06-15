@@ -121,10 +121,8 @@ IndexPagedFile::~IndexPagedFile()
 int IndexPagedFile::initialize(DirectFile *dfile, FileId flid)
 {
     if (dfile->allocate(parm::PAGE_SIZE)) {
-        #ifdef NO_BUFFER_MANAGER
         auto page = std::unique_ptr<byte, decltype(&free)>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE), &free);
 
-        #endif
 
         PagedFile::initialize_pagedfile(page.get(), flid);
 
@@ -143,12 +141,10 @@ int IndexPagedFile::initialize(DirectFile *dfile, FileId flid)
 IndexPagedFile::IndexPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_file)
 : PagedFile(std::move(dfile), is_temp_file, false, PageAllocSupport::BULK, true)
 {
-    #ifdef NO_BUFFER_MANAGER
-    this->buffer = std::unique_ptr<byte>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE));
+    this->buffer = std::unique_ptr<byte, decltype(&free)>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE), &free);
     auto offset = PagedFile::pnum_to_offset(IndexPagedFile::header_page_pnum);
     this->dfile->read(this->buffer.get(), parm::PAGE_SIZE, offset);
     memcpy(&this->header_data, buffer.get(), sizeof(header_data));
-    #endif
 
     this->dfile_ptr = this->dfile.get();
 }
@@ -157,12 +153,10 @@ IndexPagedFile::IndexPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_f
 IndexPagedFile::IndexPagedFile(DirectFile *dfile, bool is_temp_file)
 : PagedFile(dfile, is_temp_file, false, PageAllocSupport::BULK, true)
 {
-    #ifdef NO_BUFFER_MANAGER
-    this->buffer = std::unique_ptr<byte>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE));
+    this->buffer = std::unique_ptr<byte, decltype(&free)>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE), &free);
     auto offset = PagedFile::pnum_to_offset(IndexPagedFile::header_page_pnum);
     this->dfile_ptr->read(this->buffer.get(), parm::PAGE_SIZE, offset);
     memcpy(&this->header_data, buffer.get(), sizeof(header_data));
-    #endif
 }
 
 

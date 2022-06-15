@@ -25,6 +25,8 @@ public:
     virtual bool supports_element_count() = 0;
 
     virtual void end_scan() = 0;
+
+    virtual ~GenericIterator() = default;
 };
 
 }

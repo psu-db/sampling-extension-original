@@ -34,6 +34,8 @@ public:
 
     MapMemTable(size_t capacity, global::g_state *state);
 
+    ~MapMemTable() override;
+
     /*
      * Attempts to insert a key-value pair into the memtable with a given
      * timestamp. Will return 1 on success and 0 on failure. The insert can
@@ -114,6 +116,7 @@ private:
 class MapRecordIterator : public iter::GenericIterator<io::Record> {
 public:
     MapRecordIterator(const MapMemTable *table, size_t record_count, global::g_state *state);
+    ~MapRecordIterator() override = default;
     bool next() override;
     io::Record get_item() override;
     void end_scan() override;

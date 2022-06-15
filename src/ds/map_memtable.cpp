@@ -17,6 +17,12 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 }
 
 
+MapMemTable::~MapMemTable() 
+{
+    this->truncate();
+}
+
+
 int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone) 
 {
     if (this->is_full()) {
@@ -143,7 +149,7 @@ io::Record MapMemTable::get(const byte *key, Timestamp time)
 void MapMemTable::truncate()
 {
     for (auto rec : this->table) {
-        delete rec.second;
+        delete[] rec.second;
     }
 
     this->table.clear();

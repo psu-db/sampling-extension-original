@@ -67,6 +67,10 @@ public:
 
     StaticBTree(io::IndexPagedFile *pfile, global::g_state *state); 
 
+    StaticBTree() = default;
+
+    ~StaticBTree();
+
     /*
      * Returns the first leaf page pid within the tree that contains a key greater than
      * or equal to the specified boundary key. Returns INVALID_PID if no pages
@@ -141,6 +145,7 @@ private:
     StaticBTreeMetaHeader *get_metapage();
 
     io::IndexPagedFile *pfile;
+    global::g_state *state;
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
     catalog::KeyCmpFunc key_cmp;

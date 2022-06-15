@@ -207,6 +207,20 @@ void FileManager::close_file(FileId flid)
 }
 
 
+void FileManager::remove_file(FileId flid)
+{
+    auto dfile = this->get_dfile(flid);
+
+    if (dfile) {
+        dfile->close_file();
+        dfile->remove();
+    }
+
+    this->dfile_map.erase(flid);
+    this->pfile_map.erase(flid);
+}
+
+
 void FileManager::close_file(DirectFile *dfile)
 {
     auto flid = this->get_flid(dfile->get_fname());

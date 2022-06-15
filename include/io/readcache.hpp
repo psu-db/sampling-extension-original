@@ -95,7 +95,7 @@ public:
      */
     byte *get_frame_ptr(FrameId frid);
 private:
-    std::unique_ptr<byte> frame_data;
+    std::unique_ptr<byte, decltype(&free)> frame_data = std::unique_ptr<byte, decltype(&free)>(nullptr, &free);
     std::vector<FrameMeta> metadata;
     std::unordered_map<PageId, FrameId, PageIdHash> frame_map;
 

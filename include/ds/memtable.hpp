@@ -28,6 +28,8 @@ public:
     virtual std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) = 0;
     virtual std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() = 0;
 
+    virtual ~MemoryTable() = default;
+
 private:
 };
 

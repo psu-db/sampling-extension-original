@@ -102,6 +102,9 @@ class FileManager { public:
     void close_file(PagedFile *pfile);
 
 
+    void remove_file(FileId flid);
+
+
     /*
      * Returns the path to the metadata file used by this manager. It will
      * match the one passed into the constructor, if one were provided.

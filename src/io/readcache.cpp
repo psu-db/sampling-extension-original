@@ -11,11 +11,12 @@ namespace lsm { namespace io {
 
 ReadCache::ReadCache(size_t frame_capacity)
 {
-    this->frame_data = std::unique_ptr<byte>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE * frame_capacity));
+    this->frame_data = std::unique_ptr<byte, decltype(&free)>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE * frame_capacity), &free);
     this->metadata = std::vector<FrameMeta>(frame_capacity);
     this->frame_map = std::unordered_map<PageId, FrameId, PageIdHash>();
     this->frame_cap = frame_capacity;
     this->frame_cnt = 0;
+    this->clock_hand = 0;
 }
 
 
