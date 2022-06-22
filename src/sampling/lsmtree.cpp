@@ -264,6 +264,100 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
 }
 
 
+std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, 
+                                           size_t *attempts, long *buffer_time, long *bounds_time, long *walker_time,
+                                           long *sample_time)
+{
+    auto sample = std::make_unique<Sample>(sample_size);
+    std::vector<std::unique_ptr<SampleRange>> ranges;
+    size_t total_elements = 0;
+
+    size_t rej = 0;
+    size_t atmpts = 0;
+
+    auto buffer_proc_start = std::chrono::high_resolution_clock::now();
+    auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
+    if (memtable_range) {
+        total_elements += memtable_range->length();
+        ranges.emplace_back(std::move(memtable_range));
+    }
+    auto buffer_proc_stop = std::chrono::high_resolution_clock::now();
+
+    auto bounds_start = std::chrono::high_resolution_clock::now();
+    for (auto &level : this->levels) {
+        auto level_ranges = level->get_sample_ranges(start_key, stop_key);
+        for (auto &range : level_ranges) {
+            total_elements += range->length();
+            ranges.emplace_back(std::move(range));
+        }
+    }
+    auto bounds_stop = std::chrono::high_resolution_clock::now();
+
+    if (total_elements == 0) {
+        return nullptr;
+    }
+
+    auto walker_start = std::chrono::high_resolution_clock::now();
+    std::vector<double> weights(ranges.size());
+    for (size_t i=0; i<ranges.size(); i++) {
+        weights[i] = (double) ranges[i]->length() / (double) total_elements;
+    }
+
+    walker::AliasStructure alias(&weights, this->state->rng);
+    auto walker_stop = std::chrono::high_resolution_clock::now();
+
+    auto sample_start = std::chrono::high_resolution_clock::now();
+    size_t i=0;
+    while (i < sample_size) {
+        size_t range = alias.get();
+
+        // If the sample range resides on disk, a page will
+        // need to be pinned in the cache. For memory safety,
+        // we pass the pinned FrameId back to here, and unpin
+        // it later, once the record has been copied into the
+        // sample.
+        FrameId frid;
+        auto record = ranges[range]->get(&frid);
+
+        if (record.is_valid() && !this->is_deleted(record)) {
+            sample->add_record(record);
+            i++;
+        } else {
+            rej++;
+        }
+
+        atmpts++;
+
+        // Adding a record to the sample makes a deep copy of
+        // it, so it is now safe to unpin the page it was drawn
+        // from.
+        if (frid != INVALID_FRID) {
+            this->state->cache->unpin(frid);
+        }
+
+        if (atmpts > 5 * sample_size && rej == atmpts) {
+            // assume nothing in the sample range
+            return nullptr;
+        }
+    }
+    auto sample_stop = std::chrono::high_resolution_clock::now();
+
+    *rejections = rej;
+    *attempts = atmpts;
+
+    auto buffer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(buffer_proc_stop - buffer_proc_start).count();
+    auto bounds_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(bounds_stop - bounds_start).count();
+    auto walker_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(walker_stop - walker_start).count();
+    auto sample_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
+
+    (*walker_time) += walker_duration;
+    (*bounds_time) += bounds_duration;
+    (*buffer_time) += buffer_duration;
+    (*sample_time) += sample_duration;
+
+    return sample;
+}
+
 bool LSMTree::is_deleted(io::Record record)
 {
     auto key = this->state->record_schema->get_key(record.get_data()).Bytes();

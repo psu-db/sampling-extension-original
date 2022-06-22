@@ -40,23 +40,38 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%ld\n", per_insert);
 
     size_t sample_size = 1000;
-    size_t sample_total = 0;
+    size_t trials = 1000;
 
-    for (size_t i=0; i<1000; i++) {
+    size_t total_rej = 0;
+    size_t total_attempt = 0;
+    long total_buffer = 0;
+    long total_bounds = 0;
+    long total_walker = 0;
+    long total_sample = 0;
+
+    for (size_t i=0; i<trials; i++) {
         int64_t first = gsl_rng_uniform_int(rng, 10*data_size);
         int64_t second = gsl_rng_uniform_int(rng, 10*data_size);
 
         int64_t lower = std::min(first, second);
         int64_t upper = std::max(first, second);
 
-        auto sample_start = std::chrono::high_resolution_clock::now();
-        auto sample = tree->range_sample((std::byte*) &lower, (std::byte*) &upper, sample_size);
-        auto sample_stop = std::chrono::high_resolution_clock::now();
+        size_t rej = 0;
+        size_t attempt = 0;
+        long buffer_t = 0;
+        long bounds_t = 0;
+        long walker_t = 0;
+        long sample_t = 0;
 
-        sample_total += std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
+        auto sample = tree->range_sample_bench((std::byte*) &lower, (std::byte*) &upper, sample_size, &rej, &attempt, &buffer_t, &bounds_t, &walker_t, &sample_t);
+
+        total_rej += rej;
+        total_attempt += attempt;
+        total_buffer += buffer_t;
+        total_bounds += bounds_t;
+        total_walker += walker_t;
+        total_sample += sample_t;
     }
 
-    size_t per_sample = sample_total / 1000;
-
-    fprintf(stderr, "%ld\n", per_sample);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld\n", total_rej / trials, total_attempt / trials, total_buffer / trials, total_bounds / trials, total_walker / trials, total_sample / trials);
 }
