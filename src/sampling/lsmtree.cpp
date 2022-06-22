@@ -190,6 +190,9 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
     std::vector<std::unique_ptr<SampleRange>> ranges;
     size_t total_elements = 0;
 
+    size_t rej = 0;
+    size_t atmpts = 0;
+
     auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
     if (memtable_range) {
         total_elements += memtable_range->length();
@@ -231,14 +234,10 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
             sample->add_record(record);
             i++;
         } else {
-           if (rejections) {
-                (*rejections)++;
-            } 
+            rej++;
         }
 
-        if (attempts) {
-            (*attempts)++;
-        }
+        atmpts++;
 
         // Adding a record to the sample makes a deep copy of
         // it, so it is now safe to unpin the page it was drawn
@@ -246,6 +245,19 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         if (frid != INVALID_FRID) {
             this->state->cache->unpin(frid);
         }
+
+        if (atmpts > 5 * sample_size && rej == atmpts) {
+            // assume nothing in the sample range
+            return nullptr;
+        }
+    }
+
+    if (rejections) {
+        *rejections = rej;
+    }
+
+    if (attempts) {
+        *attempts = atmpts;
     }
 
     return sample;
