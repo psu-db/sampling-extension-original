@@ -210,6 +210,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
                 output_page = io::FixedlenDataPage(output_buf.get());
                 output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
                 output_header->prev_sibling = current_output_pid.page_number;
+                output_header->next_sibling = INVALID_PNUM;
                 output_header->leaf_rec_cnt = ((StaticBTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
 
                 output_page.insert_record(key_record);
@@ -221,9 +222,6 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
                 break;
             }
 
-            if (input_header->next_sibling < first_internal) {
-                fprintf(stderr, "HERE!\n");
-            }
             current_pnum = input_header->next_sibling;
 
             pfile->read_page(current_pnum, input_buf.get());
