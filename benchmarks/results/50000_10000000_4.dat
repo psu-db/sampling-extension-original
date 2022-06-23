@@ -1,0 +1,3 @@
+rejections attempts memtable_time boundary_time walker_time sample_time
+0 1000 311700 1913 65 542205
+0 1000 311312 1941 71 543997
