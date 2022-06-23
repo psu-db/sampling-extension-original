@@ -46,6 +46,7 @@ MapMemTableSampleRange::MapMemTableSampleRange(
 io::Record MapMemTableSampleRange::get(FrameId *frid)
 {
     auto record = this->get_random_record();
+    *frid = INVALID_FRID;
 
     if (!record.is_valid()) {
         //fprintf(stderr, "invalid frid or record\n");
@@ -56,7 +57,6 @@ io::Record MapMemTableSampleRange::get(FrameId *frid)
     if (record.is_tombstone()) {
         //fprintf(stderr, "%ld\t was sampled, but deleted.\n", tkey);
         this->state->cache->unpin(*frid);
-        *frid = INVALID_FRID;
         return io::Record();
     }
 

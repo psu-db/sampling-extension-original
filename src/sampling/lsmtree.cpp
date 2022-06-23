@@ -227,7 +227,7 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         // we pass the pinned FrameId back to here, and unpin
         // it later, once the record has been copied into the
         // sample.
-        FrameId frid;
+        FrameId frid = INVALID_FRID;
         auto record = ranges[range]->get(&frid);
 
         if (record.is_valid() && !this->is_deleted(record)) {
