@@ -6,6 +6,7 @@
 #define H_LSMTREE
 
 #include <map>
+#include <chrono>
 
 #include "util/global.hpp"
 #include "io/record.hpp"
@@ -92,6 +93,9 @@ public:
      */
     std::unique_ptr<Sample> range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections=nullptr, size_t *attempts=nullptr);
 
+    std::unique_ptr<Sample> range_sample_bench(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, 
+                                               size_t *attempts, long *buffer_time, long *bounds_time, long *walker_time,
+                                               long *sample_time);
     /*
      * Return the number of levels within the tree. Note that not all of these
      * are necessarily populated, but the returned number is guaranteed to be
