@@ -10,13 +10,14 @@
 int main(int argc, char **argv) {
 
     if (argc < 3) {
-        fprintf(stderr, "first_bench <record_count> <memtable_size> <scale_factor>\n");
+        fprintf(stderr, "delete_bench <record_count> <memtable_size> <scale_factor>\n");
         exit(EXIT_FAILURE);
     }
 
     size_t data_size = atoi(argv[1]);
     size_t memtable_size = atoi(argv[2]);
     size_t scale_factor = atoi(argv[3]);
+    double delete_prop = atof(argv[4]);
 
     auto state = lsm::bench::bench_state();
     auto test_data = lsm::bench::random_unique_keys(data_size, 10*data_size, state.get());
@@ -25,12 +26,19 @@ int main(int argc, char **argv) {
 
     auto tree = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state));
 
-    // load up the tree
-    
+    // load up the tree, including deleting some elements
+
     auto insert_start = std::chrono::high_resolution_clock::now();
     int64_t value = 0;
+    lsm::Timestamp time = 1;
     for (size_t i=0; i<data_size; i++) {
-        tree->insert((std::byte*) &test_data[i], (std::byte*) &value);
+        auto op = gsl_rng_uniform(rng);
+        if (op > delete_prop || i < memtable_size) {
+            tree->insert((std::byte*) &test_data[i], (std::byte*) &value, time++);
+        } else {
+            auto idx = gsl_rng_uniform_int(rng, i-1);
+            tree->remove((std::byte *) &test_data[idx], (std::byte*) &value, time++);
+        }
     }
     auto insert_stop = std::chrono::high_resolution_clock::now();
 
