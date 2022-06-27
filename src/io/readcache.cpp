@@ -17,6 +17,7 @@ ReadCache::ReadCache(size_t frame_capacity)
     this->frame_cap = frame_capacity;
     this->frame_cnt = 0;
     this->clock_hand = 0;
+    this->misses = 0;
 }
 
 
@@ -98,6 +99,8 @@ FrameId ReadCache::find_frame_to_evict()
 
 int ReadCache::load_page(PageId pid, FrameId frid, PagedFile *pfile) 
 {
+    this->misses++;
+
     auto res = pfile->read_page(pid.page_number, this->get_frame(frid));
 
     if (res == 0) {
@@ -129,6 +132,18 @@ byte *ReadCache::get_frame_ptr(FrameId frid)
     }
 
     return this->get_frame(frid);
+}
+
+
+size_t ReadCache::cache_misses()
+{
+    return this->misses;
+}
+
+
+void ReadCache::reset_miss_counter()
+{
+    this->misses = 0;
 }
 
 }}

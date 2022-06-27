@@ -23,6 +23,8 @@ int main(int argc, char **argv) {
     auto state = lsm::bench::bench_state();
     auto test_data = lsm::bench::random_unique_keys(data_size, 10*data_size, state.get());
 
+    auto state_ptr = state.get();
+
     auto rng = state->rng;
 
     auto tree = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state));
@@ -82,5 +84,7 @@ int main(int argc, char **argv) {
         total_rejection += reject_t;
     }
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n", data_size, tree->depth(), sample_size, per_insert, total_rej / trials, total_attempt / trials, total_buffer / trials, total_bounds / trials, total_walker / trials, total_sample / trials, total_rejection / trials);
+    size_t avg_cache_miss = state_ptr->cache->cache_misses() / trials;
+
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n", data_size, tree->depth(), sample_size, per_insert, total_rej / trials, total_attempt / trials, avg_cache_miss, total_buffer / trials, total_bounds / trials, total_walker / trials, total_sample / trials, total_rejection / trials);
 }

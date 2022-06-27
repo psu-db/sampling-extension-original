@@ -94,6 +94,18 @@ public:
      * nullptr instead.
      */
     byte *get_frame_ptr(FrameId frid);
+
+    /*
+     * Returns the number of misses in the cache since either object construction,
+     * or the last call to reset_miss_counter().
+     */
+    size_t cache_misses();
+
+    /*
+     * Resets the count of cache misses to 0.
+     */
+    void reset_miss_counter();
+
 private:
     std::unique_ptr<byte, decltype(&free)> frame_data = std::unique_ptr<byte, decltype(&free)>(nullptr, &free);
     std::vector<FrameMeta> metadata;
@@ -102,6 +114,8 @@ private:
     FrameId frame_cnt;
     FrameId frame_cap;
     FrameId clock_hand;
+
+    size_t misses;
 
     /*
      * Internal version of get_frame_ptr without any error checking. Calling
