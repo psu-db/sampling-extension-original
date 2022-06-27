@@ -275,7 +275,7 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
 
 std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, 
                                            size_t *attempts, long *buffer_time, long *bounds_time, long *walker_time,
-                                           long *sample_time)
+                                           long *sample_time, long *rejection_time)
 {
     auto sample = std::make_unique<Sample>(sample_size);
     std::vector<std::unique_ptr<SampleRange>> ranges;
@@ -315,9 +315,11 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     walker::AliasStructure alias(&weights, this->state->rng);
     auto walker_stop = std::chrono::high_resolution_clock::now();
 
-    auto sample_start = std::chrono::high_resolution_clock::now();
+    long total_rejection = 0;
+    long total_sample = 0;
     size_t i=0;
     while (i < sample_size) {
+        auto sample_start = std::chrono::high_resolution_clock::now();
         size_t range = alias.get();
 
         // If the sample range resides on disk, a page will
@@ -327,7 +329,9 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
         // sample.
         FrameId frid;
         auto record = ranges[range]->get(&frid);
+        auto sample_stop = std::chrono::high_resolution_clock::now();
 
+        auto rejection_start = std::chrono::high_resolution_clock::now();
         if (record.is_valid() && !this->is_deleted(record)) {
             sample->add_record(record);
             i++;
@@ -336,6 +340,10 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
         }
 
         atmpts++;
+        auto rejection_stop = std::chrono::high_resolution_clock::now();
+
+        total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
+        total_rejection += std::chrono::duration_cast<std::chrono::nanoseconds>(rejection_stop - rejection_start).count();
 
         // Adding a record to the sample makes a deep copy of
         // it, so it is now safe to unpin the page it was drawn
@@ -349,7 +357,6 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
             return nullptr;
         }
     }
-    auto sample_stop = std::chrono::high_resolution_clock::now();
 
     *rejections = rej;
     *attempts = atmpts;
@@ -357,12 +364,12 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     auto buffer_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(buffer_proc_stop - buffer_proc_start).count();
     auto bounds_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(bounds_stop - bounds_start).count();
     auto walker_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(walker_stop - walker_start).count();
-    auto sample_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
 
     (*walker_time) += walker_duration;
     (*bounds_time) += bounds_duration;
     (*buffer_time) += buffer_duration;
-    (*sample_time) += sample_duration;
+    (*sample_time) += total_sample;
+    (*rejection_time) += total_rejection;
 
     return sample;
 }
