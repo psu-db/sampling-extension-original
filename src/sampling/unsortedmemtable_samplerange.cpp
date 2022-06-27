@@ -10,7 +10,6 @@ UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>
                                                          const byte *lower_key, const byte *upper_key, global::g_state *state)
 {
     this->state = state;
-    auto iter = begin;
     auto key_cmp = state->record_schema->get_key_cmp();
     for (auto iter=begin; iter<end; iter++) {
         io::Record rec = *iter;

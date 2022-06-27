@@ -16,6 +16,7 @@
 #include "ds/memtable.hpp"
 #include "ds/walker.hpp"
 #include "ds/map_memtable.hpp"
+#include "ds/unsorted_memtable.hpp"
 
 namespace lsm { namespace sampling {
 
@@ -35,7 +36,8 @@ public:
                                        std::unique_ptr<global::g_state> state,
                                        merge_policy policy=LEVELING,
                                        bool bloom_filters=false, bool range_filters=false, 
-                                       double max_deleted_proportion=1.0);
+                                       double max_deleted_proportion=1.0,
+                                       bool unsorted_memtable=false);
 
     /*
      * Open an already existing LSMTree index from disk and return
@@ -138,7 +140,8 @@ private:
             std::unique_ptr<global::g_state> state,
            merge_policy policy=LEVELING,
            bool bloom_filters=false, bool range_filters=false, 
-           double max_deleted_proportion=1.0);
+           double max_deleted_proportion=1.0,
+           bool unsorted_memtable=false);
 
     void merge_memtable();
     size_t grow();

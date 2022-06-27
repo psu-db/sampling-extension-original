@@ -156,10 +156,6 @@ START_TEST(t_bulk_erase)
     for (size_t i=0; i < 10000; i++) {
         FrameId frid;
         auto rec = lsm->get((byte*) &key, &frid);
-        if (rec.is_valid()) {
-            auto rec_key = lsm->schema()->get_key(rec.get_data()).Int64();
-            fprintf(stderr, "%ld\n", rec_key);
-        }
         ck_assert_int_eq(rec.is_valid(), 0);
         key++;
         value++;
@@ -243,6 +239,60 @@ START_TEST(t_range_sample_with_erase)
 END_TEST
 
 
+START_TEST(t_unsorted_sample_with_erase)
+{
+    auto state = testing::make_state1();
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING,
+                                         false, false, 1.0, true);
+
+    int64_t key = 550;
+    int64_t value = 10;
+
+    for (size_t i=0; i < 10000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value), 1);
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 10 + 800;
+    for (size_t i=0; i < 500; i++) {
+        ck_assert_int_eq(lsm->remove((byte*) &key, (byte*) &value), 1);
+        key++;
+        value++;
+    }
+
+    key = 250;
+    for (size_t i=0; i < 500; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value), 1);
+        key++;
+        value++;
+    }
+
+    int64_t start = 300;
+    int64_t stop = 2000;
+
+    size_t rejs = 0;
+    size_t atmpts = 0;
+
+    size_t sample_size = 1000;
+    auto result = lsm->range_sample((byte *) &start, (byte *) &stop, sample_size, &rejs, &atmpts);
+
+    ck_assert_ptr_nonnull(result.get());
+    ck_assert_int_eq(result->sample_size(), sample_size);
+    auto schema = lsm->schema();
+
+    for (size_t i=0; i<result->sample_size(); i++) {
+        auto rec = result->get(i);
+        auto sample_key = schema->get_key(rec.get_data()).Int64();
+
+        ck_assert_int_ge(sample_key, start);
+        ck_assert_int_le(sample_key, stop);
+        ck_assert(sample_key < 550 + 800 || sample_key > 550 + 800 + 500);
+    }
+}
+END_TEST
+
 
 Suite *unit_testing()
 {
@@ -263,6 +313,7 @@ Suite *unit_testing()
     TCase *sampling = tcase_create("lsm::sampling::LSMTree::range_sample Testing");
     tcase_add_test(sampling, t_range_sample);
     tcase_add_test(sampling, t_range_sample_with_erase);
+    tcase_add_test(sampling, t_unsorted_sample_with_erase);
 
     suite_add_tcase(unit, sampling);
 

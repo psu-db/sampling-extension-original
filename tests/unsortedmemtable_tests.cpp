@@ -187,7 +187,6 @@ START_TEST(t_sample_range)
         ck_assert_int_ge(range_key, start_key);
         ck_assert_int_le(range_key, stop_key);
         ck_assert_int_eq(frid, INVALID_FRID);
-        fprintf(stderr, "%ld\n", range_key);
     }
 }
 END_TEST

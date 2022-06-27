@@ -9,7 +9,6 @@ namespace lsm { namespace ds {
 UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state)
 {
     this->table = std::vector<io::Record>(capacity);
-    this->tombstone_table = std::vector<io::Record>(.1 * capacity);
 
     this->state = state;
     this->current_tail = 0;
@@ -18,18 +17,18 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state)
 }
 
 
+UnsortedMemTable::~UnsortedMemTable()
+{
+    this->truncate();
+}
+
+
 int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
 {
     auto idx = this->get_index();
-    ssize_t tombstone_idx;
 
     // there is no room left for the insert
     if (idx == -1) {
-        return 0;
-    }
-
-    // we are inserting a tombstone and the tombstone reference table is full
-    if (tombstone && (tombstone_idx = this->get_tombstone_index()) == -1) {
         return 0;
     }
 
@@ -38,15 +37,11 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
 
     this->table[idx] = record;
 
-    if (tombstone) {
-        this->tombstone_table[tombstone_idx] = record;
-    }
-
     return 1;
 }
 
 
-int UnsortedMemTable::remove(byte *key, byte *value, Timestamp time)
+int UnsortedMemTable::remove(byte * /*key*/, byte * /*value*/, Timestamp /*time*/)
 {
     return 0;
 }
@@ -96,12 +91,9 @@ void UnsortedMemTable::truncate()
 
     // free the memory associated with all the records in
     // the memtable
-    for (size_t i=0; i<upper_bound; i++) {
+    for (size_t i=0; i<(size_t)upper_bound; i++) {
         this->table[i].free_data();
     }
-
-    // empty the pointers from the memtable
-    this->table.clear();
 
     // reset the tail index
     this->current_tail = 0;
@@ -111,8 +103,6 @@ void UnsortedMemTable::truncate()
     // tombstone record in the main table, so the memory for them has 
     // already been freed by the above. We just need to clear out the
     // pointers.
-    this->tombstone_table.clear();
-    this->current_tombstone_tail = 0;
 }
 
 
@@ -134,7 +124,7 @@ ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
     Timestamp current_best_time = 0;
 
     ssize_t upper_bound = this->get_record_count() - 1;
-    for (size_t i=0; i<=upper_bound; i++) {
+    for (size_t i=0; i<=(size_t)upper_bound; i++) {
         if (this->table[i].get_timestamp() <= time) {
             const byte *table_key = this->state->record_schema->get_key(this->table[i].get_data()).Bytes();
             if (this->rec_cmp(key, table_key) == 0) {
@@ -152,7 +142,7 @@ ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
 
 ssize_t UnsortedMemTable::get_index()
 {
-    ssize_t idx = this->current_tail.fetch_add(1);    
+    size_t idx = this->current_tail.fetch_add(1);    
 
     // there is space, so return the reserved index
     if (idx < this->table.size()) {
@@ -163,25 +153,6 @@ ssize_t UnsortedMemTable::get_index()
     return -1;
 }
 
-
-ssize_t UnsortedMemTable::find_tombstone(const byte *key, const byte *value, Timestamp time)
-{
-    return -1;
-}
-
-
-ssize_t UnsortedMemTable::get_tombstone_index()
-{
-    ssize_t idx = this->current_tombstone_tail.fetch_add(1);    
-
-    // there is space, so return the reserved index
-    if (idx < this->table.size()) {
-        return idx;
-    }
-
-    // no space in the buffer
-    return -1;
-}
 
 UnsortedRecordIterator::UnsortedRecordIterator(const UnsortedMemTable *table, global::g_state *state)
 {
@@ -197,7 +168,7 @@ UnsortedRecordIterator::UnsortedRecordIterator(const UnsortedMemTable *table, gl
 
 bool UnsortedRecordIterator::next()
 {
-    while (++this->current_index < this->element_count()) {
+    while ((size_t) ++this->current_index < this->element_count()) {
         return true;
     }
 

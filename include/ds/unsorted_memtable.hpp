@@ -38,23 +38,17 @@ public:
     std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) override;
     std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() override;
 
-    ~UnsortedMemTable() = default;
+    ~UnsortedMemTable() override;
 
 private:
     std::vector<io::Record> table;
-    std::vector<io::Record> tombstone_table;
     global::g_state *state;
 
     catalog::KeyCmpFunc rec_cmp;
 
     std::atomic<size_t> current_tail;
-    std::atomic<size_t> current_tombstone_tail;
     ssize_t find_record(const byte* key, Timestamp time);
-    ssize_t find_tombstone(const byte *key, const byte *value, Timestamp time);
     ssize_t get_index();
-
-    ssize_t get_tombstone_count();
-    ssize_t get_tombstone_index();
 };
 
 
