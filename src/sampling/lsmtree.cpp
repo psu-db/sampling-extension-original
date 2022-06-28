@@ -318,6 +318,8 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     long total_rejection = 0;
     long total_sample = 0;
     size_t i=0;
+
+    this->state->cache->reset_miss_counter();
     while (i < sample_size) {
         auto sample_start = std::chrono::high_resolution_clock::now();
         size_t range = alias.get();
