@@ -396,10 +396,6 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
 
     this->cache->unpin(frid);
 
-    if (target_pnum < this->first_data_page || target_pnum > this->last_data_page) {
-        target_pnum = INVALID_PNUM;
-    }
-
     return target_pnum;
 }
 
@@ -425,7 +421,7 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     while (min < max) {
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(key, node_key) > 0) {
+        if (this->key_cmp(key, node_key) >= 0) {
             min = mid + 1;
         } else {
             max = mid;
@@ -436,10 +432,6 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
     PageNum target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
 
     this->cache->unpin(frid);
-
-    if (target_pnum < this->first_data_page || target_pnum > this->last_data_page) {
-        target_pnum = INVALID_PNUM;
-    }
 
     return target_pnum;
 }
