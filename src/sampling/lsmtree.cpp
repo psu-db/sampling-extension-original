@@ -44,6 +44,14 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
     } else {
         this->memtable = std::make_unique<ds::MapMemTable>(memtable_capacity, this->state.get());
     }
+
+    if (bloom_filters) {
+        this->memtable_bf = std::make_unique<ds::BloomFilter<int64_t>>(memtable_capacity * 5);
+    }
+
+    if (range_filters) {
+        // TODO: Implement range filtering
+    }
 }
 
 size_t LSMTree::grow()
@@ -73,7 +81,7 @@ size_t LSMTree::grow()
         }
     }
 
-    auto new_level = std::make_unique<BTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion);
+    auto new_level = std::make_unique<BTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
 
     this->levels.emplace_back(std::move(new_level));
 
@@ -115,6 +123,10 @@ void LSMTree::merge_memtable()
     
     // truncate the memtable
     this->memtable->truncate();
+
+    if (this->bloom_filters) {
+        this->memtable_bf->clear();
+    }
 }
 
 
@@ -125,6 +137,11 @@ int LSMTree::insert(byte *key, byte *value, Timestamp time)
     }
 
     auto res = this->memtable->insert(key, value, time);
+
+    if (res && this->bloom_filters) {
+        this->memtable_bf->insert(*(int64_t*) key);
+    }
+
     this->rec_count += res;
     return res;
 }
@@ -141,8 +158,12 @@ int LSMTree::remove(byte *key, byte *value, Timestamp time)
     }
 
     auto res = this->memtable->insert(key, value, time, true);
-    this->rec_count += res;
 
+    if (res && this->bloom_filters) {
+        this->memtable_bf->insert(*(int64_t*) key);
+    }
+
+    this->rec_count += res;
     return res;
 }
 
@@ -156,15 +177,23 @@ int LSMTree::update(byte *key, byte *old_value, byte *new_value, Timestamp time)
 io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool skip_delete_check)
 {
     // first, we check the memory table
-    auto record = this->memtable->get(key, time);
-    if (record.is_valid()) {
-        if (!skip_delete_check && record.is_tombstone()) {
-            *frid = INVALID_FRID;
-            return io::Record();
-        }
+    bool check_memtable = true;
+    if (this->bloom_filters) {
+       check_memtable = this->memtable_bf->lookup(*((int64_t*) key));
+    }
 
-        *frid = INVALID_FRID;
-        return record;
+    io::Record record;
+    if (check_memtable) {
+        record = this->memtable->get(key, time);
+        if (record.is_valid()) {
+            if (!skip_delete_check && record.is_tombstone()) {
+                *frid = INVALID_FRID;
+                return io::Record();
+            }
+
+            *frid = INVALID_FRID;
+            return record;
+        }
     }
 
     // then, we search the tree from newest levels to oldest
@@ -375,6 +404,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
 
     return sample;
 }
+
 
 bool LSMTree::is_deleted(io::Record record)
 {

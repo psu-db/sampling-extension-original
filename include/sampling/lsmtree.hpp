@@ -17,6 +17,7 @@
 #include "ds/walker.hpp"
 #include "ds/map_memtable.hpp"
 #include "ds/unsorted_memtable.hpp"
+#include "ds/bloomfilter.hpp"
 
 namespace lsm { namespace sampling {
 
@@ -125,6 +126,8 @@ private:
     std::unique_ptr<global::g_state> state;
     std::vector<std::unique_ptr<BTreeLevel>> levels;
     std::unique_ptr<ds::MemoryTable> memtable;
+
+    std::unique_ptr<ds::BloomFilter<int64_t>> memtable_bf;
 
     size_t rec_count;
     size_t memtable_capacity;

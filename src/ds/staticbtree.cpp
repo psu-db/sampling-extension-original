@@ -6,16 +6,16 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<StaticBTree> StaticBTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state)
+std::unique_ptr<StaticBTree> StaticBTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, bool bloom_filters, global::g_state *state)
 {
     auto pfile = state->file_manager->create_indexed_pfile();
-    StaticBTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state);
+    StaticBTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state, bloom_filters);
 
     return std::make_unique<StaticBTree>(pfile, state);
 }
 
 void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
-                             PageNum data_page_cnt, catalog::FixedKVSchema *record_schema)
+                             PageNum data_page_cnt, catalog::FixedKVSchema *record_schema, bool bloom_filters)
 {
     auto internal_schema = StaticBTree::generate_internal_schema(record_schema);
 
@@ -116,19 +116,27 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     pfile->write_page(cur_internal_page, internal_output_buffer.get());
 
     auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
+    PageNum data_filter_pnum = INVALID_PNUM;
+    PageNum tombstone_filter_pnum = INVALID_PNUM;
+
+    if (bloom_filters) {
+        // assign the appropriate pnums and write the filters to disk.
+    }
 
     pfile->read_page(meta, internal_output_buffer.get());
     auto metadata = (StaticBTreeMetaHeader *) internal_output_buffer.get();
     metadata->root_node = root_pnum;
     metadata->first_data_page = first_leaf.page_number;
     metadata->last_data_page = new_page;
+    metadata->first_data_bloom_page = data_filter_pnum;
+    metadata->first_tombstone_bloom_page = data_filter_pnum;
     pfile->write_page(meta, internal_output_buffer.get());
 }
 
 void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
-                             PageNum data_page_cnt, global::g_state *state) 
+                             PageNum data_page_cnt, global::g_state *state, bool bloom_filters) 
 {
-    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema.get());
+    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema.get(), bloom_filters);
 }
 
 
@@ -258,9 +266,21 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *reco
 
     byte *frame_ptr;
     auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);
-    this->root_page = ((StaticBTreeMetaHeader *) frame_ptr)->root_node;
-    this->first_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->first_data_page;
-    this->last_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->last_data_page;
+    auto meta = (StaticBTreeMetaHeader *) frame_ptr;
+    this->root_page = meta->root_node;
+    this->first_data_page = meta->first_data_page;
+    this->last_data_page = meta->last_data_page;
+
+    if (meta->first_data_bloom_page) {
+        // build the in-memory filter from the data on disk
+    }
+
+
+    if (meta->first_tombstone_bloom_page) {
+        // build the in-memory filter from the data on disk
+    }
+
+
     this->cache->unpin(frame_id);
 
     frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
@@ -351,6 +371,12 @@ PageId StaticBTree::get_upper_bound(const byte *key)
 
 bool StaticBTree::tombstone_exists(const byte *key, Timestamp time) 
 {
+    if (this->tombstone_bloom_filter) {
+        if (!this->tombstone_bloom_filter->lookup(*((int64_t*) key))) {
+            return false;
+        }
+    }
+
     FrameId frid;
     auto rec = this->get(key, &frid, time);
 
@@ -480,6 +506,14 @@ std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
 
 Record StaticBTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
+    // if there is a bloom filter, check it first. If the record isn't there,
+    // there isn't any reason to search the rest of the tree.
+    if (this->bloom_filter) {
+        if (!this->bloom_filter->lookup(*((int64_t *) key))) {
+            return io::Record();
+        }
+    }
+
     // find the first page to search
     auto pid = this->get_lower_bound(key);
 

@@ -13,6 +13,7 @@
 #include <cmath>
 
 #include "ds/staticbtree.hpp"
+#include "ds/bloomfilter.hpp"
 #include "sampling/btree_samplerange.hpp"
 
 namespace lsm { namespace sampling {
@@ -28,7 +29,7 @@ public:
      */
     BTreeLevel(size_t run_capacity, size_t record_capacity,
                std::vector<io::IndexPagedFile *> files, global::g_state *state,
-               double max_deletion_proportion);
+               double max_deletion_proportion, bool bloom_filter);
 
     ~BTreeLevel() = default;
 
@@ -167,6 +168,7 @@ private:
     
     global::g_state *state;  // tracks global state inherited from the parent
                              // environment (probably an LSMTree object)
+    bool bloom_filters;
     catalog::RecordCmpFunc record_cmp;
     catalog::KeyCmpFunc key_cmp;
 

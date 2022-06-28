@@ -9,8 +9,8 @@
 
 int main(int argc, char **argv) {
 
-    if (argc < 5) {
-        fprintf(stderr, "first_bench <record_count> <memtable_size> <scale_factor> <unsorted_memtable>\n");
+    if (argc < 6) {
+        fprintf(stderr, "first_bench <record_count> <memtable_size> <scale_factor> <unsorted_memtable> <bloom_filters>\n");
         exit(EXIT_FAILURE);
     }
 
@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
     size_t memtable_size = atoi(argv[2]);
     size_t scale_factor = atoi(argv[3]);
     bool unsorted_memtable = atoi(argv[4]);
+    bool bloom_filters = atoi(argv[5]);
 
     auto state = lsm::bench::bench_state();
     auto test_data = lsm::bench::random_unique_keys(data_size, 10*data_size, state.get());
@@ -27,7 +28,7 @@ int main(int argc, char **argv) {
     auto state_ptr = state.get();
 
     auto tree = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), lsm::sampling::LEVELING,
-                                               false, false, 1, unsorted_memtable);
+                                               bloom_filters, false, 1, unsorted_memtable);
 
     // load up the tree
     

@@ -15,6 +15,7 @@
 #include "io/readcache.hpp"
 #include "io/indexpagedfile.hpp"
 #include "util/global.hpp"
+#include "ds/bloomfilter.hpp"
 
 namespace lsm { namespace ds {
 
@@ -22,6 +23,8 @@ struct StaticBTreeMetaHeader {
     PageNum root_node;
     PageNum first_data_page;
     PageNum last_data_page;
+    PageNum first_data_bloom_page;
+    PageNum first_tombstone_bloom_page;
 };
 
 struct StaticBTreeInternalNodeHeader {
@@ -36,7 +39,8 @@ const PageNum BTREE_META_PNUM = 1;
 
 class StaticBTree {
 public:
-    static std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, global::g_state *state);
+    static std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, 
+                                               bool bloom_filters, global::g_state *state);
 
     /*
      * Initialize a StaticBTree structure within the file specified by pfile.
@@ -50,10 +54,11 @@ public:
      * record_schema is used for parsing and comparing the records.
      */
     static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
-                           PageNum data_page_cnt, catalog::FixedKVSchema *record_schema);
+                           PageNum data_page_cnt, catalog::FixedKVSchema *record_schema,
+                           bool bloom_filters);
 
     static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
-                           PageNum data_page_cnt, global::g_state *state);
+                           PageNum data_page_cnt, global::g_state *state, bool bloom_filters);
 
 
     /*
@@ -149,6 +154,8 @@ private:
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
     catalog::KeyCmpFunc key_cmp;
+    std::unique_ptr<BloomFilter<int64_t>> bloom_filter;
+    std::unique_ptr<BloomFilter<int64_t>> tombstone_bloom_filter;
     PageNum root_page;
     PageNum first_data_page;
     PageNum last_data_page;

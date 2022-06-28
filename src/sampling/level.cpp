@@ -9,7 +9,8 @@ namespace lsm { namespace sampling {
 BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity, 
                        std::vector<io::IndexPagedFile *> files, 
                        global::g_state *state,
-                       double max_deletion_proportion)
+                       double max_deletion_proportion,
+                       bool bloom_filters)
 {
     this->run_capacity = run_capacity;
     this->record_capacity = record_capacity;
@@ -23,6 +24,8 @@ BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity,
 
     this->record_cmp = state->record_schema->get_record_cmp();
     this->key_cmp = state->record_schema->get_key_cmp();
+
+    this->bloom_filters = bloom_filters;
 
     for (size_t i=0; i<files.size(); i++) {
         if (i < this->run_capacity) {
@@ -138,7 +141,7 @@ std::unique_ptr<ds::StaticBTree> BTreeLevel::merge_runs()
 
     auto merge = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
 
-    return ds::StaticBTree::create(std::move(merge), page_cnt, this->state);
+    return ds::StaticBTree::create(std::move(merge), page_cnt, this->bloom_filters, this->state);
 }
 
 
@@ -164,7 +167,7 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
         auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
         PageNum page_cnt = new_run->get_leaf_page_count() + this->runs[0]->get_leaf_page_count();
 
-        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->state);
+        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_btree) {
@@ -211,7 +214,7 @@ int BTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> so
         size_t records_per_page = (parm::PAGE_SIZE - io::PageHeaderSize) / this->state->record_schema->record_length();
         PageNum page_cnt = ceil((double) new_element_cnt / (double) records_per_page) + existing_page_cnt;
 
-        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->state);
+        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_btree) {
