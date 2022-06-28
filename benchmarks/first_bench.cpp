@@ -26,7 +26,8 @@ int main(int argc, char **argv) {
 
     auto state_ptr = state.get();
 
-    auto tree = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state));
+    auto tree = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), lsm::sampling::LEVELING,
+                                               false, false, 1, unsorted_memtable);
 
     // load up the tree
     
