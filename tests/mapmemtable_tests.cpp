@@ -180,10 +180,12 @@ START_TEST(t_sample_range)
     ck_assert_int_eq(range->length(), 100);
 
     for (size_t i=0; i<1000; i++) {
-        auto rec = range->get(nullptr);
+        FrameId frid;
+        auto rec = range->get(&frid);
         auto range_key = state->record_schema->get_key(rec.get_data()).Int64();
         ck_assert_int_ge(range_key, start_key);
         ck_assert_int_le(range_key, stop_key);
+        ck_assert_int_eq(frid, INVALID_FRID);
     }
 }
 END_TEST

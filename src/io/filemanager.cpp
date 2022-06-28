@@ -203,7 +203,9 @@ void FileManager::close_file(FileId flid)
 {
     auto dfile = this->get_dfile(flid);
 
-    dfile->close_file();
+    if (dfile) {
+        dfile->close_file();
+    }
 }
 
 
