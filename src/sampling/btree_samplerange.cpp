@@ -68,16 +68,13 @@ io::Record BTreeSampleRange::get(FrameId *frid)
     auto record = this->get_random_record(frid);
 
     if (!frid || !record.is_valid()) {
-        //fprintf(stderr, "invalid frid or record\n");
         return io::Record();
     }
 
     auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
-    //auto tkey = this->state->record_schema->get_key(record.get_data()).Int64();
 
     // Reject if the record selected is outside of the specified key range.
     if (this->cmp(key, this->lower_key) < 0 || this->cmp(key, this->upper_key) > 0) {
-        //fprintf(stderr, "%ld\t was sampled, but out of range.\n", tkey);
         this->state->cache->unpin(*frid);
         *frid = INVALID_FRID;
         return io::Record();
@@ -86,13 +83,11 @@ io::Record BTreeSampleRange::get(FrameId *frid)
     // Reject if the record is a tombstone. The deletion check will be
     // handled at the LSM Tree level.
     if (record.is_tombstone()) {
-        //fprintf(stderr, "%ld\t was sampled, but deleted.\n", tkey);
         this->state->cache->unpin(*frid);
         *frid = INVALID_FRID;
         return io::Record();
     }
 
-    //fprintf(stderr, "%ld\t was sampled successfully.\n", tkey);
     // Otherwise, we're good to return the record.
     return record;
 }
