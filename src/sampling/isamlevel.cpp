@@ -2,11 +2,11 @@
  *
  */
 
-#include "sampling/level.hpp"
+#include "sampling/isamlevel.hpp"
 
 namespace lsm { namespace sampling {
 
-BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity, 
+ISAMTreeLevel::ISAMTreeLevel(size_t run_capacity, size_t record_capacity, 
                        std::vector<io::IndexPagedFile *> files, 
                        global::g_state *state,
                        double max_deletion_proportion,
@@ -19,7 +19,7 @@ BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity,
     this->run_count = 0;
     this->record_count = 0;
 
-    this->runs = std::vector<std::unique_ptr<ds::StaticBTree>>(run_capacity);
+    this->runs = std::vector<std::unique_ptr<ds::ISAMTree>>(run_capacity);
     this->state = state;
 
     this->record_cmp = state->record_schema->get_record_cmp();
@@ -29,7 +29,7 @@ BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity,
 
     for (size_t i=0; i<files.size(); i++) {
         if (i < this->run_capacity) {
-            this->runs[i] = std::make_unique<ds::StaticBTree>(files[i], state);
+            this->runs[i] = std::make_unique<ds::ISAMTree>(files[i], state);
             this->run_count++;
             this->record_count += this->runs[i]->get_record_count();
         }
@@ -37,7 +37,7 @@ BTreeLevel::BTreeLevel(size_t run_capacity, size_t record_capacity,
 }
 
 
-ds::StaticBTree *BTreeLevel::get_run(size_t idx) 
+ds::ISAMTree *ISAMTreeLevel::get_run(size_t idx) 
 {
     if (idx > this->run_capacity) {
         return nullptr;
@@ -47,7 +47,7 @@ ds::StaticBTree *BTreeLevel::get_run(size_t idx)
 }
 
 
-int BTreeLevel::emplace_run(std::unique_ptr<ds::StaticBTree> run)
+int ISAMTreeLevel::emplace_run(std::unique_ptr<ds::ISAMTree> run)
 {
     if (this->run_count == this->run_capacity) {
         return 0; // no room
@@ -66,13 +66,13 @@ int BTreeLevel::emplace_run(std::unique_ptr<ds::StaticBTree> run)
 }
 
 
-bool BTreeLevel::can_emplace_run() 
+bool ISAMTreeLevel::can_emplace_run() 
 {
     return this->run_count < this->run_capacity;
 }
 
 
-bool BTreeLevel::can_merge_with(size_t incoming_record_count)
+bool ISAMTreeLevel::can_merge_with(size_t incoming_record_count)
 {
     if (this->run_count < this->run_capacity) {
         return true;
@@ -84,13 +84,13 @@ bool BTreeLevel::can_merge_with(size_t incoming_record_count)
 }
 
 
-bool BTreeLevel::can_merge_with(BTreeLevel *level) 
+bool ISAMTreeLevel::can_merge_with(ISAMTreeLevel *level) 
 {
     return this->can_merge_with(level->get_record_count());
 }
 
 
-io::Record BTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time) 
+io::Record ISAMTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time) 
 {
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
         auto rec = this->runs[i]->get(key, frid, time);
@@ -103,13 +103,13 @@ io::Record BTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time
 }
 
 
-int BTreeLevel::remove(byte* /*key*/, byte* /*value*/, Timestamp /*time*/)
+int ISAMTreeLevel::remove(byte* /*key*/, byte* /*value*/, Timestamp /*time*/)
 {
     return 0;
 }
 
 
-void BTreeLevel::truncate()
+void ISAMTreeLevel::truncate()
 {
     // Because files are std::moved from level to level, this should be safe to
     // do. Any file that has been relocated will no longer be here, so there
@@ -128,7 +128,7 @@ void BTreeLevel::truncate()
 }
 
 
-std::unique_ptr<ds::StaticBTree> BTreeLevel::merge_runs()
+std::unique_ptr<ds::ISAMTree> ISAMTreeLevel::merge_runs()
 {
     std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters;
     PageNum page_cnt = 0;
@@ -141,11 +141,11 @@ std::unique_ptr<ds::StaticBTree> BTreeLevel::merge_runs()
 
     auto merge = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
 
-    return ds::StaticBTree::create(std::move(merge), page_cnt, this->bloom_filters, this->state);
+    return ds::ISAMTree::create(std::move(merge), page_cnt, this->bloom_filters, this->state);
 }
 
 
-int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
+int ISAMTreeLevel::merge_with(std::unique_ptr<ds::ISAMTree> new_run)
 {
     // For tiering, we emplace the run if we can. This also catches the 
     // case of merging into an empty level under leveling.
@@ -167,7 +167,7 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
         auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
         PageNum page_cnt = new_run->get_leaf_page_count() + this->runs[0]->get_leaf_page_count();
 
-        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
+        auto new_btree = ds::ISAMTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_btree) {
@@ -185,14 +185,14 @@ int BTreeLevel::merge_with(std::unique_ptr<ds::StaticBTree> new_run)
 }
 
 
-int BTreeLevel::merge_with(BTreeLevel *level) 
+int ISAMTreeLevel::merge_with(ISAMTreeLevel *level) 
 {
     auto temp = level->merge_runs();
     return this->merge_with(std::move(temp));
 }
 
 
-int BTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr)
+int ISAMTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr)
 {
     // iterator must support element count to merge it.
     if (!sorted_itr->supports_element_count()) {
@@ -214,7 +214,7 @@ int BTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> so
         size_t records_per_page = (parm::PAGE_SIZE - io::PageHeaderSize) / this->state->record_schema->record_length();
         PageNum page_cnt = ceil((double) new_element_cnt / (double) records_per_page) + existing_page_cnt;
 
-        auto new_btree = ds::StaticBTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
+        auto new_btree = ds::ISAMTree::create(std::move(merge_itr), page_cnt, this->bloom_filters, this->state);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_btree) {
@@ -231,12 +231,12 @@ int BTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> so
 }
 
 
-std::vector<std::unique_ptr<SampleRange>> BTreeLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
+std::vector<std::unique_ptr<SampleRange>> ISAMTreeLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
 {
     std::vector<std::unique_ptr<SampleRange>> ranges;
     for (size_t i=0; i<this->run_capacity; i++) {
         if (this->runs[i]) {
-            auto range = BTreeSampleRange::create(this->runs[i].get(), lower_key, upper_key, this->state);
+            auto range = ISAMTreeSampleRange::create(this->runs[i].get(), lower_key, upper_key, this->state);
 
             if (range) {
                 ranges.emplace_back(std::move(range));
@@ -248,42 +248,42 @@ std::vector<std::unique_ptr<SampleRange>> BTreeLevel::get_sample_ranges(byte *lo
 }
 
 
-size_t BTreeLevel::get_record_capacity()
+size_t ISAMTreeLevel::get_record_capacity()
 {
     return this->record_capacity;
 }
 
 
-size_t BTreeLevel::get_record_count()
+size_t ISAMTreeLevel::get_record_count()
 {
     return this->record_count;
 }
 
 
-size_t BTreeLevel::get_run_capacity()
+size_t ISAMTreeLevel::get_run_capacity()
 {
     return this->run_capacity;
 }
 
 
-size_t BTreeLevel::get_run_count()
+size_t ISAMTreeLevel::get_run_count()
 {
     return this->run_count;
 }
 
 
-size_t BTreeLevel::get_memory_utilization()
+size_t ISAMTreeLevel::get_memory_utilization()
 {
     return 0;
 }
 
 
-void BTreeLevel::print_level()
+void ISAMTreeLevel::print_level()
 {
     return;
 }
 
-std::unique_ptr<iter::GenericIterator<Record>> BTreeLevel::start_scan()
+std::unique_ptr<iter::GenericIterator<Record>> ISAMTreeLevel::start_scan()
 {
     if (this->runs.size() == 0) {
         return nullptr;

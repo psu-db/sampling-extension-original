@@ -81,7 +81,7 @@ size_t LSMTree::grow()
         }
     }
 
-    auto new_level = std::make_unique<BTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
+    auto new_level = std::make_unique<ISAMTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
 
     this->levels.emplace_back(std::move(new_level));
 

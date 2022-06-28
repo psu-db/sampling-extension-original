@@ -11,7 +11,7 @@
 #include "util/global.hpp"
 #include "io/record.hpp"
 #include "sampling/sample.hpp"
-#include "sampling/level.hpp"
+#include "sampling/isamlevel.hpp"
 #include "catalog/schema.hpp"
 #include "ds/memtable.hpp"
 #include "ds/walker.hpp"
@@ -124,7 +124,7 @@ public:
 
 private:
     std::unique_ptr<global::g_state> state;
-    std::vector<std::unique_ptr<BTreeLevel>> levels;
+    std::vector<std::unique_ptr<ISAMTreeLevel>> levels;
     std::unique_ptr<ds::MemoryTable> memtable;
 
     std::unique_ptr<ds::BloomFilter<int64_t>> memtable_bf;

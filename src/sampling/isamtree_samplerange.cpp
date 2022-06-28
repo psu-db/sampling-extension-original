@@ -2,13 +2,13 @@
  *
  */
 
-#include "sampling/btree_samplerange.hpp"
+#include "sampling/isamtree_samplerange.hpp"
 #include "util/pageutils.hpp"
 
 namespace lsm { namespace sampling {
 
 
-std::unique_ptr<SampleRange> BTreeSampleRange::create(ds::StaticBTree *btree, byte *lower_key, 
+std::unique_ptr<SampleRange> ISAMTreeSampleRange::create(ds::ISAMTree *btree, byte *lower_key, 
                                     byte *upper_key, global::g_state *state)
 {
     if (!btree) {
@@ -44,11 +44,11 @@ std::unique_ptr<SampleRange> BTreeSampleRange::create(ds::StaticBTree *btree, by
         return nullptr;
     }
 
-    return std::unique_ptr<BTreeSampleRange>(new BTreeSampleRange(btree, start_page.page_number, lower_key, stop_page.page_number, upper_key, record_count, state));
+    return std::unique_ptr<ISAMTreeSampleRange>(new ISAMTreeSampleRange(btree, start_page.page_number, lower_key, stop_page.page_number, upper_key, record_count, state));
 }
 
 
-BTreeSampleRange::BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
+ISAMTreeSampleRange::ISAMTreeSampleRange(ds::ISAMTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
                      byte *upper_key, size_t record_count, global::g_state *state)
 {
     this->btree = btree;
@@ -63,7 +63,7 @@ BTreeSampleRange::BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, b
 }
 
 
-io::Record BTreeSampleRange::get(FrameId *frid)
+io::Record ISAMTreeSampleRange::get(FrameId *frid)
 {
     auto record = this->get_random_record(frid);
 
@@ -93,13 +93,13 @@ io::Record BTreeSampleRange::get(FrameId *frid)
 }
 
 
-size_t BTreeSampleRange::length()
+size_t ISAMTreeSampleRange::length()
 {
     return this->record_count;
 }
 
 
-Record BTreeSampleRange::get_random_record(FrameId *frid)
+Record ISAMTreeSampleRange::get_random_record(FrameId *frid)
 {
     auto pnum = this->start_page + gsl_rng_uniform_int(this->state->rng, this->range_len);
 

@@ -74,7 +74,7 @@ START_TEST(t_iterator)
 END_TEST
 
 
-START_TEST(t_iterator_btree_data_512)
+START_TEST(t_iterator_isamtree_data_512)
 {
     testing::initialize_global_fm();
 
@@ -85,18 +85,18 @@ START_TEST(t_iterator_btree_data_512)
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(3);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_btree_test_data1(25, value_size, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data1(25, value_size, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, rcache.get());
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_btree_test_data2(25, value_size, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data2(25, value_size, &cnt2);
     auto pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, rcache.get());
 
 
     size_t cnt3 = 0;
-    auto fname3 = testing::generate_btree_test_data3(50, value_size, &cnt3);
+    auto fname3 = testing::generate_isamtree_test_data3(50, value_size, &cnt3);
     auto pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, rcache.get());
 
@@ -119,7 +119,7 @@ START_TEST(t_iterator_btree_data_512)
 END_TEST
 
 
-START_TEST(t_iterator_btree_data_1024)
+START_TEST(t_iterator_isamtree_data_1024)
 {
     testing::initialize_global_fm();
 
@@ -130,18 +130,18 @@ START_TEST(t_iterator_btree_data_1024)
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(3);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_btree_test_data1(25, value_size, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data1(25, value_size, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, rcache.get());
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_btree_test_data2(25, value_size, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data2(25, value_size, &cnt2);
     auto pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, rcache.get());
 
 
     size_t cnt3 = 0;
-    auto fname3 = testing::generate_btree_test_data3(50, value_size, &cnt3);
+    auto fname3 = testing::generate_isamtree_test_data3(50, value_size, &cnt3);
     auto pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, rcache.get());
 
@@ -170,8 +170,8 @@ Suite *unit_testing()
 
     TCase *iter = tcase_create("lsm::util::MergeIterator Testing");
     tcase_add_test(iter, t_iterator);
-    tcase_add_test(iter, t_iterator_btree_data_512);
-    tcase_add_test(iter, t_iterator_btree_data_1024);
+    tcase_add_test(iter, t_iterator_isamtree_data_512);
+    tcase_add_test(iter, t_iterator_isamtree_data_1024);
 
     suite_add_tcase(unit, iter);
 

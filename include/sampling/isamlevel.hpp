@@ -12,26 +12,26 @@
 
 #include <cmath>
 
-#include "ds/staticbtree.hpp"
+#include "ds/isamtree.hpp"
 #include "ds/bloomfilter.hpp"
-#include "sampling/btree_samplerange.hpp"
+#include "sampling/isamtree_samplerange.hpp"
 
 namespace lsm { namespace sampling {
 
-class BTreeLevel {
+class ISAMTreeLevel {
 public:
     /*
-     * Create a new BTreeLevel object of specified run capacity (1=LEVELING,
+     * Create a new ISAMTreeLevel object of specified run capacity (1=LEVELING,
      * >1=TIERING) and record capacity. The files vector contains the filenames
-     * for pre-existing BTrees that make up this level. The length of this
+     * for pre-existing ISAM Trees that make up this level. The length of this
      * vector must be no greater than the run capacity. An empty vector can be
      * provided if the run is to be created empty, with no pre-existing data.
      */
-    BTreeLevel(size_t run_capacity, size_t record_capacity,
+    ISAMTreeLevel(size_t run_capacity, size_t record_capacity,
                std::vector<io::IndexPagedFile *> files, global::g_state *state,
-               double max_deletion_proportion, bool bloom_filter);
+               double max_deletion_proportion, bool bloom_filters);
 
-    ~BTreeLevel() = default;
+    ~ISAMTreeLevel() = default;
 
     /*
      * Return a raw pointer to the specified run within this level,
@@ -41,7 +41,7 @@ public:
      * not be freed, and the owner of this pointer does NOT control
      * the lifetime of the object.
      */
-    ds::StaticBTree *get_run(size_t idx);
+    ds::ISAMTree *get_run(size_t idx);
 
     /*
      * Place the specified pointer to a run into the level,
@@ -51,7 +51,7 @@ public:
      * pointer into the Level, and so the passed in pointer will
      * be nulled.
      */
-    int emplace_run(std::unique_ptr<ds::StaticBTree> run);
+    int emplace_run(std::unique_ptr<ds::ISAMTree> run);
 
     /*
      * Returns true if the level's run count is less than its capacity
@@ -60,8 +60,8 @@ public:
      */
     bool can_emplace_run();
 
-    int merge_with(BTreeLevel *level);
-    int merge_with(std::unique_ptr<ds::StaticBTree> run);
+    int merge_with(ISAMTreeLevel *level);
+    int merge_with(std::unique_ptr<ds::ISAMTree> run);
     int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr);
 
     /*
@@ -77,7 +77,7 @@ public:
      * this one without exceeding its record capacity. If so, return true,
      * otherwise return false.
      */
-    bool can_merge_with(BTreeLevel *level);
+    bool can_merge_with(ISAMTreeLevel *level);
 
     /*
      * Merge all of the runs stored on this level into one
@@ -88,7 +88,7 @@ public:
      *
      * Leaves the run objects contained within the level untouched
      */
-    std::unique_ptr<ds::StaticBTree> merge_runs();
+    std::unique_ptr<ds::ISAMTree> merge_runs();
 
     std::vector<std::unique_ptr<SampleRange>> get_sample_ranges(byte *lower_key, byte *upper_key);
 
@@ -172,7 +172,7 @@ private:
     catalog::RecordCmpFunc record_cmp;
     catalog::KeyCmpFunc key_cmp;
 
-    std::vector<std::unique_ptr<ds::StaticBTree>> runs; // the runs stored on this level
+    std::vector<std::unique_ptr<ds::ISAMTree>> runs; // the runs stored on this level
     };
 }}
 #endif

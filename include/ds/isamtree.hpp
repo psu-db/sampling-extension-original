@@ -19,7 +19,7 @@
 
 namespace lsm { namespace ds {
 
-struct StaticBTreeMetaHeader {
+struct ISAMTreeMetaHeader {
     PageNum root_node;
     PageNum first_data_page;
     PageNum last_data_page;
@@ -27,23 +27,23 @@ struct StaticBTreeMetaHeader {
     PageNum first_tombstone_bloom_page;
 };
 
-struct StaticBTreeInternalNodeHeader {
+struct ISAMTreeInternalNodeHeader {
     PageNum next_sibling;
     PageNum prev_sibling;
     size_t leaf_rec_cnt;
 };
 
-constexpr PageOffset StaticBTreeInternalNodeHeaderSize = MAXALIGN(sizeof(StaticBTreeInternalNodeHeader));
+constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISAMTreeInternalNodeHeader));
 
 const PageNum BTREE_META_PNUM = 1;
 
-class StaticBTree {
+class ISAMTree {
 public:
-    static std::unique_ptr<StaticBTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, 
+    static std::unique_ptr<ISAMTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, 
                                                bool bloom_filters, global::g_state *state);
 
     /*
-     * Initialize a StaticBTree structure within the file specified by pfile.
+     * Initialize a ISAMTree structure within the file specified by pfile.
      * The file is assumed to be empty and the resulting file contents are
      * undefined if this is not the case. It copies up to data_page_cnt number
      * of pages of records from record_itr into a contiguous page range,
@@ -64,17 +64,17 @@ public:
     /*
      * Return a Static BTree object created from pfile. pfile is assumed to
      * have already been properly initialized bia a call to
-     * StaticBTree::initialize at some point in its existence. If this is not
+     * ISAMTree::initialize at some point in its existence. If this is not
      * the case, all method calls to the returned object are undefined.
      */
-    StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
+    ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
                 catalog::KeyCmpFunc key_cmp, io::ReadCache *cache);
 
-    StaticBTree(io::IndexPagedFile *pfile, global::g_state *state); 
+    ISAMTree(io::IndexPagedFile *pfile, global::g_state *state); 
 
-    StaticBTree() = default;
+    ISAMTree() = default;
 
-    ~StaticBTree();
+    ~ISAMTree();
 
     /*
      * Returns the first leaf page pid within the tree that contains a key greater than
@@ -147,7 +147,7 @@ public:
     */
 
 private:
-    StaticBTreeMetaHeader *get_metapage();
+    ISAMTreeMetaHeader *get_metapage();
 
     io::IndexPagedFile *pfile;
     global::g_state *state;

@@ -18,7 +18,7 @@
 #include "io/fixedlendatapage.hpp"
 #include "catalog/schema.hpp"
 #include "io/filemanager.hpp"
-#include "ds/staticbtree.hpp"
+#include "ds/isamtree.hpp"
 
 #include <gsl/gsl_rng.h>
 #include <functional>
@@ -346,11 +346,11 @@ std::string generate_merge_test_file3a(size_t page_cnt, size_t *reccnt)
 }
 
 
-std::string generate_btree_test_data1(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+std::string generate_isamtree_test_data1(size_t page_cnt, PageOffset val_len, size_t *reccnt)
 {
     auto fm = g_fm.get();
 
-    auto test_file = fm->create_indexed_pfile("btree_data_1");
+    auto test_file = fm->create_indexed_pfile("isamtree_data_1");
     auto buf = empty_aligned_buffer();
     auto schema = test_schema1(val_len);
 
@@ -380,11 +380,11 @@ std::string generate_btree_test_data1(size_t page_cnt, PageOffset val_len, size_
 }
 
 
-std::string generate_btree_test_data2(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+std::string generate_isamtree_test_data2(size_t page_cnt, PageOffset val_len, size_t *reccnt)
 {
     auto fm = g_fm.get();
 
-    auto test_file = fm->create_indexed_pfile("btree_data_2");
+    auto test_file = fm->create_indexed_pfile("isamtree_data_2");
     auto buf = empty_aligned_buffer();
     auto schema = test_schema1(val_len);
 
@@ -414,11 +414,11 @@ std::string generate_btree_test_data2(size_t page_cnt, PageOffset val_len, size_
 }
 
 
-std::string generate_btree_test_data3(size_t page_cnt, PageOffset val_len, size_t *reccnt)
+std::string generate_isamtree_test_data3(size_t page_cnt, PageOffset val_len, size_t *reccnt)
 {
     auto fm = g_fm.get();
 
-    auto test_file = fm->create_indexed_pfile("btree_data_3");
+    auto test_file = fm->create_indexed_pfile("isamtree_data_3");
     auto buf = empty_aligned_buffer();
     auto schema = test_schema1(val_len);
 
@@ -448,7 +448,7 @@ std::string generate_btree_test_data3(size_t page_cnt, PageOffset val_len, size_
 }
 
 
-std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_len, int64_t key, size_t *reccnt)
+std::string generate_isamtree_test_data_all_dupes(size_t page_cnt, PageOffset val_len, int64_t key, size_t *reccnt)
 {
     auto fm = g_fm.get();
 
@@ -481,9 +481,9 @@ std::string generate_btree_test_data_all_dupes(size_t page_cnt, PageOffset val_l
     return fm->get_name(test_file->get_flid());
 }
 
-std::string generate_btree_test_data_a(size_t page_cnt, global::g_state *state, size_t *reccnt)
+std::string generate_isamtree_test_data_a(size_t page_cnt, global::g_state *state, size_t *reccnt)
 {
-    auto test_file = state->file_manager->create_indexed_pfile("btree_data_1");
+    auto test_file = state->file_manager->create_indexed_pfile("isamtree_data_1");
     auto buf = empty_aligned_buffer();
     auto schema = state->record_schema.get();
 
@@ -513,9 +513,9 @@ std::string generate_btree_test_data_a(size_t page_cnt, global::g_state *state, 
 }
 
 
-std::string generate_btree_test_data_b(size_t page_cnt, global::g_state *state, size_t *reccnt)
+std::string generate_isamtree_test_data_b(size_t page_cnt, global::g_state *state, size_t *reccnt)
 {
-    auto test_file = state->file_manager->create_indexed_pfile("btree_data_2");
+    auto test_file = state->file_manager->create_indexed_pfile("isamtree_data_2");
     auto buf = empty_aligned_buffer();
     auto schema = state->record_schema.get();
 
@@ -547,7 +547,7 @@ std::string generate_btree_test_data_b(size_t page_cnt, global::g_state *state, 
 
 std::string generate_contiguous_test_data(PageNum page_cnt, global::g_state *state, size_t *reccnt)
 {
-    auto test_file = state->file_manager->create_indexed_pfile("btree_contiguous");
+    auto test_file = state->file_manager->create_indexed_pfile("isamtree_contiguous");
     auto buf = empty_aligned_buffer();
     auto schema = state->record_schema.get();
 
@@ -577,33 +577,33 @@ std::string generate_contiguous_test_data(PageNum page_cnt, global::g_state *sta
 }
 
 
-std::unique_ptr<ds::StaticBTree> test_btree1(size_t page_cnt, global::g_state *state, size_t *cnt)
+std::unique_ptr<ds::ISAMTree> test_isamtree1(size_t page_cnt, global::g_state *state, size_t *cnt)
 {
     std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
-    auto fname1 = testing::generate_btree_test_data_a(page_cnt, state, cnt);
+    auto fname1 = testing::generate_isamtree_test_data_a(page_cnt, state, cnt);
     auto *pfile1 = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(fname1);
     iter[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, state->cache.get());
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
 }
 
 
-std::unique_ptr<ds::StaticBTree> test_btree2(size_t page_cnt, global::g_state *state, size_t *cnt)
+std::unique_ptr<ds::ISAMTree> test_isamtree2(size_t page_cnt, global::g_state *state, size_t *cnt)
 {
     std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
-    auto fname1 = testing::generate_btree_test_data_b(page_cnt, state, cnt);
+    auto fname1 = testing::generate_isamtree_test_data_b(page_cnt, state, cnt);
     auto *pfile1 = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(fname1);
     iter[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, state->cache.get());
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
 }
 
 
-std::unique_ptr<ds::StaticBTree> test_btree_cont(size_t page_cnt, global::g_state *state, size_t *cnt)
+std::unique_ptr<ds::ISAMTree> test_isamtree_cont(size_t page_cnt, global::g_state *state, size_t *cnt)
 {
     std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iter(1);
     auto fname1 = testing::generate_contiguous_test_data(page_cnt, state, cnt);
@@ -612,13 +612,8 @@ std::unique_ptr<ds::StaticBTree> test_btree_cont(size_t page_cnt, global::g_stat
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::StaticBTree::create(std::move(merge_iter), page_cnt, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
 }
-
-
-
-
-
 
 
 int keycmp1(const byte * a, const byte *b) {

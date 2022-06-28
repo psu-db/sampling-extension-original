@@ -6,16 +6,16 @@
 #define H_BTREESAMPLERANGE
 
 #include "sampling/samplerange.hpp"
-#include "ds/staticbtree.hpp"
+#include "ds/isamtree.hpp"
 
 namespace lsm { namespace sampling {
 
-class BTreeSampleRange : public SampleRange {
+class ISAMTreeSampleRange : public SampleRange {
 public:
-    static std::unique_ptr<SampleRange> create(ds::StaticBTree *btree, byte *lower_key, 
+    static std::unique_ptr<SampleRange> create(ds::ISAMTree *btree, byte *lower_key, 
                                                byte *upper_key, global::g_state *state);
 
-    BTreeSampleRange(ds::StaticBTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
+    ISAMTreeSampleRange(ds::ISAMTree *btree, PageNum start_page, byte *lower_key, PageNum stop_page, 
                      byte *upper_key, size_t record_count, global::g_state *state);
 
     /*
@@ -40,13 +40,13 @@ public:
      */
     size_t length() override;
 
-    ~BTreeSampleRange() {}
+    ~ISAMTreeSampleRange() {}
 
 private:
 
     Record get_random_record(FrameId *frid);
 
-    ds::StaticBTree *btree;
+    ds::ISAMTree *btree;
     PageNum start_page;
     PageNum stop_page;
     byte *upper_key;

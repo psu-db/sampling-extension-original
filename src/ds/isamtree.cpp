@@ -2,42 +2,42 @@
  *
  */
 
-#include "ds/staticbtree.hpp"
+#include "ds/isamtree.hpp"
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<StaticBTree> StaticBTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, bool bloom_filters, global::g_state *state)
+std::unique_ptr<ISAMTree> ISAMTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, bool bloom_filters, global::g_state *state)
 {
     auto pfile = state->file_manager->create_indexed_pfile();
-    StaticBTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state, bloom_filters);
+    ISAMTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state, bloom_filters);
 
-    return std::make_unique<StaticBTree>(pfile, state);
+    return std::make_unique<ISAMTree>(pfile, state);
 }
 
-void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
+void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
                              PageNum data_page_cnt, catalog::FixedKVSchema *record_schema, bool bloom_filters)
 {
-    auto internal_schema = StaticBTree::generate_internal_schema(record_schema);
+    auto internal_schema = ISAMTree::generate_internal_schema(record_schema);
 
     auto leaf_output_buffer = mem::page_alloc();
     auto internal_output_buffer = mem::page_alloc();
     auto input_buffer = mem::page_alloc();
 
     io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
-    io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+    io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), ISAMTreeInternalNodeHeaderSize);
 
     // Allocate initial pages for data and for metadata
     PageId first_leaf, first_internal, meta;
-    if (!StaticBTree::initial_page_allocation(pfile, data_page_cnt, &first_leaf, &first_internal, &meta)) {
+    if (!ISAMTree::initial_page_allocation(pfile, data_page_cnt, &first_leaf, &first_internal, &meta)) {
         return;
     }
 
     io::FixedlenDataPage leaf_page = io::FixedlenDataPage(leaf_output_buffer.get());
     io::FixedlenDataPage internal_page = io::FixedlenDataPage(internal_output_buffer.get());
 
-    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = INVALID_PNUM;
-    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
-    ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
+    ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = INVALID_PNUM;
+    ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+    ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
 
     PageNum leaf_page_cnt = 0;
     PageNum internal_page_cnt = 0;
@@ -48,7 +48,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
         auto rec = record_iter->get_item();
 
         if (leaf_page.insert_record(rec)) {
-            ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
+            ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
         } else {
             // write the full page to the file
             new_page = first_leaf.page_number + leaf_page_cnt++;
@@ -62,17 +62,17 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
 
             if (!internal_page.insert_record(key_rec)) {
                 auto new_internal_page = pfile->allocate_page().page_number;
-                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
+                ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
                 pfile->write_page(cur_internal_page, internal_output_buffer.get());
                 cur_internal_page = new_internal_page;
 
                 internal_page_cnt++;
 
-                io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+                io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), ISAMTreeInternalNodeHeaderSize);
                 internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
-                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
-                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
-                ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
+                ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
+                ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+                ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
 
                 internal_page.insert_record(key_rec);
             }
@@ -81,7 +81,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
             io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
             leaf_page = io::FixedlenDataPage(leaf_output_buffer.get()); // probably not necessary
             leaf_page.insert_record(rec);
-            ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
+            ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt++;
         }
     }
 
@@ -97,17 +97,17 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
 
     if (!internal_page.insert_record(key_rec)) {
         auto new_internal_page = pfile->allocate_page().page_number;
-        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
+        ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
         pfile->write_page(cur_internal_page, internal_output_buffer.get());
         cur_internal_page = new_internal_page;
 
         internal_page_cnt++;
 
-        io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+        io::FixedlenDataPage::initialize(internal_output_buffer.get(), internal_schema->record_length(), ISAMTreeInternalNodeHeaderSize);
         internal_page = io::FixedlenDataPage(internal_output_buffer.get()); // probably not necessary
-        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
-        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
-        ((StaticBTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 1;
+        ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->prev_sibling = new_internal_page - 1;
+        ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = INVALID_PNUM;
+        ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 1;
 
         internal_page.insert_record(key_rec);
     }
@@ -115,7 +115,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     pfile->write_page(new_page, leaf_output_buffer.get());
     pfile->write_page(cur_internal_page, internal_output_buffer.get());
 
-    auto root_pnum = StaticBTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
+    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_internal.page_number, internal_schema.get());
     PageNum data_filter_pnum = INVALID_PNUM;
     PageNum tombstone_filter_pnum = INVALID_PNUM;
 
@@ -124,7 +124,7 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     }
 
     pfile->read_page(meta, internal_output_buffer.get());
-    auto metadata = (StaticBTreeMetaHeader *) internal_output_buffer.get();
+    auto metadata = (ISAMTreeMetaHeader *) internal_output_buffer.get();
     metadata->root_node = root_pnum;
     metadata->first_data_page = first_leaf.page_number;
     metadata->last_data_page = new_page;
@@ -133,14 +133,14 @@ void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Me
     pfile->write_page(meta, internal_output_buffer.get());
 }
 
-void StaticBTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
+void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
                              PageNum data_page_cnt, global::g_state *state, bool bloom_filters) 
 {
-    StaticBTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema.get(), bloom_filters);
+    ISAMTree::initialize(pfile, std::move(record_iter), data_page_cnt, state->record_schema.get(), bloom_filters);
 }
 
 
-int StaticBTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta)
+int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta)
 {
     *meta = pfile->allocate_page();
     if (pfile->supports_allocation() == io::PageAllocSupport::BULK) {
@@ -165,7 +165,7 @@ int StaticBTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt,
 }
 
 
-std::unique_ptr<catalog::FixedKVSchema> StaticBTree::generate_internal_schema(catalog::FixedKVSchema *record_schema)
+std::unique_ptr<catalog::FixedKVSchema> ISAMTree::generate_internal_schema(catalog::FixedKVSchema *record_schema)
 {
     PageOffset key_length = record_schema->key_len();
     PageOffset value_length = sizeof(PageNum);
@@ -174,7 +174,7 @@ std::unique_ptr<catalog::FixedKVSchema> StaticBTree::generate_internal_schema(ca
 }
 
 
-PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, catalog::FixedKVSchema *schema)
+PageNum ISAMTree::generate_internal_levels(io::PagedFile *pfile, PageNum first_internal, catalog::FixedKVSchema *schema)
 {
     // NOTE: We could just take advantage of the ReadCache, rather than
     // defining a new input buffer here
@@ -184,14 +184,14 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
     PageNum current_pnum = first_internal;
     pfile->read_page(current_pnum, input_buf.get());
     auto input_page = io::FixedlenDataPage(input_buf.get());
-    auto input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
+    auto input_header = (ISAMTreeInternalNodeHeader *) input_page.get_user_data();
     while (input_header->next_sibling != INVALID_PNUM) {
         auto new_output_pid = pfile->allocate_page();
         auto current_output_pid = new_output_pid;
 
-        io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+        io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), ISAMTreeInternalNodeHeaderSize);
         auto output_page = io::FixedlenDataPage(output_buf.get());
-        auto output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
+        auto output_header = (ISAMTreeInternalNodeHeader *) output_page.get_user_data();
         output_header->prev_sibling = INVALID_PNUM;
         output_header->next_sibling = INVALID_PNUM;
         output_header->leaf_rec_cnt = 0;
@@ -208,18 +208,18 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
             // insert record into output page, writing the old and creating a new if
             // it is full
             if (output_page.insert_record(new_record)) {
-                output_header->leaf_rec_cnt += ((StaticBTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
+                output_header->leaf_rec_cnt += ((ISAMTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
             } else {
                 auto new_pid = pfile->allocate_page();
                 output_header->next_sibling = new_pid.page_number;
                 pfile->write_page(current_output_pid, output_buf.get());
 
-                io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), StaticBTreeInternalNodeHeaderSize);
+                io::FixedlenDataPage::initialize(output_buf.get(), schema->record_length(), ISAMTreeInternalNodeHeaderSize);
                 output_page = io::FixedlenDataPage(output_buf.get());
-                output_header = (StaticBTreeInternalNodeHeader *) output_page.get_user_data();
+                output_header = (ISAMTreeInternalNodeHeader *) output_page.get_user_data();
                 output_header->prev_sibling = current_output_pid.page_number;
                 output_header->next_sibling = INVALID_PNUM;
-                output_header->leaf_rec_cnt = ((StaticBTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
+                output_header->leaf_rec_cnt = ((ISAMTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
 
                 output_page.insert_record(key_record);
                 current_output_pid = new_pid;
@@ -234,7 +234,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
 
             pfile->read_page(current_pnum, input_buf.get());
             input_page = io::FixedlenDataPage(input_buf.get());
-            input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
+            input_header = (ISAMTreeInternalNodeHeader *) input_page.get_user_data();
         } 
 
         // Make sure that the output buffer is flushed before the next iteration
@@ -244,7 +244,7 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
         current_pnum = new_output_pid.page_number;
         pfile->read_page(current_pnum, input_buf.get());
         input_page = io::FixedlenDataPage(input_buf.get());
-        input_header = (StaticBTreeInternalNodeHeader *) input_page.get_user_data();
+        input_header = (ISAMTreeInternalNodeHeader *) input_page.get_user_data();
     }
 
     // The last pnum processed will belong to the page in the level with only 1 node,
@@ -253,20 +253,20 @@ PageNum StaticBTree::generate_internal_levels(io::PagedFile *pfile, PageNum firs
 }
 
 
-StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
+ISAMTree::ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
                 catalog::KeyCmpFunc key_cmp, io::ReadCache *cache)
 {
     this->cache = cache;
     this->key_cmp = key_cmp;
     this->record_schema = record_schema;
-    this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
+    this->internal_index_schema = ISAMTree::generate_internal_schema(record_schema);
     this->fixed_length = true;
 
     this->pfile = pfile;
 
     byte *frame_ptr;
     auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);
-    auto meta = (StaticBTreeMetaHeader *) frame_ptr;
+    auto meta = (ISAMTreeMetaHeader *) frame_ptr;
     this->root_page = meta->root_node;
     this->first_data_page = meta->first_data_page;
     this->last_data_page = meta->last_data_page;
@@ -284,17 +284,17 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *reco
     this->cache->unpin(frame_id);
 
     frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
-    this->rec_cnt = ((StaticBTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
+    this->rec_cnt = ((ISAMTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
     this->cache->unpin(frame_id);
 }
 
 
-StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
+ISAMTree::ISAMTree(io::IndexPagedFile *pfile, global::g_state *state)
 {
     this->cache = state->cache.get();
     this->key_cmp = state->record_schema->get_key_cmp();
     this->record_schema = state->record_schema.get();
-    this->internal_index_schema = StaticBTree::generate_internal_schema(record_schema);
+    this->internal_index_schema = ISAMTree::generate_internal_schema(record_schema);
     this->fixed_length = true;
 
     this->pfile = pfile;
@@ -303,18 +303,18 @@ StaticBTree::StaticBTree(io::IndexPagedFile *pfile, global::g_state *state)
 
     byte *frame_ptr;
     auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);
-    this->root_page = ((StaticBTreeMetaHeader *) frame_ptr)->root_node;
-    this->first_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->first_data_page;
-    this->last_data_page = ((StaticBTreeMetaHeader *) frame_ptr)->last_data_page;
+    this->root_page = ((ISAMTreeMetaHeader *) frame_ptr)->root_node;
+    this->first_data_page = ((ISAMTreeMetaHeader *) frame_ptr)->first_data_page;
+    this->last_data_page = ((ISAMTreeMetaHeader *) frame_ptr)->last_data_page;
     this->cache->unpin(frame_id);
 
     frame_id = this->cache->pin(this->root_page, this->pfile, &frame_ptr);
-    this->rec_cnt = ((StaticBTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
+    this->rec_cnt = ((ISAMTreeInternalNodeHeader *) io::FixedlenDataPage(frame_ptr).get_user_data())->leaf_rec_cnt;
     this->cache->unpin(frame_id);
 }
 
 
-StaticBTree::~StaticBTree()
+ISAMTree::~ISAMTree()
 {
     // FIXME: I'm leaking btrees without closing their underlying files
     // somewhere while growing the tree. This fixes the problem for now.
@@ -325,7 +325,7 @@ StaticBTree::~StaticBTree()
 }
 
 
-PageId StaticBTree::get_lower_bound(const byte *key)
+PageId ISAMTree::get_lower_bound(const byte *key)
 {
     PageNum current_page = this->root_page;
     // The leaf pages are all allocated contiguously at the start of the file,
@@ -339,7 +339,7 @@ PageId StaticBTree::get_lower_bound(const byte *key)
 }
 
 
-PageId StaticBTree::get_upper_bound(const byte *key)
+PageId ISAMTree::get_upper_bound(const byte *key)
 {
     PageNum current_page = this->root_page;
     // The leaf pages are all allocated contiguously at the start of the file,
@@ -369,7 +369,7 @@ PageId StaticBTree::get_upper_bound(const byte *key)
 }
 
 
-bool StaticBTree::tombstone_exists(const byte *key, Timestamp time) 
+bool ISAMTree::tombstone_exists(const byte *key, Timestamp time) 
 {
     if (this->tombstone_bloom_filter) {
         if (!this->tombstone_bloom_filter->lookup(*((int64_t*) key))) {
@@ -389,7 +389,7 @@ bool StaticBTree::tombstone_exists(const byte *key, Timestamp time)
 }
 
 
-PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
+PageNum ISAMTree::search_internal_node_lower(PageNum pnum, const byte *key)
 {
     byte *page_buf;
     auto frid = this->cache->pin(pnum, this->pfile, &page_buf);
@@ -426,7 +426,7 @@ PageNum StaticBTree::search_internal_node_lower(PageNum pnum, const byte *key)
 }
 
 
-PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
+PageNum ISAMTree::search_internal_node_upper(PageNum pnum, const byte *key)
 {
     byte *page_buf;
     auto frid = this->cache->pin(pnum, this->pfile, &page_buf);
@@ -463,7 +463,7 @@ PageNum StaticBTree::search_internal_node_upper(PageNum pnum, const byte *key)
 }
 
 
-SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
+SlotId ISAMTree::search_leaf_page(byte *page_buf, const byte *key)
 {
     auto page = io::FixedlenDataPage(page_buf);
 
@@ -498,13 +498,13 @@ SlotId StaticBTree::search_leaf_page(byte *page_buf, const byte *key)
 }
 
 
-std::unique_ptr<iter::GenericIterator<Record>> StaticBTree::start_scan()
+std::unique_ptr<iter::GenericIterator<Record>> ISAMTree::start_scan()
 {
     return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page);
 }
 
 
-Record StaticBTree::get(const byte *key, FrameId *frid, Timestamp time)
+Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
     // if there is a bloom filter, check it first. If the record isn't there,
     // there isn't any reason to search the rest of the tree.
@@ -557,31 +557,31 @@ Record StaticBTree::get(const byte *key, FrameId *frid, Timestamp time)
 }
 
 
-size_t StaticBTree::get_record_count()
+size_t ISAMTree::get_record_count()
 {
     return this->rec_cnt;
 }
 
 
-PageNum StaticBTree::get_leaf_page_count()
+PageNum ISAMTree::get_leaf_page_count()
 {
     return this->last_data_page - this->first_data_page + 1;
 }
 
 
-io::PagedFile *StaticBTree::get_pfile() 
+io::PagedFile *ISAMTree::get_pfile() 
 {
     return this->pfile;
 }
 
 
-bool StaticBTree::is_fixed_length()
+bool ISAMTree::is_fixed_length()
 {
     return this->fixed_length;
 }
 
 
-catalog::KeyCmpFunc StaticBTree::get_key_cmp()
+catalog::KeyCmpFunc ISAMTree::get_key_cmp()
 {
     return this->key_cmp;
 }
@@ -589,7 +589,7 @@ catalog::KeyCmpFunc StaticBTree::get_key_cmp()
 
 // TODO: Implement bitmap for deletion tracking
 /*
-bool StaticBTree::is_deleted(RecordId rid, Timestamp time) 
+bool ISAMTree::is_deleted(RecordId rid, Timestamp time) 
 {
     return false;
 }

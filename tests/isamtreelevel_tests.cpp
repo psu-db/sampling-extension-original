@@ -3,7 +3,7 @@
  */
 
 #include <check.h>
-#include "sampling/level.hpp"
+#include "sampling/isamlevel.hpp"
 #include "sampling/samplerange.hpp"
 #include "testing.hpp"
 
@@ -15,15 +15,15 @@ START_TEST(t_create)
     auto state = testing::make_state1();
 
     size_t cnt = 0;
-    auto btree1 = testing::test_btree1(100, state.get(), &cnt);
+    auto isamtree1 = testing::test_isamtree1(100, state.get(), &cnt);
 
-    auto filename = state->file_manager->get_name(btree1->get_pfile()->get_flid());
+    auto filename = state->file_manager->get_name(isamtree1->get_pfile()->get_flid());
 
-    btree1.reset();
+    isamtree1.reset();
 
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level = sampling::BTreeLevel(1, cnt, files, state.get(), 1.0);
+    auto test_level = sampling::ISAMTreeLevel(1, cnt, files, state.get(), 1.0, false);
 
     ck_assert_ptr_nonnull(test_level.get_run(0));
     ck_assert_int_eq(test_level.can_emplace_run(), 0);
@@ -40,18 +40,18 @@ START_TEST(t_merge)
     auto state = testing::make_state1();
 
     size_t cnt1 = 0;
-    auto btree1 = testing::test_btree1(100, state.get(), &cnt1);
-    auto filename = state->file_manager->get_name(btree1->get_pfile()->get_flid());
+    auto isamtree1 = testing::test_isamtree1(100, state.get(), &cnt1);
+    auto filename = state->file_manager->get_name(isamtree1->get_pfile()->get_flid());
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level1 = sampling::BTreeLevel(1, cnt1, files, state.get(), 1.0);
+    auto test_level1 = sampling::ISAMTreeLevel(1, cnt1, files, state.get(), 1.0, false);
 
     size_t cnt2 = 0;
-    auto btree2 = testing::test_btree2(100, state.get(), &cnt2);
-    auto filename2 = state->file_manager->get_name(btree2->get_pfile()->get_flid());
+    auto isamtree2 = testing::test_isamtree2(100, state.get(), &cnt2);
+    auto filename2 = state->file_manager->get_name(isamtree2->get_pfile()->get_flid());
     std::vector<io::IndexPagedFile *> files2(1);
     files2[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level2 = sampling::BTreeLevel(1, cnt2 + cnt1, files2, state.get(), 1.0);
+    auto test_level2 = sampling::ISAMTreeLevel(1, cnt2 + cnt1, files2, state.get(), 1.0, false);
 
     ck_assert_int_eq(test_level2.can_merge_with(&test_level1), 1);
 
@@ -82,14 +82,14 @@ START_TEST(t_sample_range)
 {
     auto state = testing::make_state1();
     size_t cnt;
-    auto btree = testing::test_btree_cont(1000, state.get(), &cnt);
-    auto filename = state->file_manager->get_name(btree->get_pfile()->get_flid());
+    auto isamtree = testing::test_isamtree_cont(1000, state.get(), &cnt);
+    auto filename = state->file_manager->get_name(isamtree->get_pfile()->get_flid());
 
-    btree.reset();
+    isamtree.reset();
 
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level = sampling::BTreeLevel(1, cnt, files, state.get(), 1.0);
+    auto test_level = sampling::ISAMTreeLevel(1, cnt, files, state.get(), 1.0, false);
 
     int64_t key1 = 100;
     int64_t key2 = -7;
