@@ -129,7 +129,7 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     metadata->first_data_page = first_leaf.page_number;
     metadata->last_data_page = new_page;
     metadata->first_data_bloom_page = data_filter_pnum;
-    metadata->first_tombstone_bloom_page = data_filter_pnum;
+    metadata->first_tombstone_bloom_page = tombstone_filter_pnum;
     pfile->write_page(meta, internal_output_buffer.get());
 }
 
