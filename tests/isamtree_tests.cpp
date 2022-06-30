@@ -75,19 +75,18 @@ std::unique_ptr<iter::MergeIterator> test_merge_iterator(PageOffset value_size, 
 START_TEST(t_initialize)
 {
     testing::initialize_global_fm();
-    PageOffset value_size = 8;
-    auto schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     size_t rec_cnt;
-    auto iterator = test_merge_iterator(value_size, &rec_cnt);
-    g_schema = testing::test_schema1(value_size);
+    auto iterator = test_merge_iterator(state->record_schema->val_len(), &rec_cnt);
+    g_schema = testing::test_schema1(state->record_schema->val_len());
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc cmp = std::bind(&compare_func_key, _1, _2);
 
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 400, schema.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 400, state.get(), false);
 
-    auto isamtree = ds::ISAMTree(pfile, schema.get(), cmp, g_cache);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     ck_assert_int_eq(isamtree.get_record_count(), rec_cnt);
 }
@@ -97,20 +96,18 @@ END_TEST
 START_TEST(t_bounds_duplicates)
 {
     testing::initialize_global_fm();
-    auto my_cache = std::make_unique<io::ReadCache>(1024);
-    PageOffset value_size = 8;
-    g_schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     PageNum pages_per_file = 1000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, g_cache);
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt2);
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
@@ -119,8 +116,8 @@ START_TEST(t_bounds_duplicates)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::RecordCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get(), false);
-    auto isamtree = ds::ISAMTree(pfile, g_schema.get(), key_cmp, my_cache.get());
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
@@ -142,30 +139,28 @@ END_TEST
 START_TEST(t_bounds_lower_out_of_range)
 {
     testing::initialize_global_fm();
-    auto my_cache = std::make_unique<io::ReadCache>(1024);
-    PageOffset value_size = 8;
-    g_schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     PageNum pages_per_file = 1000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, g_cache);
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt2);
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
     const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
-    auto pfile = testing::g_fm->create_indexed_pfile();
+    auto pfile = state->file_manager->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get(), false);
-    auto isamtree = ds::ISAMTree(pfile, g_schema.get(), key_cmp, my_cache.get());
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
@@ -187,20 +182,18 @@ END_TEST
 START_TEST(t_bounds_upper_out_of_range)
 {
     testing::initialize_global_fm();
-    auto my_cache = std::make_unique<io::ReadCache>(1024);
-    PageOffset value_size = 8;
-    g_schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     PageNum pages_per_file = 1000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(2);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, g_cache);
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt2);
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
@@ -209,8 +202,8 @@ START_TEST(t_bounds_upper_out_of_range)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, g_schema.get(), false);
-    auto isamtree = ds::ISAMTree(pfile, g_schema.get(), key_cmp, my_cache.get());
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
     pfile->read_page(202, buf.get());
@@ -232,30 +225,28 @@ END_TEST
 START_TEST(t_bounds_general)
 {
     testing::initialize_global_fm();
-    auto my_cache = std::make_unique<io::ReadCache>(1024);
-    PageOffset value_size = 8;
-    g_schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     PageNum pages_per_file = 10000;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(4);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, g_cache);
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 8, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 8, &cnt2);
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
     size_t cnt3 = 0;
-    auto fname3 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 1, &cnt3);
+    auto fname3 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 1, &cnt3);
     auto *pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, g_cache);
 
     size_t cnt4 = 0;
-    auto fname4 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 15, &cnt4);
+    auto fname4 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 15, &cnt4);
     auto *pfile4 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname4);
     iters[3] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile4, g_cache);
 
@@ -264,8 +255,8 @@ START_TEST(t_bounds_general)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, g_schema.get(), false);
-    auto isamtree = ds::ISAMTree(pfile, g_schema.get(), key_cmp, my_cache.get());
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     int64_t l_key = 4;
     auto lb = isamtree.get_lower_bound((byte *) &l_key);
@@ -285,30 +276,28 @@ END_TEST
 START_TEST(t_iterator)
 {
     testing::initialize_global_fm();
-    auto my_cache = std::make_unique<io::ReadCache>(1024);
-    PageOffset value_size = 8;
-    g_schema = testing::test_schema1(value_size);
+    auto state = testing::make_state1();
 
     PageNum pages_per_file = 2;
 
     std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(4);
     size_t cnt1 = 0;
-    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 5, &cnt1);
+    auto fname1 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 5, &cnt1);
     auto *pfile1 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname1);
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile1, g_cache);
 
     size_t cnt2 = 0;
-    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, value_size, 8, &cnt2);
+    auto fname2 = testing::generate_isamtree_test_data_all_dupes(pages_per_file, state->record_schema->val_len(), 8, &cnt2);
     auto *pfile2 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname2);
     iters[1] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile2, g_cache);
 
     size_t cnt3 = 0;
-    auto fname3 = testing::generate_isamtree_test_data1(pages_per_file, value_size, &cnt3);
+    auto fname3 = testing::generate_isamtree_test_data1(pages_per_file, state->record_schema->val_len(), &cnt3);
     auto *pfile3 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname3);
     iters[2] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile3, g_cache);
 
     size_t cnt4 = 0;
-    auto fname4 = testing::generate_isamtree_test_data2(pages_per_file, value_size, &cnt4);
+    auto fname4 = testing::generate_isamtree_test_data2(pages_per_file, state->record_schema->val_len(), &cnt4);
     auto *pfile4 = (lsm::io::IndexPagedFile *) testing::g_fm->get_pfile(fname4);
     iters[3] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile4, g_cache);
 
@@ -317,8 +306,8 @@ START_TEST(t_iterator)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, g_schema.get(), false);
-    auto isamtree = ds::ISAMTree(pfile, g_schema.get(), key_cmp, my_cache.get());
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false);
+    auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto tree_iterator = isamtree.start_scan();
 

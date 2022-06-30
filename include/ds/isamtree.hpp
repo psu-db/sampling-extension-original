@@ -15,7 +15,7 @@
 #include "io/readcache.hpp"
 #include "io/indexpagedfile.hpp"
 #include "util/global.hpp"
-#include "ds/bloomfilter.hpp"
+#include "ds/persistent_bloom.hpp"
 
 namespace lsm { namespace ds {
 
@@ -43,20 +43,17 @@ public:
                                                bool bloom_filters, global::g_state *state);
 
     /*
-     * Initialize a ISAMTree structure within the file specified by pfile.
-     * The file is assumed to be empty and the resulting file contents are
+     * Initialize a ISAMTree structure within the file specified by pfile. The
+     * file is assumed to be empty and the resulting file contents are
      * undefined if this is not the case. It copies up to data_page_cnt number
      * of pages of records from record_itr into a contiguous page range,
      * assuming that the iterator returns the records in a proper sorted order,
      * and constructs an BTree index structure atop this, initializing the
      * header page appropriately.
      *
-     * record_schema is used for parsing and comparing the records.
+     * The record_schema used for parsing and comparing the records is obtained
+     * from state.
      */
-    static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
-                           PageNum data_page_cnt, catalog::FixedKVSchema *record_schema,
-                           bool bloom_filters);
-
     static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
                            PageNum data_page_cnt, global::g_state *state, bool bloom_filters);
 
@@ -154,8 +151,8 @@ private:
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
     catalog::KeyCmpFunc key_cmp;
-    std::unique_ptr<BloomFilter<int64_t>> bloom_filter;
-    std::unique_ptr<BloomFilter<int64_t>> tombstone_bloom_filter;
+    std::unique_ptr<PersistentBloomFilter> bloom_filter;
+    std::unique_ptr<PersistentBloomFilter> tombstone_bloom_filter;
     PageNum root_page;
     PageNum first_data_page;
     PageNum last_data_page;
@@ -167,7 +164,7 @@ private:
     PageNum search_internal_node_upper(PageNum pnum, const byte *key);
     SlotId search_leaf_page(byte *page_buf, const byte *key);
 
-    static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, PageId *first_leaf, PageId *first_internal, PageId *meta);
+    static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, size_t key_len, bool filters, PageId *first_leaf, PageId *first_internal, PageId *meta, PageId *filter_meta, PageId *tombstone_filter_meta, global::g_state *state);
     static std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedKVSchema *record_schema);
     static PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_page, catalog::FixedKVSchema *schema);
 };
