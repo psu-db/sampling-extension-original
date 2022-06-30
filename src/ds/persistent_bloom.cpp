@@ -9,7 +9,11 @@ namespace lsm { namespace ds {
 std::unique_ptr<PersistentBloomFilter> PersistentBloomFilter::create(size_t filter_size, size_t key_size, size_t k, PageId meta_pid, global::g_state *state)
 {
     auto pfile = state->file_manager->get_pfile(meta_pid.file_id);
-    return PersistentBloomFilter::create(filter_size, key_size, k, meta_pid.page_number, pfile, state);
+    if (pfile) {
+        return PersistentBloomFilter::create(filter_size, key_size, k, meta_pid.page_number, pfile, state);
+    }
+
+    return nullptr;
 }
 
 
@@ -46,7 +50,11 @@ std::unique_ptr<PersistentBloomFilter> PersistentBloomFilter::create(size_t filt
 std::unique_ptr<PersistentBloomFilter> PersistentBloomFilter::open(PageId meta_pid, global::g_state *state)
 {
     auto pfile = state->file_manager->get_pfile(meta_pid.file_id);
-    return PersistentBloomFilter::open(meta_pid.page_number, pfile);
+    if (pfile) {
+        return PersistentBloomFilter::open(meta_pid.page_number, pfile);
+    }
+
+    return nullptr;
 }
 
 

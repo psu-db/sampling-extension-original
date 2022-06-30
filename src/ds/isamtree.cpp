@@ -155,7 +155,7 @@ int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, si
     *meta = pfile->allocate_page();
 
     if (filters) {
-        size_t keys = page_cnt / key_len;
+        size_t keys = page_cnt * parm::PAGE_SIZE / key_len;
         size_t filter_size = keys * 5 * .7;
         size_t tombstone_size = keys * 5 * .3;
 

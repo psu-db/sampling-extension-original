@@ -5,7 +5,11 @@ namespace lsm { namespace ds {
 std::unique_ptr<BitMap> BitMap::create(size_t size, PageId meta_pid, global::g_state *state, bool default_value)
 {
     auto pfile = state->file_manager->get_pfile(meta_pid.file_id);    
-    return BitMap::create(size, meta_pid.page_number, pfile, default_value);
+    if (pfile) {
+        return BitMap::create(size, meta_pid.page_number, pfile, default_value);
+    }
+
+    return nullptr;
 }
 
 
