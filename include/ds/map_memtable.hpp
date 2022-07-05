@@ -95,7 +95,7 @@ public:
 private:
     MapCompareFunc cmp;
     MapCompareFuncLess cmp_less;
-    catalog::KeyCmpFunc rec_cmp;
+    catalog::KeyCmpFunc key_cmp;
     size_t capacity;
     global::g_state *state;
     std::unique_ptr<SkipList> table;

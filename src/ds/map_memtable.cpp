@@ -10,9 +10,9 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
-    this->rec_cmp = state->record_schema->get_key_cmp();
-    this->cmp = MapCompareFunc{this->rec_cmp};
-    this->cmp_less = MapCompareFuncLess{this->rec_cmp};
+    this->key_cmp = state->record_schema->get_key_cmp();
+    this->cmp = MapCompareFunc{this->key_cmp};
+    this->cmp_less = MapCompareFuncLess{this->key_cmp};
 
     cds::Initialize();
     cds::gc::hp::GarbageCollector::Construct(70);
@@ -40,20 +40,20 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
     auto record_buffer = this->state->record_schema->create_record_raw(key, value);
     auto record = io::Record(record_buffer, this->state->record_schema->record_length(), time, tombstone);
 
-    if (!this->insert_internal(record)) {
-        delete[] record_buffer;
-        return 0;
+    if (this->insert_internal(record)) {
+        return 1;
     }
 
-    return 1;
+    delete[] record_buffer;
+    return 0;
 }
 
 
 int MapMemTable::insert_internal(io::Record record)
 {
-    auto time = record.get_timestamp();
-    auto key_buf = this->get_key(record);
-    MapKey memtable_key {key_buf, time};
+    Timestamp time = record.get_timestamp();
+    const byte *key = this->get_key(record);
+    MapKey memtable_key {key, time};
 
     return this->table->insert(memtable_key, record.get_data());
 }
@@ -91,10 +91,6 @@ int MapMemTable::remove(byte *key, byte* value, Timestamp time)
 
 io::Record MapMemTable::get(const byte *key, Timestamp time)
 {
-    // TODO: This should return the first record with a timestamp less than
-    // or equal to the specified one. Need to dig into the interface for map
-    // to see how that sort of thing could be done. For now, the time is always
-    // 0 anyway.
     auto result = this->table->get_with(MapKey{key, time}, this->cmp_less);
 
     if (result) {
@@ -141,7 +137,7 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower
 }
 
 
-SkipListMap<cds::gc::HP, MapKey, byte*, SkipListTraits> *MapMemTable::get_table()
+SkipList *MapMemTable::get_table()
 {
     return this->table.get();
 }
