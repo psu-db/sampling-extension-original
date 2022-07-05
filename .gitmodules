@@ -4,3 +4,9 @@
 [submodule "external/SuRF"]
 	path = external/SuRF
 	url = git@github.com:efficient/SuRF.git
+[submodule "external/libcds"]
+	path = external/libcds
+	url = git@github.com:khizmax/libcds.git
+[submodule "external/skiplist"]
+	path = external/skiplist
+	url = git@github.com:greensky00/skiplist.git

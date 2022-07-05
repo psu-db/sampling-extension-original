@@ -6,39 +6,14 @@
 
 namespace lsm { namespace sampling {
 
-
-/*
-std::unique_ptr<SampleRange> MapMemTableSampleRange::create(ds::MapMemTable *table, byte *lower_key, 
-                                    byte *upper_key, global::g_state *state)
-{
-    std::vector<byte> lower_key_bytes;
-    lower_key_bytes.insert(lower_key_bytes.end(), lower_key, lower_key + state->record_schema->key_len());
-
-    std::vector<byte> upper_key_bytes;
-    upper_key_bytes.insert(upper_key_bytes.end(), upper_key, upper_key + state->record_schema->key_len());
-
-    auto start = table->get_table()->lower_bound(std::pair(lower_key_bytes, TIMESTAMP_MIN));
-    auto stop = table->get_table()->upper_bound(std::pair(upper_key_bytes, TIMESTAMP_MAX));
-
-    // the range doesn't work for the memtable
-    if (start == table->get_table()->end() || stop == table->get_table()->end()) {
-        return nullptr;
-    }
-
-}
-*/
-
-
 MapMemTableSampleRange::MapMemTableSampleRange(
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator start,
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator stop,
-    global::g_state *state)
+    ds::SkipList::iterator start, ds::SkipList::iterator stop, global::g_state *state)
 {
     this->state = state;
 
     while (start != stop) {
         this->records.push_back(start->second);
-        start++;
+        ++start;
     }
 }
 

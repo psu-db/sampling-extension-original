@@ -5,8 +5,6 @@
 #ifndef H_MAPMEMTABLE
 #define H_MAPMEMTABLE
 
-#include <map>
-
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "ds/memtable.hpp"
@@ -14,18 +12,11 @@
 #include "sampling/mapmemtable_samplerange.hpp"
 #include "util/global.hpp"
 
+#include "ds/skiplist_core.hpp"
+
 namespace lsm { namespace ds {
 
 class MapRecordIterator;
-
-struct MapCompareFunc {
-    catalog::KeyCmpFunc key_cmp;
-    bool operator()(const std::pair<std::vector<byte>, const Timestamp> a, std::pair<std::vector<byte>, Timestamp> b) const {
-        auto rec_cmp = this->key_cmp(&a.first[0], &b.first[0]);
-        return (rec_cmp == 0) ? a.second < b.second : rec_cmp < 0;
-    }
-};
-
 
 class MapMemTable : public MemoryTable {
     friend class MapRecordIterator;
@@ -55,7 +46,7 @@ public:
      * this, other methods of handling deletes, such as tombstones or
      * bitmaps, do not require the use of this function.
      */
-    int remove(byte *key, byte *value, Timestamp time=0) override;
+    // int remove(byte *key, byte *value, Timestamp time=0) override;
 
     /*
      * Attempts to retrieve a reocrd with a given key and timestamp from the
@@ -64,6 +55,8 @@ public:
      * not appear within the memtable.
      */
     io::Record get(const byte *key, Timestamp time=0) override;
+
+    int remove(byte *key, byte* value, Timestamp time=0) override;
 
     /*
      * Returns the maximum capacity (in records) of the memtable.
@@ -79,7 +72,6 @@ public:
      * Returns true if the memtable is full, and false if it is not.
      */
     bool is_full() override;
-
 
     /*
      * Deletes all records from the memtable, and frees their associated
@@ -99,17 +91,16 @@ public:
      */
     std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() override;
 
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> *get_table();
+    SkipList *get_table();
 private:
     MapCompareFunc cmp;
+    MapCompareFuncLess cmp_less;
     catalog::KeyCmpFunc rec_cmp;
     size_t capacity;
     global::g_state *state;
+    std::unique_ptr<SkipList> table;
 
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> table;
-
-    std::vector<byte> create_key_buf(const byte *key);
-    std::vector<byte> create_key_buf(io::Record record);
+    const byte *get_key(io::Record record);
     int insert_internal(io::Record record);
 };
 
@@ -129,8 +120,8 @@ public:
     bool supports_element_count() override {return true;}
 
 private:
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator iter;
-    std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator end;
+    SkipList::iterator iter;
+    SkipList::iterator end;
 
     bool first_iteration;
     bool at_end;
