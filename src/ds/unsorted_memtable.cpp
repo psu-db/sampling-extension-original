@@ -13,7 +13,7 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state)
     this->state = state;
     this->current_tail = 0;
 
-    this->rec_cmp = this->state->record_schema->get_key_cmp();
+    this->key_cmp = this->state->record_schema->get_key_cmp();
 }
 
 
@@ -127,7 +127,7 @@ ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
     for (size_t i=0; i<=(size_t)upper_bound; i++) {
         if (this->table[i].get_timestamp() <= time) {
             const byte *table_key = this->state->record_schema->get_key(this->table[i].get_data()).Bytes();
-            if (this->rec_cmp(key, table_key) == 0) {
+            if (this->key_cmp(key, table_key) == 0) {
                 if (this->table[i].get_timestamp() >= current_best_time) {
                     current_best_time = this->table[i].get_timestamp();
                     current_best_match = i;
