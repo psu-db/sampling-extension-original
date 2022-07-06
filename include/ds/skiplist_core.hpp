@@ -21,10 +21,12 @@ using cds::container::SkipListMap;
 
 typedef std::pair<const byte*, const Timestamp> MapKey;
 
+extern catalog::KeyCmpFunc sl_global_key_cmp;
+
 struct MapCompareFunc {
-    catalog::KeyCmpFunc key_cmp;
-    bool operator()(const MapKey a, const MapKey b) const {
-        auto rec_cmp = this->key_cmp(a.first, b.first);
+    int operator()(const MapKey a, const MapKey b) const {
+        extern catalog::KeyCmpFunc sl_global_key_cmp;
+        auto rec_cmp = sl_global_key_cmp(a.first, b.first);
         if (rec_cmp == 0) {
             if (a.second == b.second) {
                 return 0;
@@ -39,11 +41,10 @@ struct MapCompareFunc {
     }
 };
 
-
 struct MapCompareFuncLess {
-    catalog::KeyCmpFunc key_cmp;
     bool operator()(const MapKey a, const MapKey b) const {
-        auto rec_cmp = this->key_cmp(a.first, b.first);
+        extern catalog::KeyCmpFunc sl_global_key_cmp;
+        auto rec_cmp = sl_global_key_cmp(a.first, b.first);
         return (rec_cmp == 0) ? a.second < b.second : rec_cmp < 0;
     }
 };

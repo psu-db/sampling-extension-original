@@ -1,6 +1,6 @@
 CXX=g++-10
 CXXFLAGS = -Wall -Wextra -Iinclude -faligned-new -std=c++17 $(OPTFLAGS) -DNO_BUFFER_MANAGER
-LDLIBS = -lcheck -pthread -lrt -lsubunit -lm -lgsl -lgslcblas -lcds_d
+LDLIBS = -lcheck -pthread -lrt -lsubunit -lm -lgsl -lgslcblas -lcds
 
 SOURCES = $(wildcard src/**/*.cpp src/*.cpp)
 OBJECTS = $(patsubst src/%.cpp,build/%.o,$(SOURCES))
