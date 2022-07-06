@@ -34,11 +34,9 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
         return;
     }
 
-    std::unique_ptr<PersistentBloomFilter> bloom_filter = nullptr;
     std::unique_ptr<PersistentBloomFilter> tomb_filter = nullptr;
 
     if (bloom_filters) {
-        bloom_filter = PersistentBloomFilter::open(filter_meta, state);
         tomb_filter = PersistentBloomFilter::open(tombstone_filter_meta, state);
     }
 
@@ -57,11 +55,8 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     while (record_iter->next() && leaf_page_cnt < data_page_cnt) {
         auto rec = record_iter->get_item();
 
-        if (bloom_filters) {
-            bloom_filter->insert(record_schema->get_key(rec.get_data()).Bytes());
-            if (rec.is_tombstone()) {
-                tomb_filter->insert(record_schema->get_key(rec.get_data()).Bytes());
-            }
+        if (bloom_filters && rec.is_tombstone()) {
+            tomb_filter->insert(record_schema->get_key(rec.get_data()).Bytes());
         }
 
         if (leaf_page.insert_record(rec)) {
@@ -104,7 +99,6 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     }
 
     if (bloom_filters) {
-        bloom_filter->flush();
         tomb_filter->flush();
     }
 
@@ -145,7 +139,6 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     metadata->root_node = root_pnum;
     metadata->first_data_page = first_leaf.page_number;
     metadata->last_data_page = new_page;
-    metadata->first_data_bloom_page = filter_meta.page_number;
     metadata->first_tombstone_bloom_page = tombstone_filter_meta.page_number;
     pfile->write_page(meta, internal_output_buffer.get());
 }
@@ -157,14 +150,11 @@ int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, si
 
     if (filters) {
         size_t keys = page_cnt * parm::PAGE_SIZE / key_len;
-        size_t filter_size = keys * 5 * .7;
-        size_t tombstone_size = keys * 5 * .3;
+        size_t filter_size = keys * 5;
 
-        *filter_meta = pfile->allocate_page();
-        PersistentBloomFilter::create(filter_size, key_len, 3, *filter_meta, state);
-
+        *filter_meta = INVALID_PID;
         *tombstone_filter_meta = pfile->allocate_page();
-        PersistentBloomFilter::create(tombstone_size, key_len, 3, *tombstone_filter_meta, state);
+        PersistentBloomFilter::create(filter_size, key_len, 3, *tombstone_filter_meta, state);
     } else {
         *filter_meta = INVALID_PID;
         *tombstone_filter_meta = INVALID_PID;
@@ -297,10 +287,6 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_sch
     this->first_data_page = meta->first_data_page;
     this->last_data_page = meta->last_data_page;
 
-    if (meta->first_data_bloom_page) {
-        this->bloom_filter = PersistentBloomFilter::open(meta->first_data_bloom_page, pfile);
-    }
-
     if (meta->first_tombstone_bloom_page) {
         this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
     }
@@ -331,10 +317,6 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, global::g_state *state)
     this->root_page = meta->root_node;
     this->first_data_page = meta->first_data_page;
     this->last_data_page = meta->last_data_page;
-
-    if (meta->first_data_bloom_page) {
-        this->bloom_filter = PersistentBloomFilter::open(meta->first_data_bloom_page, pfile);
-    }
 
     if (meta->first_tombstone_bloom_page) {
         this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
@@ -540,14 +522,6 @@ std::unique_ptr<iter::GenericIterator<Record>> ISAMTree::start_scan()
 
 Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
-    // if there is a bloom filter, check it first. If the record isn't there,
-    // there isn't any reason to search the rest of the tree.
-    if (this->bloom_filter) {
-        if (!this->bloom_filter->lookup(key)) {
-            return io::Record();
-        }
-    }
-
     // find the first page to search
     auto pid = this->get_lower_bound(key);
 
