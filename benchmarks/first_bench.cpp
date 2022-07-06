@@ -81,5 +81,8 @@ int main(int argc, char **argv) {
         total_misses += state_ptr->cache->cache_misses();
     }
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n", data_size, tree->depth(), sample_size, per_insert, total_rej / trials, total_attempt / trials, total_misses / trials, total_buffer / trials, total_bounds / trials, total_walker / trials, total_sample / trials, total_rejection / trials);
-}
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
+            data_size, tree->depth(), sample_size, per_insert, total_rej /
+            trials, total_attempt / trials, total_misses / trials, total_buffer
+            / trials, total_bounds / trials, total_walker / trials,
+            total_sample / trials, total_rejection / trials); }
