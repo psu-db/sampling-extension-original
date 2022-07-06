@@ -478,6 +478,77 @@ START_TEST(t_iterator_bloom)
 END_TEST
 
 
+START_TEST(t_general_large_keys)
+{
+    PageNum page_count = 2000;
+    size_t cnt = 0;
+
+    auto state = testing::make_state(256, 512); 
+    auto data_file = testing::generate_contiguous_test_data(page_count, state.get(), &cnt);
+    std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(1);
+    auto pfile = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(data_file);
+    iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile, state->cache.get());
+
+    auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
+    auto tree_file = state->file_manager->create_indexed_pfile();
+    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false);
+    auto isamtree = ds::ISAMTree(tree_file, state.get());
+
+    int64_t key = 0;
+    for (auto iter=isamtree.start_scan(); iter->next();) {
+        auto rec = iter->get_item();
+        auto rec_key_bytes = state->record_schema->get_key(rec.get_data()).Bytes();
+        auto rec_key = state->record_schema->get_key(rec.get_data()).Int64();
+        ck_assert_int_eq(key, rec_key);
+
+        FrameId frid;
+        auto get_rec = isamtree.get(rec_key_bytes, &frid);
+
+        ck_assert_int_ne(frid, INVALID_FRID);
+        auto get_rec_key = state->record_schema->get_key(get_rec.get_data()).Int64();
+        ck_assert(get_rec.is_valid());
+        ck_assert_int_eq(key, get_rec_key);
+
+        state->cache->unpin(frid);
+        key++;
+    }
+}
+END_TEST
+
+
+START_TEST(t_lb_error_reproducer)
+{
+    PageNum page_count = 2000;
+    size_t cnt = 0;
+
+    auto state = testing::make_state(256, 512); 
+    auto data_file = testing::generate_contiguous_test_data(page_count, state.get(), &cnt);
+    std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(1);
+    auto pfile = (lsm::io::IndexPagedFile *) state->file_manager->get_pfile(data_file);
+    iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile, state->cache.get());
+
+    auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
+    auto tree_file = state->file_manager->create_indexed_pfile();
+    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false);
+    auto isamtree = ds::ISAMTree(tree_file, state.get());
+
+    int64_t error_key = 1125;
+    std::byte key_buf[state->record_schema->key_len()];
+    memcpy(key_buf, &error_key, sizeof(int64_t));
+
+    FrameId frid;
+    auto get_rec = isamtree.get(key_buf, &frid);
+
+    ck_assert_int_ne(frid, INVALID_FRID);
+    auto get_rec_key = state->record_schema->get_key(get_rec.get_data()).Int64();
+    ck_assert(get_rec.is_valid());
+    ck_assert_int_eq(error_key, get_rec_key);
+
+    state->cache->unpin(frid);
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("ISAM Tree Unit Testing");
@@ -515,7 +586,15 @@ Suite *unit_testing()
 
     tcase_set_timeout(get, 100);
 
-    suite_add_tcase(unit, get);
+    TCase *misc = tcase_create("lsm::ds::ISAMTree::miscellaneous");
+    tcase_add_test(misc, t_general_large_keys);
+
+    //suite_add_tcase(unit, misc);
+    
+    TCase *repro = tcase_create("lsm::ds::ISAMTree::bug reproducers");
+    tcase_add_test(repro, t_lb_error_reproducer);
+
+    suite_add_tcase(unit, repro);
 
     return unit;
 }

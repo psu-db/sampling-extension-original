@@ -547,20 +547,26 @@ std::string generate_isamtree_test_data_b(size_t page_cnt, global::g_state *stat
 
 std::string generate_contiguous_test_data(PageNum page_cnt, global::g_state *state, size_t *reccnt)
 {
-    auto test_file = state->file_manager->create_indexed_pfile("isamtree_contiguous");
+    auto test_file = state->file_manager->create_indexed_pfile();
     auto buf = empty_aligned_buffer();
     auto schema = state->record_schema.get();
 
     int64_t key = 0;
-    int64_t val = 8;
+    int64_t val = 0;
     size_t cnt = 0;
     PageOffset length = schema->record_length();
+
+    byte key_buf[schema->key_len()];
+    byte val_buf[schema->val_len()];
+
     for (size_t i=0; i<page_cnt; i++) {
         auto new_pid = test_file->allocate_page(); 
         io::FixedlenDataPage::initialize(buf.get(), length, 0);
         auto datapage = io::FixedlenDataPage(buf.get());
         for (size_t i=0; i<datapage.get_record_capacity(); i++) {
-            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            memcpy(key_buf, &key, sizeof(int64_t));
+            memcpy(val_buf, &val, sizeof(int64_t));
+            auto recbuf = schema->create_record(key_buf, val_buf);
             datapage.insert_record({recbuf.get(), length});
             key += 1;
             val += 1;
@@ -676,6 +682,23 @@ std::unique_ptr<global::g_state> make_state1()
     return std::unique_ptr<global::g_state>(new_state);
 }
 
+
+std::unique_ptr<global::g_state> make_state(size_t keylen, size_t vallen)
+{
+    auto new_state = new global::g_state();
+
+    const catalog::RecordCmpFunc reccmp = std::bind(&reccmp1, _1, _2);
+    const catalog::KeyCmpFunc keycmp = std::bind(&keycmp1, _1, _2);
+
+    gsl_rng_env_setup();
+
+    new_state->cache = std::make_unique<io::ReadCache>(1024);
+    new_state->file_manager = std::make_unique<io::FileManager>("tests/data/filemanager1/");
+    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(keylen, vallen, io::RecordHeaderLength, keycmp, reccmp);
+    new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
+
+    return std::unique_ptr<global::g_state>(new_state);
+}
 
 }}
 
