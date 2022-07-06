@@ -444,7 +444,7 @@ PageNum ISAMTree::search_internal_node_lower(PageNum pnum, const byte *key)
     while (min < max) {
         SlotId mid = (min + max) / 2;
         auto node_key = this->internal_index_schema->get_key(page.get_record(mid).get_data()).Bytes();
-        if (this->key_cmp(key, node_key) < 0) {
+        if (this->key_cmp(key, node_key) > 0) {
             min = mid + 1;
         } else {
             max = mid;
