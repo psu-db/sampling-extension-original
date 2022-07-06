@@ -416,13 +416,11 @@ bool LSMTree::is_deleted(io::Record record)
     FrameId frid;
     auto res = this->get(key, &frid, time, true);
 
-    if (res.is_valid()) {
-        if (res.is_tombstone()) {
-            deleted = true;
-        }
-
-        this->state->cache->unpin(frid);
+    if (res.is_tombstone()) {
+        deleted = true;
     }
+
+    this->state->cache->unpin(frid);
 
     return deleted;
 }

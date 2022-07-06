@@ -54,6 +54,7 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     PageNum new_page;
     PageNum cur_internal_page = first_internal.page_number;
 
+    //fprintf(stderr, "------------new internal node %d------------\n", cur_internal_page);
     while (record_iter->next() && leaf_page_cnt < data_page_cnt) {
         auto rec = record_iter->get_item();
 
@@ -77,6 +78,7 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
             auto internal_recbuf = internal_schema->create_record(record_schema->get_key(new_key_record.get_data()).Bytes(), (byte *) &new_page);
             auto key_rec = io::Record(internal_recbuf.get(), internal_schema->record_length()); 
 
+
             if (!internal_page.insert_record(key_rec)) {
                 auto new_internal_page = pfile->allocate_page().page_number;
                 ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->next_sibling = new_internal_page;
@@ -92,7 +94,10 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
                 ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 0;
 
                 internal_page.insert_record(key_rec);
+                //fprintf(stderr, "------------new internal node %d------------\n", cur_internal_page);
             }
+
+            //fprintf(stderr, "Separator key: %ld for page %d\n", internal_schema->get_key(key_rec.get_data()).Int64(), new_page);
 
             // create a new leaf page and load the record into it
             io::FixedlenDataPage::initialize(leaf_output_buffer.get(), record_schema->record_length());
@@ -132,7 +137,10 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
         ((ISAMTreeInternalNodeHeader *) internal_page.get_user_data())->leaf_rec_cnt = 1;
 
         internal_page.insert_record(key_rec);
+        //fprintf(stderr, "------------new internal node %d------------\n", cur_internal_page);
     }
+
+    //fprintf(stderr, "Separator key: %ld for page %d\n", internal_schema->get_key(key_rec.get_data()).Int64(), new_page);
 
     pfile->write_page(new_page, leaf_output_buffer.get());
     pfile->write_page(cur_internal_page, internal_output_buffer.get());
@@ -222,13 +230,15 @@ PageNum ISAMTree::generate_internal_levels(io::PagedFile *pfile, PageNum first_i
         output_header->next_sibling = INVALID_PNUM;
         output_header->leaf_rec_cnt = 0;
 
+        //fprintf(stderr,  "------------new ISAM Level------------\n");
+        //fprintf(stderr, "------------new internal node %d------------\n", new_output_pid.page_number);
+
         while (true) {
             // move the last key value on this node up to the next level of the tree
             auto key_record = input_page.get_record(input_page.get_max_sid());
             auto key = schema->get_key(key_record.get_data()).Bytes();
-            auto value = current_pnum;
 
-            auto new_record_buf = schema->create_record(key, (byte *) &value);
+            auto new_record_buf = schema->create_record(key, (byte *) &current_pnum);
             auto new_record = io::Record(new_record_buf.get(), schema->record_length());
 
             // insert record into output page, writing the old and creating a new if
@@ -247,9 +257,12 @@ PageNum ISAMTree::generate_internal_levels(io::PagedFile *pfile, PageNum first_i
                 output_header->next_sibling = INVALID_PNUM;
                 output_header->leaf_rec_cnt = ((ISAMTreeInternalNodeHeader *) input_page.get_user_data())->leaf_rec_cnt;
 
-                output_page.insert_record(key_record);
+                output_page.insert_record(new_record);
                 current_output_pid = new_pid;
+                //fprintf(stderr, "------------new internal node %d------------\n", new_pid.page_number);
             }
+                
+            //fprintf(stderr, "Separator key: %ld for page %d\n", schema->get_key(new_record.get_data()).Int64(), current_pnum);
 
             // advance to next page at this level
             if (input_header->next_sibling == INVALID_PNUM) {
@@ -366,7 +379,10 @@ PageId ISAMTree::get_lower_bound(const byte *key)
     // so we'll know when we have a pointer to one when the pnum is no larger
     // than the last data page.
     while (current_page > this->last_data_page) {
+        //fprintf(stderr, "Searching %d --", current_page);
         current_page = search_internal_node_lower(current_page, key);
+        //fprintf(stderr, "-->%d\n", current_page);
+
     }
 
     return this->pfile->pnum_to_pid(current_page);
@@ -453,6 +469,8 @@ PageNum ISAMTree::search_internal_node_lower(PageNum pnum, const byte *key)
 
     auto index_record = page.get_record(min);
     PageNum target_pnum = this->internal_index_schema->get_val(index_record.get_data()).Int32();
+
+    //fprintf(stderr, "found at slot %d(%ld)", min, this->internal_index_schema->get_key(index_record.get_data()).Int64());
 
     this->cache->unpin(frid);
 
