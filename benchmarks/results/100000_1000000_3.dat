@@ -1,3 +1,4 @@
-rejections attempts memtable_time boundary_time walker_time sample_time
-0 1000 934806 1111 100 688610
-0 1000 932151 1275 90 685794
+record_count tree_height sample_size insert_time rejections attempts cache_misses buffer_proc_time bounds_time walker_time sample_time rej_check_time
+1000000 2 1000 3942 4 1004 680 5045397 471195 844 45649184 23318941
+1000000 2 1000 3930 4 1004 680 4952649 470410 811 45641051 23291476
+1000000 2 1000 3938 4 1004 680 5099204 473753 812 45561658 23271776
