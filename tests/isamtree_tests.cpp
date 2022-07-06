@@ -586,10 +586,12 @@ Suite *unit_testing()
 
     tcase_set_timeout(get, 100);
 
+
     TCase *misc = tcase_create("lsm::ds::ISAMTree::miscellaneous");
     tcase_add_test(misc, t_general_large_keys);
 
-    //suite_add_tcase(unit, misc);
+    suite_add_tcase(unit, misc);
+
     
     TCase *repro = tcase_create("lsm::ds::ISAMTree::bug reproducers");
     tcase_add_test(repro, t_lb_error_reproducer);
