@@ -9,6 +9,7 @@
 #include <map>
 
 #include "sampling/samplerange.hpp"
+#include "ds/skiplist_core.hpp"
 #include "util/global.hpp"
 
 namespace lsm { namespace sampling {
@@ -21,6 +22,9 @@ public:
      */
 
     UnsortedMemTableSampleRange(std::vector<io::Record>::const_iterator begin, std::vector<io::Record>::const_iterator end,
+                                const byte *lower_key, const byte *upper_key, global::g_state *state);
+
+    UnsortedMemTableSampleRange(ds::SkipList::iterator begin, ds::SkipList::iterator end,
                                 const byte *lower_key, const byte *upper_key, global::g_state *state);
 
 

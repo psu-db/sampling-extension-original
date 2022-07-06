@@ -9,7 +9,8 @@
 #include "util/types.hpp"
 #include "ds/memtable.hpp"
 #include "io/record.hpp"
-#include "sampling/mapmemtable_samplerange.hpp"
+//#include "sampling/mapmemtable_samplerange.hpp"
+#include "sampling/unsortedmemtable_samplerange.hpp"
 #include "util/global.hpp"
 
 #include "ds/skiplist_core.hpp"

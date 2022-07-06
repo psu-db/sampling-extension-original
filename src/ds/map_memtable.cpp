@@ -6,20 +6,21 @@
 
 namespace lsm { namespace ds {
 
+catalog::KeyCmpFunc sl_global_key_cmp;
+
 MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
     this->key_cmp = state->record_schema->get_key_cmp();
-    this->cmp = MapCompareFunc{this->key_cmp};
-    this->cmp_less = MapCompareFuncLess{this->key_cmp};
+
+    sl_global_key_cmp = state->record_schema->get_key_cmp();
 
     cds::Initialize();
     cds::gc::hp::GarbageCollector::Construct(70);
     cds::threading::Manager::attachThread();
 
-    auto tbl = new SkipList();
-    this->table = std::unique_ptr<SkipList>(tbl);
+    this->table = std::make_unique<SkipList>();
 }
 
 
@@ -119,12 +120,15 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
+    auto start = this->table->begin();
+    auto stop = this->table->end();
+    return std::make_unique<sampling::UnsortedMemTableSampleRange>(start, stop, lower_key, upper_key, this->state);
+    /*
     const MapKey lower {lower_key, TIMESTAMP_MIN};
     const MapKey upper {upper_key, TIMESTAMP_MAX};
 
     return nullptr;
 
-    /*
     auto start = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), lower, this->cmp_less);
     auto stop = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), upper, this->cmp_less);
     // the range doesn't work for the memtable
