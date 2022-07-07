@@ -4,3 +4,6 @@
 [submodule "external/SuRF"]
 	path = external/SuRF
 	url = git@github.com:efficient/SuRF.git
+[submodule "external/lockfree_skiplist"]
+	path = external/lockfree_skiplist
+	url = git@github.com:dbrumbaugh/lockfree_skiplist.git
