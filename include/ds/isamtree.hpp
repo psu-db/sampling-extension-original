@@ -151,7 +151,6 @@ private:
     catalog::FixedKVSchema *record_schema;
     std::unique_ptr<catalog::FixedKVSchema> internal_index_schema; // schema for internal nodes
     catalog::KeyCmpFunc key_cmp;
-    std::unique_ptr<PersistentBloomFilter> bloom_filter;
     std::unique_ptr<PersistentBloomFilter> tombstone_bloom_filter;
     PageNum root_page;
     PageNum first_data_page;

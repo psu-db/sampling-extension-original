@@ -138,10 +138,6 @@ int LSMTree::insert(byte *key, byte *value, Timestamp time)
 
     auto res = this->memtable->insert(key, value, time);
 
-    if (res && this->bloom_filters) {
-        this->memtable_bf->insert(*(int64_t*) key);
-    }
-
     this->rec_count += res;
     return res;
 }
@@ -421,6 +417,7 @@ bool LSMTree::is_deleted(io::Record record)
     }
 
     this->state->cache->unpin(frid);
+
     return deleted;
 }
 

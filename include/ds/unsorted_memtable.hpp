@@ -44,7 +44,7 @@ private:
     std::vector<io::Record> table;
     global::g_state *state;
 
-    catalog::KeyCmpFunc rec_cmp;
+    catalog::KeyCmpFunc key_cmp;
 
     std::atomic<size_t> current_tail;
     ssize_t find_record(const byte* key, Timestamp time);
