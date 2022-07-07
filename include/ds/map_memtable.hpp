@@ -9,11 +9,10 @@
 #include "util/types.hpp"
 #include "ds/memtable.hpp"
 #include "io/record.hpp"
-//#include "sampling/mapmemtable_samplerange.hpp"
-#include "sampling/unsortedmemtable_samplerange.hpp"
 #include "util/global.hpp"
 
 #include "ds/skiplist_core.hpp"
+#include "sampling/mapmemtable_samplerange.hpp"
 
 namespace lsm { namespace ds {
 
@@ -94,9 +93,6 @@ public:
 
     SkipList *get_table();
 private:
-    MapCompareFunc cmp;
-    MapCompareFuncLess cmp_less;
-    catalog::KeyCmpFunc key_cmp;
     size_t capacity;
     global::g_state *state;
     std::unique_ptr<SkipList> table;
@@ -107,7 +103,7 @@ private:
 
 class MapRecordIterator : public iter::GenericIterator<io::Record> {
 public:
-    MapRecordIterator(const MapMemTable *table, size_t record_count, global::g_state *state);
+    MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state);
     ~MapRecordIterator() override = default;
     bool next() override;
     io::Record get_item() override;

@@ -12,13 +12,8 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
-    this->key_cmp = state->record_schema->get_key_cmp();
 
     sl_global_key_cmp = state->record_schema->get_key_cmp();
-
-    cds::Initialize();
-    cds::gc::hp::GarbageCollector::Construct(70);
-    cds::threading::Manager::attachThread();
 
     this->table = std::make_unique<SkipList>();
 }
@@ -27,8 +22,6 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 MapMemTable::~MapMemTable() 
 {
     this->truncate();
-    cds::gc::hp::GarbageCollector::Destruct();
-    cds::Terminate();
 }
 
 
@@ -53,10 +46,17 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
 int MapMemTable::insert_internal(io::Record record)
 {
     Timestamp time = record.get_timestamp();
+    bool tomb = record.is_tombstone();
     const byte *key = this->get_key(record);
-    MapKey memtable_key {key, time};
 
-    return this->table->insert(memtable_key, record.get_data());
+    // should be okay -- but I ought to figure out a better
+    // approach to this that lets me retain the const specifier
+    // on the MapKey type itself--it really should be const.
+    MapKey memtable_key {const_cast<byte*>(key), time, tomb};
+
+    auto res = this->table->insert({memtable_key, record.get_data()});
+    
+    return res.second;
 }
 
 
@@ -92,9 +92,12 @@ int MapMemTable::remove(byte *key, byte* value, Timestamp time)
 
 io::Record MapMemTable::get(const byte *key, Timestamp time)
 {
-    auto result = this->table->get_with(MapKey{key, time}, this->cmp_less);
+    // should be okay -- but I ought to figure out a better
+    // approach to this that lets me retain the const specifier
+    // on the MapKey type itself--it really should be const.
+    auto result = this->table->find(MapKey{const_cast<byte*>(key), time});
 
-    if (result) {
+    if (result != this->table->end()) {
         return io::Record(result->second, this->state->record_schema->record_length());
     }
 
@@ -108,36 +111,34 @@ void MapMemTable::truncate()
         delete[] rec.second;
     }
 
-    this->table->clear();
+    this->table.reset();
+    this->table = std::make_unique<SkipList>();
 }
 
 
 std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_scan()
 {
-    return std::make_unique<MapRecordIterator>(this, this->get_record_count(), this->state);
+    auto start = this->table->begin();
+    auto end = this->table->end();
+    return std::make_unique<MapRecordIterator>(std::move(start), std::move(end), this->get_record_count(), this->state);
 }
 
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
-    auto start = this->table->begin();
-    auto stop = this->table->end();
-    return std::make_unique<sampling::UnsortedMemTableSampleRange>(start, stop, lower_key, upper_key, this->state);
-    /*
     const MapKey lower {lower_key, TIMESTAMP_MIN};
     const MapKey upper {upper_key, TIMESTAMP_MAX};
 
-    return nullptr;
 
-    auto start = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), lower, this->cmp_less);
-    auto stop = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), upper, this->cmp_less);
+    auto start = this->table->lower_bound(lower);
+    auto stop = this->table->upper_bound(upper);
+    
     // the range doesn't work for the memtable
-    if (start == this->table.end()) {
+    if (start == this->table->end()) {
         return nullptr;
     }
 
-    return std::make_unique<sampling::MapMemTableSampleRange>(start, stop, this->state);
-    */
+    return std::make_unique<sampling::MapMemTableSampleRange>(std::move(start), std::move(stop), this->state);
 }
 
 
@@ -147,12 +148,11 @@ SkipList *MapMemTable::get_table()
 }
 
 
-MapRecordIterator::MapRecordIterator(const MapMemTable *mem_table, size_t record_count, global::g_state *state)
+MapRecordIterator::MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state)
+    : iter(std::move(begin)), end(std::move(end))
 {
-    this->iter = mem_table->table->begin();
-    this->end = mem_table->table->end();
-    this->first_iteration = true;
-    this->at_end = false;
+    this->at_end = (this->iter == this->end);
+
     this->state = state;
     this->current_record = io::Record();
     this->element_cnt = record_count;
@@ -165,14 +165,9 @@ bool MapRecordIterator::next()
         return false;
     }
 
-    if (first_iteration && this->iter != this->end) {
-        first_iteration = false;
+    while (this->iter != this->end) {
         this->current_record = io::Record(this->iter->second, this->state->record_schema->record_length());
-        return true;
-    }
-
-    while (++this->iter != this->end) {
-        this->current_record = io::Record(this->iter->second, this->state->record_schema->record_length());
+        this->iter++;
         return true;
     }
 
@@ -189,7 +184,8 @@ io::Record MapRecordIterator::get_item()
 
 void MapRecordIterator::end_scan()
 {
-
+    // this releases the block on any node pointed to by the iterator.
+    this->iter = this->end;
 }
 
 

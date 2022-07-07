@@ -1,6 +1,7 @@
 CXX=g++-10
-CXXFLAGS = -Wall -Wextra -Iinclude -faligned-new -std=c++17 $(OPTFLAGS) -DNO_BUFFER_MANAGER
-LDLIBS = -lcheck -pthread -lrt -lsubunit -lm -lgsl -lgslcblas -lcds
+CXXFLAGS = -Wall -Wextra -Iinclude -Iexternal/lockfree_skiplist/include -faligned-new -std=c++17 $(OPTFLAGS) -DNO_BUFFER_MANAGER
+LDFLAGS = -Lexternal/lockfree_skiplist
+LDLIBS = -lcheck -pthread -lrt -lsubunit -lm -lgsl -lgslcblas -lcds -lskiplist
 
 SOURCES = $(wildcard src/**/*.cpp src/*.cpp)
 OBJECTS = $(patsubst src/%.cpp,build/%.o,$(SOURCES))

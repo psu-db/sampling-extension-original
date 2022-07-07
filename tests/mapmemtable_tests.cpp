@@ -139,10 +139,23 @@ START_TEST(t_iterator)
         ck_assert_int_eq(table.insert(key_ptr, val_ptr), 1);
     }
 
+    ck_assert_int_eq(table.get_record_count(), capacity);
+
     std::sort(keys_v.begin(), keys_v.end());
 
-    auto iter = table.start_sorted_scan();
+    auto raw_iter = table.get_table()->begin();
     size_t i=0;
+    while (raw_iter != table.get_table()->end()) {
+        auto rec_buf = raw_iter->second;
+        auto rec_key = state->record_schema->get_key(rec_buf).Int64();
+        ck_assert_int_eq(rec_key, keys_v[i]);
+        i++;
+        raw_iter++;
+    }
+    ck_assert_int_eq(i, capacity);
+
+    auto iter = table.start_sorted_scan();
+    i=0;
     while (iter->next()) {
         auto rec = iter->get_item();
 

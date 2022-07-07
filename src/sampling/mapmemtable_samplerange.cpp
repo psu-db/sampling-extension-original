@@ -15,8 +15,9 @@ MapMemTableSampleRange::MapMemTableSampleRange(
         this->records.push_back(start->second);
         ++start;
     }
-}
 
+    this->records.push_back(start->second);
+}
 
 io::Record MapMemTableSampleRange::get(FrameId *frid)
 {
