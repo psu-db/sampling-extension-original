@@ -20,6 +20,19 @@ UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>
     }
 }
 
+UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(ds::SkipList::iterator begin, ds::SkipList::iterator end,
+                                                         const byte *lower_key, const byte *upper_key, global::g_state *state)
+{
+    this->state = state;
+    auto key_cmp = state->record_schema->get_key_cmp();
+    for (auto iter=begin; iter!=end; ++iter) {
+        io::Record rec = {iter->second, state->record_schema->record_length()};
+        auto key = state->record_schema->get_key(rec.get_data()).Bytes();
+        if (key_cmp(key, lower_key) >= 0 && key_cmp(key, upper_key) <= 0) {
+            this->records.push_back(rec.get_data());
+        }
+    }
+}
 
 io::Record UnsortedMemTableSampleRange::get(FrameId *frid)
 {

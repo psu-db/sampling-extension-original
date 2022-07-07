@@ -6,20 +6,29 @@
 
 namespace lsm { namespace ds {
 
+catalog::KeyCmpFunc sl_global_key_cmp;
+
 MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
-    this->rec_cmp = state->record_schema->get_key_cmp();
-    this->cmp = MapCompareFunc{this->rec_cmp};
+    this->key_cmp = state->record_schema->get_key_cmp();
 
-    this->table = std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc>(this->cmp);
+    sl_global_key_cmp = state->record_schema->get_key_cmp();
+
+    cds::Initialize();
+    cds::gc::hp::GarbageCollector::Construct(70);
+    cds::threading::Manager::attachThread();
+
+    this->table = std::make_unique<SkipList>();
 }
 
 
 MapMemTable::~MapMemTable() 
 {
     this->truncate();
+    cds::gc::hp::GarbageCollector::Destruct();
+    cds::Terminate();
 }
 
 
@@ -32,9 +41,7 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
     auto record_buffer = this->state->record_schema->create_record_raw(key, value);
     auto record = io::Record(record_buffer, this->state->record_schema->record_length(), time, tombstone);
 
-    auto res = this->insert_internal(record);
-
-    if (res == 1) {
+    if (this->insert_internal(record)) {
         return 1;
     }
 
@@ -45,75 +52,23 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
 
 int MapMemTable::insert_internal(io::Record record)
 {
-    auto time = record.get_timestamp();
-    auto key_buf = this->create_key_buf(record);
-    std::pair<std::vector<byte>, Timestamp> memtable_key {key_buf, time};
+    Timestamp time = record.get_timestamp();
+    const byte *key = this->get_key(record);
+    MapKey memtable_key {key, time};
 
-    auto existing_record = this->table.find(memtable_key);
-
-    if (existing_record == this->table.end()) {
-        this->table.insert({memtable_key, record.get_data()});
-        return 1;
-    } else if (record.is_tombstone()) {
-        // we'll force insert tombstones over any duplicate key objections,
-        // replacing the existing record.
-        // TODO: Ensure that the value matches up. I need to extend my
-        // comparator function set for this.
-        this->table.erase(existing_record);
-        this->table.insert({memtable_key, record.get_data()});
-        return 1;
-    } else if (io::Record(existing_record->second, this->state->record_schema->record_length()).is_tombstone() && !record.is_tombstone()) {
-        // If the record we found is a tombstone we'll replace it with the new record.
-        this->table.erase(existing_record);
-        this->table.insert({memtable_key, record.get_data()});
-        return 1;
-    }
-
-    return 0;
+    return this->table->insert(memtable_key, record.get_data());
 }
 
 
-int MapMemTable::remove(byte *key, byte* /*value*/, Timestamp time)
+const byte *MapMemTable::get_key(io::Record record) 
 {
-    auto key_buf = this->create_key_buf(key);
-    auto result = this->table.find({key_buf, time});
-
-    if (result == this->table.end()) {
-        return 0;
-    }
-
-    auto rec = io::Record(result->second, this->state->record_schema->record_length());
-
-    // TODO: compare values too. I may need another comparator for this.
-
-    // if the value matches, {
-    //     delete result.second;
-    //     this->table.erase({key_buf, time});
-    //     return 1;
-    // }
-
-    return 0;
-}
-
-
-std::vector<byte> MapMemTable::create_key_buf(const byte *key)
-{
-    std::vector<byte> key_bytes;
-    key_bytes.insert(key_bytes.end(), key, key + this->state->record_schema->key_len());
-
-    return key_bytes;
-}
-
-
-std::vector<byte> MapMemTable::create_key_buf(io::Record record) 
-{
-    return this->create_key_buf(this->state->record_schema->get_key(record.get_data()).Bytes());
+    return this->state->record_schema->get_key(record.get_data()).Bytes();
 }
 
 
 size_t MapMemTable::get_record_count()
 {
-    return this->table.size();
+    return this->table->size();
 }
 
 
@@ -129,16 +84,17 @@ bool MapMemTable::is_full()
 }
 
 
+int MapMemTable::remove(byte *key, byte* value, Timestamp time) 
+{
+    return 0;
+}
+
+
 io::Record MapMemTable::get(const byte *key, Timestamp time)
 {
-    // TODO: This should return the first record with a timestamp less than
-    // or equal to the specified one. Need to dig into the interface for map
-    // to see how that sort of thing could be done. For now, the time is always
-    // 0 anyway.
-    auto key_buf = this->create_key_buf(key);
-    auto result = this->table.find({key_buf, time});
+    auto result = this->table->get_with(MapKey{key, time}, this->cmp_less);
 
-    if (result != this->table.end()) {
+    if (result) {
         return io::Record(result->second, this->state->record_schema->record_length());
     }
 
@@ -148,11 +104,11 @@ io::Record MapMemTable::get(const byte *key, Timestamp time)
 
 void MapMemTable::truncate()
 {
-    for (auto rec : this->table) {
+    for (auto rec : *this->table) {
         delete[] rec.second;
     }
 
-    this->table.clear();
+    this->table->clear();
 }
 
 
@@ -164,34 +120,37 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
-    std::vector<byte> lower_key_bytes;
-    lower_key_bytes.insert(lower_key_bytes.end(), lower_key, lower_key + state->record_schema->key_len());
+    auto start = this->table->begin();
+    auto stop = this->table->end();
+    return std::make_unique<sampling::UnsortedMemTableSampleRange>(start, stop, lower_key, upper_key, this->state);
+    /*
+    const MapKey lower {lower_key, TIMESTAMP_MIN};
+    const MapKey upper {upper_key, TIMESTAMP_MAX};
 
-    std::vector<byte> upper_key_bytes;
-    upper_key_bytes.insert(upper_key_bytes.end(), upper_key, upper_key + state->record_schema->key_len());
+    return nullptr;
 
-    auto start = this->table.lower_bound(std::pair(lower_key_bytes, TIMESTAMP_MIN));
-    auto stop = this->table.upper_bound(std::pair(upper_key_bytes, TIMESTAMP_MAX));
-
+    auto start = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), lower, this->cmp_less);
+    auto stop = std::lower_bound<SkipList::iterator, MapKey, MapCompareFuncLess>(this->table.begin(), this->table.end(), upper, this->cmp_less);
     // the range doesn't work for the memtable
     if (start == this->table.end()) {
         return nullptr;
     }
 
     return std::make_unique<sampling::MapMemTableSampleRange>(start, stop, this->state);
+    */
 }
 
 
-std::map<std::pair<std::vector<byte>, Timestamp>, byte*, MapCompareFunc> *MapMemTable::get_table()
+SkipList *MapMemTable::get_table()
 {
-    return &this->table;
+    return this->table.get();
 }
 
 
-MapRecordIterator::MapRecordIterator(const MapMemTable *table, size_t record_count, global::g_state *state)
+MapRecordIterator::MapRecordIterator(const MapMemTable *mem_table, size_t record_count, global::g_state *state)
 {
-    this->iter = table->table.begin();
-    this->end = table->table.end();
+    this->iter = mem_table->table->begin();
+    this->end = mem_table->table->end();
     this->first_iteration = true;
     this->at_end = false;
     this->state = state;

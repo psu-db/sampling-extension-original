@@ -6,23 +6,16 @@
 #define H_MAPMEMTABLESAMPLERANGE
 
 #include <vector>
-#include <map>
 
 #include "sampling/samplerange.hpp"
 #include "util/global.hpp"
+#include "ds/skiplist_core.hpp"
 
 namespace lsm { namespace sampling {
 
 class MapMemTableSampleRange : public SampleRange {
 public:
-    /*
-    static std::unique_ptr<SampleRange> create(ds::MapMemTable *table, byte *lower_key, 
-                                               byte *upper_key, global::g_state *state);
-     */
-
-    MapMemTableSampleRange(std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator start,
-                           std::map<std::pair<std::vector<byte>, Timestamp>, byte*>::const_iterator stop,
-                           global::g_state *state);
+    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, global::g_state *state);
 
     /*
      * Randomly select and return a record from this sample range, pinning the
