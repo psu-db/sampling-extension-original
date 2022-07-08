@@ -170,7 +170,7 @@ int LSMTree::update(byte *key, byte *old_value, byte *new_value, Timestamp time)
 }
 
 
-io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool skip_delete_check)
+io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tombstone_search)
 {
     // first, we check the memory table
     bool check_memtable = true;
@@ -182,7 +182,7 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool ski
     if (check_memtable) {
         record = this->memtable->get(key, time);
         if (record.is_valid()) {
-            if (!skip_delete_check && record.is_tombstone()) {
+            if (!tombstone_search && record.is_tombstone()) {
                 *frid = INVALID_FRID;
                 return io::Record();
             }
@@ -195,9 +195,9 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool ski
     // then, we search the tree from newest levels to oldest
     for (auto &level : this->levels) {
         if (level) {
-            record = level->get_by_key(key, frid, time);
+            record = level->get_by_key(key, frid, time, tombstone_search);
             if (record.is_valid()) {
-                if (!skip_delete_check && record.is_tombstone()) {
+                if (!tombstone_search && record.is_tombstone()) {
                     this->state->cache->unpin(*frid);
                     *frid = INVALID_FRID;
                     return io::Record();
@@ -412,11 +412,15 @@ bool LSMTree::is_deleted(io::Record record)
     FrameId frid;
     auto res = this->get(key, &frid, time, true);
 
-    if (res.is_tombstone()) {
+    if (res.is_valid() && res.is_tombstone()) {
         deleted = true;
+    } else {
+        deleted = false;
     }
 
-    this->state->cache->unpin(frid);
+    if (frid != INVALID_FRID) {
+        this->state->cache->unpin(frid);
+    }
 
     return deleted;
 }

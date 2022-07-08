@@ -95,7 +95,10 @@ io::Record MapMemTable::get(const byte *key, Timestamp time)
     // should be okay -- but I ought to figure out a better
     // approach to this that lets me retain the const specifier
     // on the MapKey type itself--it really should be const.
-    auto result = this->table->find(MapKey{const_cast<byte*>(key), time});
+    //
+    // FIXME: Need to make this function not care about whether tomb is true
+    // or false on a given key. That or split the tombstone lookups out.
+    auto result = this->table->find(MapKey{const_cast<byte*>(key), time, false});
 
     if (result != this->table->end()) {
         return io::Record(result->second, this->state->record_schema->record_length());
@@ -126,8 +129,8 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
-    const MapKey lower {lower_key, TIMESTAMP_MIN};
-    const MapKey upper {upper_key, TIMESTAMP_MAX};
+    const MapKey lower {lower_key, TIMESTAMP_MIN, true};
+    const MapKey upper {upper_key, TIMESTAMP_MAX, false};
 
 
     auto start = this->table->lower_bound(lower);

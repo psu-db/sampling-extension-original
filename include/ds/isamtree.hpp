@@ -97,7 +97,7 @@ public:
      * Returns the newest record within this tree with the specified key, and
      * a timestamp no greater than time.
      */
-    Record get(const byte *key, FrameId *frid, Timestamp time=0);
+    Record get(const byte *key, FrameId *frid, Timestamp time=0, bool tombstone=false);
 
     /*
      * Returns an iterator over all of the records within the leaf nodes of

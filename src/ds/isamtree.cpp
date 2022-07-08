@@ -520,8 +520,15 @@ std::unique_ptr<iter::GenericIterator<Record>> ISAMTree::start_scan()
 }
 
 
-Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time)
+Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tombstone)
 {
+    if (tombstone && this->tombstone_bloom_filter) {
+        if (!this->tombstone_bloom_filter->lookup(key)) {
+            *frid = INVALID_FRID;
+            return io::Record();
+        }
+    }
+
     // find the first page to search
     auto pid = this->get_lower_bound(key);
 

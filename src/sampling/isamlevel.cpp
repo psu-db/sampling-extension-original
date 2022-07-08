@@ -90,10 +90,10 @@ bool ISAMTreeLevel::can_merge_with(ISAMTreeLevel *level)
 }
 
 
-io::Record ISAMTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time) 
+io::Record ISAMTreeLevel::get_by_key(const byte *key, FrameId *frid, Timestamp time, bool tombstone_search) 
 {
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
-        auto rec = this->runs[i]->get(key, frid, time);
+        auto rec = this->runs[i]->get(key, frid, time, tombstone_search);
         if (rec.is_valid()) {
             return rec;
         }

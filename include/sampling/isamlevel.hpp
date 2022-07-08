@@ -104,7 +104,7 @@ public:
      * a timestamp less than or equal to the specified one, or nullptr if no
      * match is found. 
      */
-     Record get_by_key(const byte *key, FrameId *frid, Timestamp time=0);
+     Record get_by_key(const byte *key, FrameId *frid, Timestamp time=0, bool tombstone_search=false);
 
     /*
      * Perform a search for the specified key within this level and mark the
