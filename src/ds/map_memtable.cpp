@@ -84,7 +84,7 @@ bool MapMemTable::is_full()
 }
 
 
-int MapMemTable::remove(byte *key, byte* value, Timestamp time) 
+int MapMemTable::remove(byte * /*key*/, byte* /*value*/, Timestamp /*time*/) 
 {
     return 0;
 }

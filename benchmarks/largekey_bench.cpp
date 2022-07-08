@@ -36,8 +36,6 @@ int main(int argc, char **argv) {
                                                bloom_filters, false, 1, unsorted_memtable);
 
     // load up the tree
-    
-    int64_t value = 0;
     std::byte key_buffer[key_size];
     std::byte val_buffer[val_size];
 
