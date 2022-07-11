@@ -9,7 +9,7 @@
 
 namespace lsm { namespace io {
 
-ReadCache::ReadCache(size_t frame_capacity)
+ReadCache::ReadCache(size_t frame_capacity, bool benchmarks)
 {
     this->frame_data = std::unique_ptr<byte, decltype(&free)>((byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE * frame_capacity), &free);
     this->metadata = std::vector<FrameMeta>(frame_capacity);
@@ -18,6 +18,8 @@ ReadCache::ReadCache(size_t frame_capacity)
     this->frame_cnt = 0;
     this->clock_hand = 0;
     this->misses = 0;
+    this->io_block_time = 0;
+    this->benchmarks = benchmarks;
 }
 
 
@@ -101,7 +103,16 @@ int ReadCache::load_page(PageId pid, FrameId frid, PagedFile *pfile)
 {
     this->misses++;
 
-    auto res = pfile->read_page(pid.page_number, this->get_frame(frid));
+    int res;
+
+    if (benchmarks) {
+        auto start = std::chrono::high_resolution_clock::now();
+        res = pfile->read_page(pid.page_number, this->get_frame(frid));
+        auto stop = std::chrono::high_resolution_clock::now();
+        this->io_block_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
+    } else {
+        res = pfile->read_page(pid.page_number, this->get_frame(frid));
+    }
 
     if (res == 0) {
         return 0;
@@ -144,6 +155,18 @@ size_t ReadCache::cache_misses()
 void ReadCache::reset_miss_counter()
 {
     this->misses = 0;
+}
+
+
+size_t ReadCache::io_time()
+{
+    return this->io_block_time;
+}
+
+
+void ReadCache::reset_io_time() 
+{
+    this->io_block_time = 0;
 }
 
 }}

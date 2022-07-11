@@ -345,6 +345,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     size_t i=0;
 
     this->state->cache->reset_miss_counter();
+    this->state->cache->reset_io_time();
     while (i < sample_size) {
         auto sample_start = std::chrono::high_resolution_clock::now();
         size_t range = alias.get();
@@ -357,6 +358,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
         FrameId frid;
         auto record = ranges[range]->get(&frid);
         auto sample_stop = std::chrono::high_resolution_clock::now();
+
 
         auto rejection_start = std::chrono::high_resolution_clock::now();
         if (record.is_valid() && !this->is_deleted(record)) {

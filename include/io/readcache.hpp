@@ -18,6 +18,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -41,7 +42,7 @@ public:
      * parm::PAGE_SIZE, allocated by the buffer. When these are exhausted, it
      * will begin evicting unpinned pages using the clock algorithm.
      */
-    ReadCache(size_t frame_capacity=1000);
+    ReadCache(size_t frame_capacity=1000, bool benchmarks=false);
 
     /*
      * Default destructor for ReadCache. All memory is either stack-allocated,
@@ -106,6 +107,20 @@ public:
      */
     void reset_miss_counter();
 
+
+    /*
+     * Returns the total time spent waiting for IOs to complete since either
+     * object construction, or the lsat call to reset_io_time(), in
+     * nanoseconds. Only available if the benchmarks argument to the
+     * constructor was set to true.
+     */
+    size_t io_time();
+
+    /*
+     * Resets the total  time spent waiting for IOs to complete to 0.
+     */
+    void reset_io_time();
+
 private:
     std::unique_ptr<byte, decltype(&free)> frame_data = std::unique_ptr<byte, decltype(&free)>(nullptr, &free);
     std::vector<FrameMeta> metadata;
@@ -116,6 +131,9 @@ private:
     FrameId clock_hand;
 
     size_t misses;
+    size_t io_block_time;
+
+    bool benchmarks;
 
     /*
      * Internal version of get_frame_ptr without any error checking. Calling
