@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
     long total_walker = 0;
     long total_sample = 0;
     long total_rejection = 0;
+    long total_io = 0;
     size_t total_misses = 0;
 
     for (size_t i=0; i<trials; i++) {
@@ -75,14 +76,15 @@ int main(int argc, char **argv) {
         total_buffer += buffer_t;
         total_bounds += bounds_t;
         total_walker += walker_t;
-        total_sample += sample_t;
+        total_sample += sample_t - state_ptr->cache->io_time();
         total_rejection += rejection_t;
+        total_io += state_ptr->cache->io_time();
 
         total_misses += state_ptr->cache->cache_misses();
     }
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
             data_size, tree->depth(), sample_size, per_insert, total_rej /
             trials, total_attempt / trials, total_misses / trials, total_buffer
             / trials, total_bounds / trials, total_walker / trials,
-            total_sample / trials, total_rejection / trials); }
+            total_sample / trials, total_io / trials, total_rejection / trials); }

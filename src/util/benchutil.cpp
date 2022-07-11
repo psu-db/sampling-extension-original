@@ -95,7 +95,7 @@ std::unique_ptr<global::g_state> bench_state(std::string root_dir)
     auto new_state = new global::g_state();
     gsl_rng_env_setup();
 
-    new_state->cache = std::make_unique<io::ReadCache>(1024);
+    new_state->cache = std::make_unique<io::ReadCache>(1024, true);
     new_state->file_manager = std::make_unique<io::FileManager>(root_dir);
     new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(sizeof(int64_t), sizeof(int64_t), io::RecordHeaderLength, key_cmp(), rec_cmp());
     new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
