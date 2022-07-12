@@ -128,6 +128,11 @@ public:
      */
     io::ReadCache *cache();
 
+    /*
+     * Returns a reference to the global state object used by the LSM Tree.
+     */
+    global::g_state *global_state();
+
 private:
     std::unique_ptr<global::g_state> state;
     std::vector<std::unique_ptr<ISAMTreeLevel>> levels;

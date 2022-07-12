@@ -457,5 +457,11 @@ io::ReadCache *LSMTree::cache()
     return this->state->cache.get();
 }
 
+
+global::g_state *LSMTree::global_state()
+{
+    return this->state.get();
+}
+
 }
 }
