@@ -440,6 +440,12 @@ size_t LSMTree::depth()
 }
 
 
+size_t LSMTree::memory_utilization()
+{
+    return 0;
+}
+
+
 catalog::FixedKVSchema *LSMTree::schema() 
 {
     return this->state->record_schema.get();

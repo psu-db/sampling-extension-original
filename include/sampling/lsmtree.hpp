@@ -113,6 +113,12 @@ public:
     size_t record_count();
 
     /*
+     * Return the number of bytes of memory utilized by auxiliary structures within
+     * the tree.
+     */
+    size_t memory_utilization();
+
+    /*
      * Returns the schema used for records within the LSM Tree.
      */
     catalog::FixedKVSchema *schema();
