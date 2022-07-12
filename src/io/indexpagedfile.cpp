@@ -293,6 +293,7 @@ bool IndexPagedFilePageIterator::supports_element_count()
     return true;
 }
 
+
 IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page)
 {
     this->page_itr = std::make_unique<IndexPagedFilePageIterator>(file, cache, start_page, stop_page);
@@ -300,6 +301,19 @@ IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file,
     this->current_page = this->page_itr->get_item();
     if (this->current_page) {
         this->record_itr = this->current_page->start_scan();
+    }
+
+    this->at_end = false;
+}
+
+
+IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, SlotId start_slot)
+{
+    this->page_itr = std::make_unique<IndexPagedFilePageIterator>(file, cache, start_page, INVALID_PNUM);
+    this->page_itr->next();
+    this->current_page = this->page_itr->get_item();
+    if (this->current_page) {
+        this->record_itr = this->current_page->start_scan(start_slot);
     }
 
     this->at_end = false;

@@ -88,6 +88,7 @@ friend IndexPagedFile;
 
 public:
     IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page=INVALID_PNUM, PageNum stop_page=INVALID_PNUM);
+    IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, SlotId start_slot);
 
     bool next() override;
     Record get_item() override;
