@@ -2,8 +2,8 @@
  *
  */
 
-#ifndef H_STATICBTREE
-#define H_STATICBTREE
+#ifndef H_ISAMTREE
+#define H_ISAMTREE
 
 #include "util/base.hpp"
 #include "io/pagedfile.hpp"
@@ -48,8 +48,8 @@ public:
      * undefined if this is not the case. It copies up to data_page_cnt number
      * of pages of records from record_itr into a contiguous page range,
      * assuming that the iterator returns the records in a proper sorted order,
-     * and constructs an BTree index structure atop this, initializing the
-     * header page appropriately.
+     * and constructs an ISAM Tree atop this, initializing the header page
+     * appropriately.
      *
      * The record_schema used for parsing and comparing the records is obtained
      * from state.
@@ -59,10 +59,10 @@ public:
 
 
     /*
-     * Return a Static BTree object created from pfile. pfile is assumed to
-     * have already been properly initialized bia a call to
-     * ISAMTree::initialize at some point in its existence. If this is not
-     * the case, all method calls to the returned object are undefined.
+     * Return an ISAM Tree object created from pfile. pfile is assumed to have
+     * already been properly initialized via a call to ISAMTree::initialize at
+     * some point in its existence. If this is not the case, all method calls
+     * to the returned object are undefined.
      */
     ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_schema,
                 catalog::KeyCmpFunc key_cmp, io::ReadCache *cache);
@@ -74,41 +74,42 @@ public:
     ~ISAMTree();
 
     /*
-     * Returns the first leaf page pid within the tree that contains a key greater than
-     * or equal to the specified boundary key. Returns INVALID_PID if no pages
-     * satisfy this constraint.
+     * Returns the first leaf page pid within the tree that contains a key
+     * greater than or equal to the specified boundary key. Returns INVALID_PID
+     * if no pages satisfy this constraint.
      */
     PageId get_lower_bound(const byte *key);
 
     /*
-     * Returns the last leaf page pid within the tree that contains a key
-     * less than or equal to the specified boundary key. Returns INVALID_PID
-     * if no pages satisfy this constraint.
+     * Returns the last leaf page pid within the tree that contains a key less
+     * than or equal to the specified boundary key. Returns INVALID_PID if no
+     * pages satisfy this constraint.
      */
     PageId get_upper_bound(const byte *key);
 
     /*
-     * Returns true if this tree contains a tombstone for a record with a matching
-     * key that has a timestamp less-than-or-equal-to the provided one.
+     * Returns true if this tree contains a tombstone for a record with a
+     * matching key that has a timestamp less-than-or-equal-to the provided
+     * one.
      */
     bool tombstone_exists(const byte *key, Timestamp time=0);
 
     /*
-     * Returns the newest record within this tree with the specified key, and
-     * a timestamp no greater than time.
+     * Returns the newest record within this tree with the specified key, and a
+     * timestamp no greater than time.
      */
     Record get(const byte *key, FrameId *frid, Timestamp time=0, bool tombstone=false);
 
     /*
      * Returns an iterator over all of the records within the leaf nodes of
-     * this B Tree. The iterator is not required to support rewinding, but must
-     * emit records in sorted order.
+     * this ISAM Tree. The iterator is not required to support rewinding, but
+     * must emit records in sorted order.
      */
     std::unique_ptr<iter::GenericIterator<Record>> start_scan();
 
     /*
-     * Returns the number of records contained within the leaf nodes of
-     * this B Tree.
+     * Returns the number of records contained within the leaf nodes of this
+     * ISAM Tree.
      */
     size_t get_record_count();
 
@@ -118,26 +119,27 @@ public:
     PageNum get_leaf_page_count();
 
     /*
-     * Returns a pointer to the file representing this BTree object.
+     * Returns a pointer to the file representing this ISAM Tree object.
      */
     io::PagedFile *get_pfile();
 
     /*
-     * Returns true if the data stored in this BTree is fixed length,
+     * Returns true if the data stored in this ISAM Tree is fixed length,
      * and false if not.
      */
     bool is_fixed_length();
     
     /*
      * Returns an instance of the key comparison function used by
-     * this BTree.
+     * this ISAM Tree.
      */
     catalog::KeyCmpFunc get_key_cmp();
 
     /*
-     * Returns if the record at a given RID has been deleted based on a 
-     * timestamp. If the newest record older than the time stamp has been deleted,
-     * the record is considered deleted. Otherwise, it is considered alive.
+     * Returns if the record at a given RID has been deleted based on a
+     * timestamp. If the newest record older than the time stamp has been
+     * deleted, the record is considered deleted. Otherwise, it is considered
+     * alive.
      */
     /*
     bool is_deleted(RecordId rid, Timestamp time=0);
