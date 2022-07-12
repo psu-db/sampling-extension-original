@@ -218,7 +218,7 @@ int main(int argc, char **argv)
     auto state = lsm::bench::bench_state();
     auto merge_policy = (policy) ? lsm::sampling::LEVELING : lsm::sampling::TIERING;
 
-    sampling_lsm = std::make_unique<lsm::sampling::LSMTree>(buffer_size, scale_factor, std::move(state), merge_policy, bloom, false, max_deletion_proportion);
+    sampling_lsm = lsm::sampling::LSMTree::create(buffer_size, scale_factor, std::move(state), merge_policy, bloom, false, max_deletion_proportion);
 
     size_t sample_size = 1000;
     size_t insertion_cnt = 1000000;
