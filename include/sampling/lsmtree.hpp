@@ -116,7 +116,7 @@ public:
      * Return the number of bytes of memory utilized by auxiliary structures within
      * the tree.
      */
-    size_t memory_utilization();
+    size_t memory_utilization(bool detail_print=false);
 
     /*
      * Returns the schema used for records within the LSM Tree.

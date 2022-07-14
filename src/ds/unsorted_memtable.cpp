@@ -12,6 +12,7 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state)
 
     this->state = state;
     this->current_tail = 0;
+    this->tombstones = 0;
 
     this->key_cmp = this->state->record_schema->get_key_cmp();
 }
@@ -36,6 +37,10 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
     auto record = io::Record(record_buffer, this->state->record_schema->record_length(), time, tombstone);
 
     this->table[idx] = record;
+
+    if (record.is_tombstone()) {
+        tombstones++;
+    }
 
     return 1;
 }
@@ -98,11 +103,7 @@ void UnsortedMemTable::truncate()
     // reset the tail index
     this->current_tail = 0;
 
-    // clear out the tombstone table
-    // NOTE: The tombstone table contains records that are copies of the
-    // tombstone record in the main table, so the memory for them has 
-    // already been freed by the above. We just need to clear out the
-    // pointers.
+    this->tombstones = 0;
 }
 
 
@@ -137,6 +138,12 @@ ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
     }
 
     return current_best_match;
+}
+
+
+size_t UnsortedMemTable::tombstone_count() 
+{
+    return this->tombstones;
 }
 
 

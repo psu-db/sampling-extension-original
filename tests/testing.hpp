@@ -592,7 +592,7 @@ std::unique_ptr<ds::ISAMTree> test_isamtree1(size_t page_cnt, global::g_state *s
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state, 0);
 }
 
 
@@ -605,7 +605,7 @@ std::unique_ptr<ds::ISAMTree> test_isamtree2(size_t page_cnt, global::g_state *s
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state, 0);
 }
 
 
@@ -618,7 +618,7 @@ std::unique_ptr<ds::ISAMTree> test_isamtree_cont(size_t page_cnt, global::g_stat
 
     auto merge_iter = std::make_unique<iter::MergeIterator>(iter, state->record_schema->get_record_cmp());
 
-    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state);
+    return ds::ISAMTree::create(std::move(merge_iter), page_cnt, false, state, 0);
 }
 
 

@@ -6,16 +6,16 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<ISAMTree> ISAMTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, bool bloom_filters, global::g_state *state)
+std::unique_ptr<ISAMTree> ISAMTree::create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, bool bloom_filters, global::g_state *state, size_t tombstone_count)
 {
     auto pfile = state->file_manager->create_indexed_pfile();
-    ISAMTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state, bloom_filters);
+    ISAMTree::initialize(pfile, std::move(record_iter), leaf_page_cnt, state, bloom_filters, tombstone_count);
 
     return std::make_unique<ISAMTree>(pfile, state);
 }
 
 void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter,
-                             PageNum data_page_cnt, global::g_state *state, bool bloom_filters)
+                             PageNum data_page_cnt, global::g_state *state, bool bloom_filters, size_t tombstone_count)
 {
     auto record_schema = state->record_schema.get();
     auto internal_schema = ISAMTree::generate_internal_schema(record_schema);
@@ -30,7 +30,7 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
     // Allocate initial pages for data and for metadata
     PageId first_leaf, first_internal, meta, filter_meta, tombstone_filter_meta;
     PageOffset key_size = record_schema->key_len();
-    if (!ISAMTree::initial_page_allocation(pfile, data_page_cnt, key_size, bloom_filters, &first_leaf, &first_internal, &meta, &filter_meta, &tombstone_filter_meta, state)) {
+    if (!ISAMTree::initial_page_allocation(pfile, data_page_cnt, tombstone_count, key_size, bloom_filters, &first_leaf, &first_internal, &meta, &filter_meta, &tombstone_filter_meta, state)) {
         return;
     }
 
@@ -144,17 +144,14 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
 }
 
 
-int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, size_t key_len, bool filters, PageId *first_leaf, PageId *first_internal, PageId *meta, PageId *filter_meta, PageId *tombstone_filter_meta, global::g_state *state)
+int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, size_t tombstone_count, size_t key_len, bool filters, PageId *first_leaf, PageId *first_internal, PageId *meta, PageId *filter_meta, PageId *tombstone_filter_meta, global::g_state *state)
 {
     *meta = pfile->allocate_page();
 
     if (filters) {
-        size_t keys = page_cnt * parm::PAGE_SIZE / key_len;
-        size_t filter_size = keys * 5;
-
         *filter_meta = INVALID_PID;
         *tombstone_filter_meta = pfile->allocate_page();
-        PersistentBloomFilter::create(filter_size, key_len, 3, *tombstone_filter_meta, state);
+        PersistentBloomFilter::create(.5, tombstone_count, key_len, 7, tombstone_filter_meta->page_number, pfile, state);
     } else {
         *filter_meta = INVALID_PID;
         *tombstone_filter_meta = INVALID_PID;
@@ -286,6 +283,7 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_sch
     this->root_page = meta->root_node;
     this->first_data_page = meta->first_data_page;
     this->last_data_page = meta->last_data_page;
+    this->tombstone_cnt = meta->tombstone_count;
 
     if (meta->first_tombstone_bloom_page) {
         this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
@@ -317,6 +315,7 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, global::g_state *state)
     this->root_page = meta->root_node;
     this->first_data_page = meta->first_data_page;
     this->last_data_page = meta->last_data_page;
+    this->tombstone_cnt = meta->tombstone_count;
 
     if (meta->first_tombstone_bloom_page) {
         this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
@@ -602,12 +601,16 @@ catalog::KeyCmpFunc ISAMTree::get_key_cmp()
 }
 
 
-// TODO: Implement bitmap for deletion tracking
-/*
-bool ISAMTree::is_deleted(RecordId rid, Timestamp time) 
+size_t ISAMTree::memory_utilization()
 {
-    return false;
+    return (this->tombstone_bloom_filter) ? this->tombstone_bloom_filter->memory_utilization() : 0;
 }
-*/
+
+
+size_t ISAMTree::tombstone_count()
+{
+    return this->tombstone_cnt;
+}
+
 
 }}

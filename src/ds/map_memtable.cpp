@@ -12,6 +12,7 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
 {
     this->capacity = capacity;
     this->state = state;
+    this->tombstones = 0;
 
     sl_global_key_cmp = state->record_schema->get_key_cmp();
 
@@ -49,12 +50,17 @@ int MapMemTable::insert_internal(io::Record record)
     bool tomb = record.is_tombstone();
     const byte *key = this->get_key(record);
 
+
     // should be okay -- but I ought to figure out a better
     // approach to this that lets me retain the const specifier
     // on the MapKey type itself--it really should be const.
     MapKey memtable_key {const_cast<byte*>(key), time, tomb};
 
     auto res = this->table->insert({memtable_key, record.get_data()});
+
+    if (res.second && tomb) {
+        this->tombstones++;
+    }
     
     return res.second;
 }
@@ -116,6 +122,7 @@ void MapMemTable::truncate()
 
     this->table.reset();
     this->table = std::make_unique<SkipList>();
+    this->tombstones = 0;
 }
 
 
@@ -145,9 +152,41 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower
 }
 
 
+std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range_bench(byte *lower_key, byte *upper_key, size_t *bounds_time, size_t *iter_time)
+{
+    const MapKey lower {lower_key, TIMESTAMP_MIN, true};
+    const MapKey upper {upper_key, TIMESTAMP_MAX, false};
+
+    auto bounds_start = std::chrono::high_resolution_clock::now();
+    auto start = this->table->lower_bound(lower);
+    auto stop = this->table->upper_bound(upper);
+    auto bounds_stop = std::chrono::high_resolution_clock::now();
+    
+    // the range doesn't work for the memtable
+    if (start == this->table->end()) {
+        return nullptr;
+    }
+
+    auto iter_start = std::chrono::high_resolution_clock::now();
+    auto range = new sampling::MapMemTableSampleRange(std::move(start), std::move(stop), this->state);
+    auto iter_stop = std::chrono::high_resolution_clock::now();
+
+    *bounds_time = std::chrono::duration_cast<std::chrono::nanoseconds>(bounds_stop - bounds_start).count();
+    *iter_time = std::chrono::duration_cast<std::chrono::nanoseconds>(iter_stop - iter_start).count();
+
+    return std::unique_ptr<sampling::SampleRange>(range);
+}
+
+
 SkipList *MapMemTable::get_table()
 {
     return this->table.get();
+}
+
+
+size_t MapMemTable::tombstone_count()
+{
+    return this->tombstones;
 }
 
 

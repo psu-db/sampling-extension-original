@@ -62,7 +62,7 @@ public:
 
     int merge_with(ISAMTreeLevel *level);
     int merge_with(std::unique_ptr<ds::ISAMTree> run);
-    int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr);
+    int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr, size_t tombstone_count);
 
     /*
      * Determine if a run containing incoming_record_count records can be
@@ -70,7 +70,6 @@ public:
      * return true, otherwise return false.
      */
     bool can_merge_with(size_t incoming_record_count);
-
 
     /*
      * Determine if a level containing incoming_record_count can be merged into
@@ -142,7 +141,7 @@ public:
      * Returns the current amount of memory used by all of
      * the runs within this level.
      */
-    size_t get_memory_utilization();
+    size_t memory_utilization();
 
     /*
      * Print a graphical representation of this level to stdout, 

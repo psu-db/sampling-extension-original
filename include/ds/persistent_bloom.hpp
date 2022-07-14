@@ -8,6 +8,7 @@
 #include "ds/bitmap.hpp"
 
 #include <cstdio>
+#include <cmath>
 
 namespace lsm { namespace ds {
 
@@ -24,6 +25,7 @@ class PersistentBloomFilter {
 public:
     static std::unique_ptr<PersistentBloomFilter> create(size_t filter_size, size_t key_size, size_t k, PageId meta_pid, global::g_state *state);
     static std::unique_ptr<PersistentBloomFilter> create(size_t filter_size, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
+    static std::unique_ptr<PersistentBloomFilter> create(double max_fpr, size_t n, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
 
     static std::unique_ptr<PersistentBloomFilter> open(PageId meta_pid, global::g_state *state);
     static std::unique_ptr<PersistentBloomFilter> open(PageNum meta_pnum, io::PagedFile *pfile);
@@ -33,10 +35,15 @@ public:
     void clear();
     void flush();
 
+    size_t memory_utilization();
+
 private:
     std::unique_ptr<BitMap> bitmap;
     size_t key_size;
+
     size_t filter_size;
+    size_t physical_size;
+
     size_t hash_funcs; // k
     
     size_t key_chunk_size;
@@ -44,6 +51,8 @@ private:
     
     std::vector<int64_t> a;
     std::vector<int64_t> b;
+
+    std::vector<int64_t> coeffs;
 
     size_t hash(const byte *key, size_t hash_func);
 

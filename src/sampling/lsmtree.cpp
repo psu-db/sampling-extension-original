@@ -46,7 +46,7 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
     }
 
     if (bloom_filters) {
-        this->memtable_bf = std::make_unique<ds::BloomFilter<int64_t>>(memtable_capacity * 5);
+        this->memtable_bf = std::make_unique<ds::BloomFilter<int64_t>>(.5, this->memtable_capacity, 7);
     }
 
     if (range_filters) {
@@ -119,7 +119,7 @@ void LSMTree::merge_memtable()
     }
 
     // merge the sorted buffer into the first level
-    this->levels[0]->merge_with(std::move(iter));
+    this->levels[0]->merge_with(std::move(iter), this->memtable->tombstone_count());
     
     // truncate the memtable
     this->memtable->truncate();
@@ -440,9 +440,28 @@ size_t LSMTree::depth()
 }
 
 
-size_t LSMTree::memory_utilization()
+size_t LSMTree::memory_utilization(bool detail_print)
 {
-    return 0;
+    size_t total = 0;
+
+    if (this->bloom_filters) {
+        total += this->memtable_bf->memory_utilization();
+            if (detail_print) {
+                fprintf(stderr, "Memtable aux memory: %ld\n", total);
+            }
+    }
+    for (size_t i=0; i<this->levels.size(); i++) {
+        if (this->levels[i]) {
+            auto level_util = this->levels[i]->memory_utilization();
+            total += level_util;
+
+            if (detail_print) {
+                fprintf(stderr, "Level [%ld] aux memory: %ld\n", i, level_util);
+            }
+        }
+    }
+    
+    return total;
 }
 
 

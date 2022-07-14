@@ -84,7 +84,7 @@ START_TEST(t_initialize)
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc cmp = std::bind(&compare_func_key, _1, _2);
 
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 400, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 400, state.get(), false, 0);
 
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
@@ -116,7 +116,7 @@ START_TEST(t_bounds_duplicates)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::RecordCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
@@ -159,7 +159,7 @@ START_TEST(t_bounds_lower_out_of_range)
 
     auto pfile = state->file_manager->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
@@ -202,7 +202,7 @@ START_TEST(t_bounds_upper_out_of_range)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 2*pages_per_file, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto buf = mem::page_alloc();
@@ -255,7 +255,7 @@ START_TEST(t_bounds_general)
 
     auto pfile = testing::g_fm->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     int64_t l_key = 4;
@@ -306,7 +306,7 @@ START_TEST(t_iterator)
 
     auto pfile = state->file_manager->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto tree_iterator = isamtree.start_scan();
@@ -456,7 +456,7 @@ START_TEST(t_iterator_bloom)
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
     auto pfile = state->file_manager->create_indexed_pfile();
-    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), true);
+    ds::ISAMTree::initialize(pfile, std::move(iterator), 4*pages_per_file, state.get(), true, 0);
     auto isamtree = ds::ISAMTree(pfile, state.get());
 
     auto tree_iterator = isamtree.start_scan();
@@ -491,7 +491,7 @@ START_TEST(t_general_large_keys)
 
     auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
     auto tree_file = state->file_manager->create_indexed_pfile();
-    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false);
+    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(tree_file, state.get());
 
     int64_t key = 0;
@@ -529,7 +529,7 @@ START_TEST(t_lb_error_reproducer)
 
     auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
     auto tree_file = state->file_manager->create_indexed_pfile();
-    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false);
+    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false, 0);
     auto isamtree = ds::ISAMTree(tree_file, state.get());
 
     int64_t error_key = 1125;

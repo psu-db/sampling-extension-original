@@ -5,6 +5,8 @@
 #ifndef H_MAPMEMTABLE
 #define H_MAPMEMTABLE
 
+#include <chrono>
+
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "ds/memtable.hpp"
@@ -86,16 +88,25 @@ public:
     std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) override;
 
     /*
+     * Create a sample range object over the memtable for use in drawing
+     * samples. Using std::chrono to time the various stages.
+     */
+    std::unique_ptr<sampling::SampleRange> get_sample_range_bench(byte *lower_key, byte *upper_key, size_t *bounds_time, size_t *iter_time);
+
+    /*
      * Returns a record iterator over the memtable that produces elements in
      * sorted order.
      */
     std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() override;
+
+    size_t tombstone_count() override;
 
     SkipList *get_table();
 private:
     size_t capacity;
     global::g_state *state;
     std::unique_ptr<SkipList> table;
+    size_t tombstones;
 
     const byte *get_key(io::Record record);
     int insert_internal(io::Record record);

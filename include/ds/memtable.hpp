@@ -30,6 +30,7 @@ public:
 
     virtual ~MemoryTable() = default;
 
+    virtual size_t tombstone_count() = 0;
 private:
 };
 

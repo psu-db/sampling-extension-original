@@ -4,10 +4,12 @@
 #ifndef H_BLOOMFILTER
 #define H_BLOOMFILTER
 
+#include <cmath>
 #include <cstdlib>
+#include <cstdio>
+
 #include "ds/bitarray.hpp"
 
-#include <cstdio>
 
 namespace lsm { namespace ds {
 template <typename T>
@@ -39,6 +41,26 @@ public:
         this->hash_funcs = k;
     }
 
+
+    BloomFilter(double max_fpr, size_t n, size_t k=3)
+    {
+        size_t filter_size = - (double) (k * n) / log(1.0 - pow(max_fpr, 1.0 / (double) k));
+
+        /*
+        size_t lower_val = pow(2, floor(log(filter_size)/log(2)));
+        size_t upper_val = pow(2, ceil(log(filter_size)/log(2)));
+
+        size_t diff_l = abs((int64_t) filter_size - (int64_t) lower_val);
+        size_t diff_u = abs((int64_t) filter_size - (int64_t) upper_val);
+
+        size_t size = (diff_l > diff_u) ? upper_val : lower_val;
+        */
+
+        this->data = bitarray::BitArray(size);
+        this->size = filter_size;
+        this->hash_funcs = k;
+    }
+
     BloomFilter() {};
 
 
@@ -66,6 +88,11 @@ public:
     void clear()
     {
         this->data.unset_all();
+    }
+
+    size_t memory_utilization()
+    {
+        return this->size;
     }
 };
 }}

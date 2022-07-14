@@ -25,6 +25,7 @@ struct ISAMTreeMetaHeader {
     PageNum last_data_page;
     PageNum first_data_bloom_page;
     PageNum first_tombstone_bloom_page;
+    size_t tombstone_count;
 };
 
 struct ISAMTreeInternalNodeHeader {
@@ -40,7 +41,7 @@ const PageNum BTREE_META_PNUM = 1;
 class ISAMTree {
 public:
     static std::unique_ptr<ISAMTree> create(std::unique_ptr<iter::MergeIterator> record_iter, PageNum leaf_page_cnt, 
-                                               bool bloom_filters, global::g_state *state);
+                                               bool bloom_filters, global::g_state *state, size_t tombstone_count);
 
     /*
      * Initialize a ISAMTree structure within the file specified by pfile. The
@@ -55,7 +56,7 @@ public:
      * from state.
      */
     static void initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::MergeIterator> record_iter, 
-                           PageNum data_page_cnt, global::g_state *state, bool bloom_filters);
+                           PageNum data_page_cnt, global::g_state *state, bool bloom_filters, size_t tombstone_count);
 
 
     /*
@@ -145,6 +146,17 @@ public:
     bool is_deleted(RecordId rid, Timestamp time=0);
     */
 
+    /*
+     * Returns the number of bytes of memory used by auxiliary structures
+     * associated with this ISAM tree.
+     */
+    size_t memory_utilization();
+
+    /*
+     * Returns the number of tombstone records within this level
+     */
+    size_t tombstone_count();
+
 private:
     ISAMTreeMetaHeader *get_metapage();
 
@@ -160,12 +172,14 @@ private:
     io::ReadCache *cache;
     size_t rec_cnt;
     bool fixed_length;
+    
+    size_t tombstone_cnt; // number of tombstones within the ISAM Tree
 
     PageNum search_internal_node_lower(PageNum pnum, const byte *key);
     PageNum search_internal_node_upper(PageNum pnum, const byte *key);
     SlotId search_leaf_page(byte *page_buf, const byte *key);
 
-    static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, size_t key_len, bool filters, PageId *first_leaf, PageId *first_internal, PageId *meta, PageId *filter_meta, PageId *tombstone_filter_meta, global::g_state *state);
+    static int initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, size_t tombstone_count, size_t key_len, bool filters, PageId *first_leaf, PageId *first_internal, PageId *meta, PageId *filter_meta, PageId *tombstone_filter_meta, global::g_state *state);
     static std::unique_ptr<catalog::FixedKVSchema> generate_internal_schema(catalog::FixedKVSchema *record_schema);
     static PageNum generate_internal_levels(io::PagedFile *pfile, PageNum first_page, catalog::FixedKVSchema *schema);
 };
