@@ -3,6 +3,9 @@
  */
 
 #include <chrono>
+#include <iostream>
+#include <fstream>
+#include <sstream>
 
 #include "sampling/lsmtree.hpp"
 #include "util/benchutil.hpp"
@@ -10,7 +13,7 @@
 int main(int argc, char **argv) {
 
     if (argc < 6) {
-        fprintf(stderr, "first_bench <record_count> <memtable_size> <scale_factor> <unsorted_memtable> <bloom_filters>\n");
+        fprintf(stderr, "first_bench <record_count> <memtable_size> <scale_factor> <unsorted_memtable> <bloom_filters> [default_seed]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -20,7 +23,22 @@ int main(int argc, char **argv) {
     bool unsorted_memtable = atoi(argv[4]);
     bool bloom_filters = atoi(argv[5]);
 
+    bool default_seed = true;
+    if (argc > 6) {
+        default_seed = atoi(argv[6]);
+    }
+
     auto state = lsm::bench::bench_state();
+
+    if (!default_seed) {
+        unsigned int seed = 0;
+        std::fstream urandom;
+        urandom.open("/dev/urandom", std::ios::in|std::ios::binary);
+        urandom.read((char *) &seed, sizeof(seed));
+        urandom.close();
+        gsl_rng_set(state->rng, seed);
+    }
+
     auto test_data = lsm::bench::random_unique_keys(data_size, 10*data_size, state.get());
 
     auto rng = state->rng;
@@ -40,6 +58,8 @@ int main(int argc, char **argv) {
     auto insert_stop = std::chrono::high_resolution_clock::now();
 
     size_t per_insert = std::chrono::duration_cast<std::chrono::nanoseconds>(insert_stop - insert_start).count() / data_size;
+
+    tree->memory_utilization(true);
 
     size_t sample_size = 1000;
     size_t trials = 1000;
