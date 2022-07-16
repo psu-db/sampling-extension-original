@@ -238,7 +238,7 @@ LinkPagedFile::LinkPagedFile(std::unique_ptr<DirectFile> dfile, bool is_temp_fil
 : PagedFile(std::move(dfile), is_temp_file, true, PageAllocSupport::SINGLE, false)
 {
     #ifdef NO_BUFFER_MANAGER
-    this->buffer = std::unique_ptr<byte>((byte *) aligned_alloc(parm::PAGE_SIZE, parm::PAGE_SIZE));
+    this->buffer = mem::page_alloc();
     auto offset = PagedFile::pnum_to_offset(LinkPagedFile::header_page_pnum);
     this->dfile->read(this->buffer.get(), parm::PAGE_SIZE, offset);
     memcpy(&this->header_data, buffer.get(), sizeof(header_data));

@@ -276,6 +276,7 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_sch
     this->fixed_length = true;
 
     this->pfile = pfile;
+    this->state = nullptr;
 
     byte *frame_ptr;
     auto frame_id = this->cache->pin(BTREE_META_PNUM, this->pfile, &frame_ptr);

@@ -50,7 +50,6 @@ int MapMemTable::insert_internal(io::Record record)
     bool tomb = record.is_tombstone();
     const byte *key = this->get_key(record);
 
-
     // should be okay -- but I ought to figure out a better
     // approach to this that lets me retain the const specifier
     // on the MapKey type itself--it really should be const.

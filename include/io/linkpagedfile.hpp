@@ -25,6 +25,7 @@
 #include "util/types.hpp"
 #include "util/base.hpp"
 #include "util/iterator.hpp"
+#include "util/mem.hpp"
 #include "io/directfile.hpp"
 #include "io/page.hpp"
 
@@ -165,7 +166,7 @@ private:
 
     #ifdef NO_BUFFER_MANAGER
     void flush_buffer(PageNum pnum);
-    std::unique_ptr<byte> buffer;
+    std::unique_ptr<byte, decltype(&free)> buffer = std::unique_ptr<byte, decltype(&free)>(nullptr, &free);
     #endif
 };
 

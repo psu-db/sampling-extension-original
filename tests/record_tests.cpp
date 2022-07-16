@@ -72,6 +72,10 @@ START_TEST(t_create)
     ck_assert_int_eq(schema2->get_val(data2).Int16(), value2);
     std::string data3_val = schema3->get_val(data3).Str();
     ck_assert_mem_eq(data3_val.c_str(), value3, strlen(value3));
+
+    delete[] test;
+    delete[] tombstone_test;
+    delete[] timestamp_test;
 }
 END_TEST
 
@@ -99,6 +103,8 @@ START_TEST(t_deep_copy)
     copy.free_data();
     ck_assert_int_eq(rec1.is_valid(), 1);
     ck_assert_int_eq(copy.is_valid(), 0);
+
+    delete[] buf;
 }
 END_TEST
 

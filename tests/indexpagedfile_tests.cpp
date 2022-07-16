@@ -32,12 +32,13 @@ START_TEST(t_initialize)
     ck_assert_int_eq(dfile1->get_size(), parm::PAGE_SIZE);
 
     // validate that the header is correct
-    byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
+    auto buf = mem::page_alloc_raw();
     pread(dfile1->get_fd(), buf, parm::PAGE_SIZE, 0);
     io::IndexPagedFileHeaderData *header = (io::IndexPagedFileHeaderData *) buf;
 
     ck_assert_int_eq(header->paged_header.page_count, 0);
     ck_assert_int_eq(header->paged_header.flid, test_flid1);
+    free(buf);
 }
 END_TEST
 
