@@ -77,6 +77,14 @@ static bool benchmark(lsm::sampling::LSMTree *tree, std::fstream *file,
 
     for (size_t i=0; i<inserts; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get())) {
+            // If no new records were loaded, there's no reason to duplicate
+            // the last round of sampling.
+            if (i == 0) {
+                return false;
+            }
+
+            // Otherwise, we'll mark that we've reached the end, and sample one
+            // last time before ending.
             out_of_data = true;
             break;
         }
@@ -134,20 +142,21 @@ static bool benchmark(lsm::sampling::LSMTree *tree, std::fstream *file,
 
 int main(int argc, char **argv)
 {
-    size_t record_count = 10000000;
-    if (argc < 5) {
-        fprintf(stderr, "Usage: insert_bench <filename> <memtable_size> <scale_factor> <selectivity>\n");
+    if (argc < 6) {
+        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity>\n");
         exit(EXIT_FAILURE);
     }
 
     std::string filename = std::string(argv[1]);
-    size_t memtable_size = atol(argv[2]);
-    size_t scale_factor = atol(argv[3]);
-    double selectivity = atof(argv[4]);
+    size_t record_count = atol(argv[2]);
+    size_t memtable_size = atol(argv[3]);
+    size_t scale_factor = atol(argv[4]);
+    double selectivity = atof(argv[5]);
 
     // change these to enlarge the data size
-    size_t key_size = sizeof(int64_t);
-    size_t val_size = 64;
+    //size_t key_size = sizeof(int64_t);
+    size_t key_size = 128;
+    size_t val_size = 256;
 
     // use for selectivity calculations
     int64_t min_key = 0;

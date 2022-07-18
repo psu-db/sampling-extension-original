@@ -28,7 +28,7 @@ START_TEST(t_create_file)
     
     fstat(fd, &buf);
     ck_assert_int_eq(buf.st_size, parm::PAGE_SIZE);
-    new_file.release();
+    new_file.reset();
 
     new_file = io::DirectFile::create(testing::new_fname);
     ck_assert_ptr_nonnull(new_file.get());
@@ -190,7 +190,7 @@ START_TEST(t_remove)
     // a double unlink should fail
     ck_assert_int_eq(new_file->remove(), 0);
 
-    new_file.release();
+    new_file.reset();
 
     // should not be able to reopen the file
     new_file = io::DirectFile::create(testing::existing_fname1, false);

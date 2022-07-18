@@ -227,6 +227,9 @@ bool IndexPagedFilePageIterator::next()
         }
 
         this->current_frame_id = this->cache->pin(++this->current_pnum, this->pfile, &this->current_frame_ptr);
+        if (this->current_frame_id == INVALID_FRID) {
+            fprintf(stderr, "couldn't pin...\n");
+        }
         this->current_page = wrap_page(this->current_frame_ptr); 
 
         return true;

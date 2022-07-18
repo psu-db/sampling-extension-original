@@ -29,27 +29,28 @@ namespace lsm { namespace testing {
 
 std::unique_ptr<io::FileManager> g_fm;
 
-std::unique_ptr<std::byte> test_page1()
+std::unique_ptr<std::byte, decltype(&free)> test_page1()
 {
-    byte *test_page = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
+    auto test_page = mem::page_alloc();
+
     int32_t cnt = (parm::PAGE_SIZE / sizeof(int32_t));
     for (int32_t i=0; i<cnt; i++) {
-        ((int32_t *) test_page)[i] = i;
+        ((int32_t *) test_page.get())[i] = i;
     }
 
-    return std::unique_ptr<byte>(test_page);
+    return test_page;
 }
 
 
-std::unique_ptr<std::byte> test_page2()
+std::unique_ptr<std::byte, decltype(&free)> test_page2()
 {
-    byte *test_page = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
+    auto test_page = mem::page_alloc();
     size_t cnt = parm::PAGE_SIZE / sizeof(int16_t);
-    for (int16_t i=cnt; i>= 0; i--) {
-        ((int16_t *) test_page)[cnt - i] = i;
+    for (int16_t i=cnt; i>0; i--) {
+        ((int16_t *) test_page.get())[cnt - i] = i;
     }
 
-    return std::unique_ptr<byte>(test_page);
+    return test_page;
 }
 
 std::string new_fname = "tests/data/new_file.dat";
@@ -101,10 +102,10 @@ void initialize_file2()
     delete pfile;
 }
 
-std::unique_ptr<byte> empty_aligned_buffer()
+std::unique_ptr<byte, decltype(&free)> empty_aligned_buffer()
 {
     byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
-    return std::unique_ptr<byte>(buf);
+    return std::unique_ptr<byte, decltype(&free)>(buf, &free);
 }
 
 
@@ -355,7 +356,9 @@ std::string generate_isamtree_test_data1(size_t page_cnt, PageOffset val_len, si
     auto schema = test_schema1(val_len);
 
     int64_t key = -10;
-    int64_t val = 8;
+    int64_t val_int = 8;
+    byte val[val_len];
+    memcpy(val, &val_int, sizeof(int64_t));
     size_t cnt = 0;
     PageOffset length = schema->record_length();
     for (size_t i=0; i<page_cnt; i++) {
@@ -363,10 +366,10 @@ std::string generate_isamtree_test_data1(size_t page_cnt, PageOffset val_len, si
         io::FixedlenDataPage::initialize(buf.get(), length, 0);
         auto datapage = io::FixedlenDataPage(buf.get());
         for (size_t i=0; i<datapage.get_record_capacity(); i++) {
-            auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
+            auto recbuf = schema->create_record((byte *) &key, val);
             datapage.insert_record({recbuf.get(), length});
             key += 2;
-            val += 1;
+            *((int64_t*) val) += 1;
             cnt++;
         }
         test_file->write_page(new_pid, buf.get());
@@ -389,7 +392,9 @@ std::string generate_isamtree_test_data2(size_t page_cnt, PageOffset val_len, si
     auto schema = test_schema1(val_len);
 
     int64_t key = -10;
-    int64_t val = 8;
+    int64_t val_int = 8;
+    byte val[val_len];
+    memcpy(val, &val_int, sizeof(int64_t));
     size_t cnt = 0;
     PageOffset length = schema->record_length();
     for (size_t i=0; i<page_cnt; i++) {
@@ -400,7 +405,7 @@ std::string generate_isamtree_test_data2(size_t page_cnt, PageOffset val_len, si
             auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
             datapage.insert_record({recbuf.get(), length});
             key += 3;
-            val += 1;
+            *((int64_t*) val) += 1;
             cnt++;
         }
         test_file->write_page(new_pid, buf.get());
@@ -423,7 +428,9 @@ std::string generate_isamtree_test_data3(size_t page_cnt, PageOffset val_len, si
     auto schema = test_schema1(val_len);
 
     int64_t key = 5;
-    int64_t val = 8;
+    int64_t val_int = 8;
+    byte val[val_len];
+    memcpy(val, &val_int, sizeof(int64_t));
     size_t cnt = 0;
     PageOffset length = schema->record_length();
     for (size_t i=0; i<page_cnt; i++) {
@@ -434,7 +441,7 @@ std::string generate_isamtree_test_data3(size_t page_cnt, PageOffset val_len, si
             auto recbuf = schema->create_record((byte *) &key, (byte *) &val);
             datapage.insert_record({recbuf.get(), length});
             key += 1;
-            val += 1;
+            *((int64_t*) val) += 1;
             cnt++;
         }
         test_file->write_page(new_pid, buf.get());
