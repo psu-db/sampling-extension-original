@@ -147,8 +147,8 @@ int LSMTree::remove(byte *key, byte *value, Timestamp time)
 {
     // NOTE: tombstone based deletion. This will not first check if a record
     // with a matching key and value exists prior to inserting, or if other
-    // tombstones already exist. If the record being deleted exists within the
-    // memtable, it will be replaced by the tombstone.
+    // tombstones already exist. If an identical tombstone already exists
+    // within the memtable, it will fail to insert.
     if (this->memtable->is_full()) {
         this->merge_memtable();
     }
@@ -170,9 +170,47 @@ int LSMTree::update(byte *key, byte *old_value, byte *new_value, Timestamp time)
 }
 
 
-io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tombstone_search)
+io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
-    // first, we check the memory table
+    io::Record record = this->memtable->get(key, time);
+    if (record.is_valid()) {
+        if (record.is_tombstone()) {
+            *frid = INVALID_FRID;
+            return io::Record();
+        }
+
+        *frid = INVALID_FRID;
+        return record;
+    }
+
+    // then, we search the tree from newest levels to oldest
+    for (auto &level : this->levels) {
+        if (level) {
+            record = level->get(key, frid, time);
+            if (record.is_valid()) {
+                if (record.is_tombstone()) {
+                    this->state->cache->unpin(*frid);
+                    *frid = INVALID_FRID;
+                    return io::Record();
+                }
+                return record;
+            }
+        }
+    }
+
+    // if we get here, the desired record doesn't exist, so we
+    // return an invalid record.
+    if (*frid != INVALID_FRID) {
+        this->state->cache->unpin(*frid);
+    }
+
+    *frid = INVALID_FRID;
+    return io::Record();
+}
+
+
+io::Record LSMTree::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
+{
     bool check_memtable = true;
     if (this->bloom_filters) {
        check_memtable = this->memtable_bf->lookup(*((int64_t*) key));
@@ -180,28 +218,17 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tom
 
     io::Record record;
     if (check_memtable) {
-        record = this->memtable->get(key, time);
+        record = this->memtable->get(key, val, time);
         if (record.is_valid()) {
-            if (!tombstone_search && record.is_tombstone()) {
-                *frid = INVALID_FRID;
-                return io::Record();
-            }
-
             *frid = INVALID_FRID;
             return record;
         }
     }
 
-    // then, we search the tree from newest levels to oldest
     for (auto &level : this->levels) {
         if (level) {
-            record = level->get_by_key(key, frid, time, tombstone_search);
+            record = level->get_tombstone(key, val, frid, time);
             if (record.is_valid()) {
-                if (!tombstone_search && record.is_tombstone()) {
-                    this->state->cache->unpin(*frid);
-                    *frid = INVALID_FRID;
-                    return io::Record();
-                }
                 return record;
             }
         }
@@ -407,12 +434,13 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
 bool LSMTree::is_deleted(io::Record record)
 {
     auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
+    auto val = this->state->record_schema->get_val(record.get_data()).Bytes();
     auto time = record.get_timestamp();
 
     bool deleted = false;
 
-    FrameId frid;
-    auto res = this->get(key, &frid, time, true);
+    FrameId frid = INVALID_FRID;
+    auto res = this->get_tombstone(key, val, &frid, time);
 
     if (res.is_valid() && res.is_tombstone()) {
         deleted = true;

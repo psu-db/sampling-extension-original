@@ -18,6 +18,9 @@ public:
     virtual int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) = 0;
     virtual int remove(byte *key, byte *value, Timestamp time=0) = 0;
     virtual io::Record get(const byte *key, Timestamp time=0) = 0;
+    virtual io::Record get(const byte *key, const byte* /* val */, Timestamp time=0) {
+        return this->get(key, time);
+    }
 
     virtual size_t get_record_count() = 0;
     virtual size_t get_capacity() = 0;

@@ -48,17 +48,23 @@ public:
      * this, other methods of handling deletes, such as tombstones or
      * bitmaps, do not require the use of this function.
      */
-    // int remove(byte *key, byte *value, Timestamp time=0) override;
+    int remove(byte *key, byte *value, Timestamp time=0) override;
 
     /*
-     * Attempts to retrieve a reocrd with a given key and timestamp from the
+     * Attempts to retrieve a record with a given key and timestamp from the
      * memtable. Returns the record on success. Returns in invalid record on
      * failure. This can fail because the desired key-timestamp pair does
      * not appear within the memtable.
      */
     io::Record get(const byte *key, Timestamp time=0) override;
 
-    int remove(byte *key, byte* value, Timestamp time=0) override;
+    /*
+     * Attempts to retrieve a record with a given key, value, and timestamp
+     * from the memtable. Returns the record on success. Returns in invalid
+     * record on failure. This can fail because the desired key-timestamp pair
+     * does not appear within the memtable.
+     */
+    io::Record get(const byte *key, const byte *val, Timestamp time=0) override;
 
     /*
      * Returns the maximum capacity (in records) of the memtable.

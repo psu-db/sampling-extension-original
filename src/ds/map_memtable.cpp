@@ -47,13 +47,13 @@ int MapMemTable::insert(byte *key, byte *value, Timestamp time, bool tombstone)
 int MapMemTable::insert_internal(io::Record record)
 {
     Timestamp time = record.get_timestamp();
-    bool tomb = record.is_tombstone();
     const byte *key = this->get_key(record);
+    bool tomb = record.is_tombstone();
 
     // should be okay -- but I ought to figure out a better
     // approach to this that lets me retain the const specifier
     // on the MapKey type itself--it really should be const.
-    MapKey memtable_key {const_cast<byte*>(key), time, tomb};
+    MapKey memtable_key {const_cast<byte*>(key), time};
 
     auto res = this->table->insert({memtable_key, record.get_data()});
 
@@ -97,16 +97,30 @@ int MapMemTable::remove(byte * /*key*/, byte* /*value*/, Timestamp /*time*/)
 
 io::Record MapMemTable::get(const byte *key, Timestamp time)
 {
-    // should be okay -- but I ought to figure out a better
-    // approach to this that lets me retain the const specifier
-    // on the MapKey type itself--it really should be const.
-    //
-    // FIXME: Need to make this function not care about whether tomb is true
-    // or false on a given key. That or split the tombstone lookups out.
-    auto result = this->table->find(MapKey{const_cast<byte*>(key), time, false});
+    // should be okay -- but I ought to figure out a better approach to this
+    // that lets me retain the const specifier on the MapKey type itself--it
+    // really should be const.
+    auto result = this->table->upper_bound(MapKey{const_cast<byte*>(key), time});
 
-    if (result != this->table->end()) {
+    if (result != this->table->end() && this->state->record_schema->get_key_cmp()(key, result->first.key) == 0
+    && result->first.time <= time) {
         return io::Record(result->second, this->state->record_schema->record_length());
+    }
+
+    return io::Record();
+}
+
+
+io::Record MapMemTable::get(const byte *key, const byte *val, Timestamp time)
+{
+    auto result = this->table->find(MapKey{const_cast<byte*>(key), time});
+
+    while (result != this->table->end() && result->first.time <= time && this->state->record_schema->get_key_cmp()(result->first.key, key) == 0) {
+        if (this->state->record_schema->get_val_cmp()(val, this->state->record_schema->get_val(result->second).Bytes()) == 1) {
+            return io::Record(result->second, this->state->record_schema->record_length());
+        }
+
+        ++result;
     }
 
     return io::Record();
@@ -135,8 +149,8 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
-    const MapKey lower {lower_key, TIMESTAMP_MIN, true};
-    const MapKey upper {upper_key, TIMESTAMP_MAX, false};
+    const MapKey lower {lower_key, TIMESTAMP_MIN};
+    const MapKey upper {upper_key, TIMESTAMP_MAX};
 
 
     auto start = this->table->lower_bound(lower);
@@ -153,8 +167,8 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower
 
 std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range_bench(byte *lower_key, byte *upper_key, size_t *bounds_time, size_t *iter_time)
 {
-    const MapKey lower {lower_key, TIMESTAMP_MIN, true};
-    const MapKey upper {upper_key, TIMESTAMP_MAX, false};
+    const MapKey lower {lower_key, TIMESTAMP_MIN};
+    const MapKey upper {upper_key, TIMESTAMP_MAX};
 
     auto bounds_start = std::chrono::high_resolution_clock::now();
     auto start = this->table->lower_bound(lower);

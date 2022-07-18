@@ -350,6 +350,91 @@ START_TEST(t_unsorted_sample_with_erase_and_bloom)
 END_TEST
 
 
+START_TEST(t_erase_duplicate_keys)
+{
+    auto state = testing::make_state1();
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state));
+
+    int64_t key = 550;
+    int64_t value = 10;
+    Timestamp time = 0;
+
+    for (size_t i=0; i < 10000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    key = 550;
+    value = 100;
+    for (size_t i=0; i < 1000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 10 + 800;
+    for (size_t i=0; i < 500; i++) {
+        ck_assert_int_eq(lsm->remove((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    key = 250;
+    for (size_t i=0; i < 500; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 10 + 800;
+    for (size_t i=0; i < 500; i++) {
+        FrameId frid = INVALID_FRID;
+        ck_assert(lsm->get_tombstone((byte*) &key, (byte*) &value, &frid, time).is_valid());
+        if (frid != INVALID_FRID) {
+            lsm->cache()->unpin(frid);
+        }
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 100 + 800;
+    for (size_t i=0; i< 500; i++) {
+        FrameId frid = INVALID_FRID;
+        ck_assert(!lsm->get_tombstone((byte*) &key, (byte*) &value, &frid, time).is_valid());
+        if (frid != INVALID_FRID) {
+            lsm->cache()->unpin(frid);
+        }
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 10 + 800;
+    for (size_t i=0; i < 500; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    key = 550 + 800;
+    value = 10 + 800;
+    for (size_t i=0; i < 500; i++) {
+        FrameId frid = INVALID_FRID;
+        ck_assert(lsm->get((byte*) &key, &frid, time).is_valid());
+        if (frid != INVALID_FRID) {
+            lsm->cache()->unpin(frid);
+        }
+        key++;
+        value++;
+    }
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("LSM Tree Unit Testing");
@@ -378,6 +463,7 @@ Suite *unit_testing()
     TCase *remove = tcase_create("lsm::sampling::LSMTree::remove Testing");
     tcase_add_test(remove, t_erase);
     tcase_add_test(remove, t_bulk_erase);
+    tcase_add_test(remove, t_erase_duplicate_keys);
 
     suite_add_tcase(unit, remove);
 

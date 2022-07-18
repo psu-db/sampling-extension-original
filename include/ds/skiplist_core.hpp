@@ -18,7 +18,6 @@ extern catalog::KeyCmpFunc sl_global_key_cmp;
 struct MapKey {
     byte *key;
     Timestamp time;
-    bool tomb;
 
     friend bool operator<(const MapKey a, const MapKey b) {
         auto cmp = sl_global_key_cmp(a.key, b.key);

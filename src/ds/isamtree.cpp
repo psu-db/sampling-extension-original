@@ -520,15 +520,8 @@ std::unique_ptr<iter::GenericIterator<Record>> ISAMTree::start_scan()
 }
 
 
-Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tombstone)
+Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
-    if (tombstone && this->tombstone_bloom_filter) {
-        if (!this->tombstone_bloom_filter->lookup(key)) {
-            *frid = INVALID_FRID;
-            return io::Record();
-        }
-    }
-
     // find the first page to search
     auto pid = this->get_lower_bound(key);
 
@@ -563,6 +556,72 @@ Record ISAMTree::get(const byte *key, FrameId *frid, Timestamp time, bool tombst
             }
 
             int_frid = this->cache->pin(pid, this->pfile, &frame);
+        }
+    } while (this->key_cmp(key, this->record_schema->get_key(rec.get_data()).Bytes()) == 0);
+
+    this->cache->unpin(int_frid);
+    *frid = INVALID_FRID;
+    return io::Record();
+}
+
+
+io::Record ISAMTree::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
+{
+    if (this->tombstone_bloom_filter) {
+        if (!this->tombstone_bloom_filter->lookup(key)) {
+            *frid = INVALID_FRID;
+            return io::Record();
+        }
+    }
+
+    auto first_pid = this->get_lower_bound(key);
+    byte *frame;
+
+    FrameId int_frid = this->cache->pin(first_pid, this->pfile, &frame);
+    auto first_sid = this->search_leaf_page(frame, key);
+
+    // check if there are any matches for the specified key
+    if (first_sid == INVALID_SID) {
+        this->cache->unpin(int_frid);
+        *frid = INVALID_FRID;
+        return io::Record();
+    }
+
+    auto page = io::wrap_page(frame);
+    Record rec;
+
+    SlotId sid = first_sid;
+    PageId pid = first_pid;
+
+    auto val_cmp = this->state->record_schema->get_val_cmp();
+
+    do {
+        rec = page->get_record(sid);
+        auto rec_val = this->state->record_schema->get_val(rec.get_data()).Bytes();
+
+        if (rec.get_timestamp() <= time && val_cmp(val, rec_val) == 0) {
+            if (rec.is_tombstone()) {
+                *frid = int_frid;
+                return rec;
+            } else {
+                *frid = INVALID_FRID;
+                this->cache->unpin(int_frid);
+                return io::Record();
+            }
+        } 
+
+        if (++sid > page->get_max_sid()) {
+            this->cache->unpin(int_frid);
+
+            pid.page_number++;
+            if (pid.page_number > this->last_data_page) {
+                *frid = INVALID_FRID;
+                return io::Record();    
+            }
+
+            int_frid = this->cache->pin(pid, this->pfile, &frame);
+            page = io::wrap_page(frame);
+            sid = page->get_min_sid();
         }
     } while (this->key_cmp(key, this->record_schema->get_key(rec.get_data()).Bytes()) == 0);
 

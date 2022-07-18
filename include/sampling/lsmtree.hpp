@@ -51,9 +51,16 @@ public:
     /*
      * Search the index for the first record with a matching key, and with
      * a timestamp less than or equal to time. If no such record is found,
-     * returns and invalid record instead.
+     * returns an invalid record instead.
      */
-    io::Record get(const byte *key, FrameId *frid, Timestamp time=0, bool skip_delete_check=false);
+    io::Record get(const byte *key, FrameId *frid, Timestamp time=0);
+
+    /*
+     * Search the index for a tombstone for the record with the specified key
+     * and value, that is active relative to time. If the tombstone exists,
+     * return it. Otherwise, return an invalid record.
+     */
+    io::Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0);
 
     /*
      * Insert a new record into the LSMTree. The input key and value

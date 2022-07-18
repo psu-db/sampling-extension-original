@@ -99,7 +99,14 @@ public:
      * Returns the newest record within this tree with the specified key, and a
      * timestamp no greater than time.
      */
-    Record get(const byte *key, FrameId *frid, Timestamp time=0, bool tombstone=false);
+    Record get(const byte *key, FrameId *frid, Timestamp time=0);
+
+    /*
+     * Searches the tree for a tombstone record for the specified key/value
+     * pair active at Timestamp time. If no such tombstone exists, returns an
+     * invalid record, otherwise return the tombstone.
+     */
+    Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0);
 
     /*
      * Returns an iterator over all of the records within the leaf nodes of

@@ -99,11 +99,19 @@ public:
 
     /*
      * Perform a search for the specified key within this level, and return a
-     * Record object representing the first record in which a match is found having
-     * a timestamp less than or equal to the specified one, or nullptr if no
-     * match is found. 
+     * Record object representing the first record in which a match is found
+     * having a timestamp less than or equal to the specified one, or an
+     * invalid record if no match is found. 
      */
-     Record get_by_key(const byte *key, FrameId *frid, Timestamp time=0, bool tombstone_search=false);
+     Record get(const byte *key, FrameId *frid, Timestamp time=0);
+
+
+    /*
+     * Perform a search for a tombstone for a record with the specified key
+     * and value, that is active with respect to time. Return this tombstone
+     * if found, otherwise return an invalid record.
+     */
+     Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0);
 
     /*
      * Perform a search for the specified key within this level and mark the
