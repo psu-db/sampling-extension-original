@@ -103,7 +103,13 @@ public:
     size_t cache_misses();
 
     /*
-     * Resets the count of cache misses to 0.
+     * Returns the number of calls to pin() since either object construction,
+     * or the last call to reset_miss_counter().
+     */
+    size_t pin_requests();
+
+    /*
+     * Resets the count of cache misses and pin requests to 0.
      */
     void reset_miss_counter();
 
@@ -131,6 +137,7 @@ private:
     FrameId clock_hand;
 
     size_t misses;
+    size_t pin_reqs;
     size_t io_block_time;
 
     bool benchmarks;

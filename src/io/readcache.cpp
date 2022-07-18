@@ -18,6 +18,7 @@ ReadCache::ReadCache(size_t frame_capacity, bool benchmarks)
     this->frame_cnt = 0;
     this->clock_hand = 0;
     this->misses = 0;
+    this->pin_reqs = 0;
     this->io_block_time = 0;
     this->benchmarks = benchmarks;
 }
@@ -25,6 +26,8 @@ ReadCache::ReadCache(size_t frame_capacity, bool benchmarks)
 
 FrameId ReadCache::pin(PageId pid, PagedFile *pfile, byte **frame_ptr)
 {
+    this->pin_reqs++;
+
     auto map_entry = this->frame_map.find(pid);
 
     FrameId frame;
@@ -152,9 +155,16 @@ size_t ReadCache::cache_misses()
 }
 
 
+size_t ReadCache::pin_requests()
+{
+    return this->pin_reqs;
+}
+
+
 void ReadCache::reset_miss_counter()
 {
     this->misses = 0;
+    this->pin_reqs = 0;
 }
 
 
@@ -169,4 +179,4 @@ void ReadCache::reset_io_time()
     this->io_block_time = 0;
 }
 
-}}
+}}ar
