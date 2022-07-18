@@ -122,7 +122,7 @@ START_TEST(t_erase)
     ck_assert_int_eq(rec.is_valid(), 0);
 
     ck_assert_int_eq(lsm->insert((byte*) &rm_key, (byte*) &rm_val, time++), 1);
-    rec = lsm->get((byte*) &rm_key, &frid);
+    rec = lsm->get((byte*) &rm_key, &frid, time);
     ck_assert_int_eq(rec.is_valid(), 1);
     lsm->cache()->unpin(frid);
 }
