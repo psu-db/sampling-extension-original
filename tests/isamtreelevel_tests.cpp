@@ -85,8 +85,6 @@ START_TEST(t_sample_range)
     auto isamtree = testing::test_isamtree_cont(1000, state.get(), &cnt);
     auto filename = state->file_manager->get_name(isamtree->get_pfile()->get_flid());
 
-    isamtree.reset();
-
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
     auto test_level = sampling::ISAMTreeLevel(1, cnt, files, state.get(), 1.0, false);
@@ -143,19 +141,19 @@ END_TEST
 Suite *unit_testing()
 {
     Suite *unit = suite_create("Level Unit Testing");
-    TCase *create = tcase_create("lsm::sampling::Level Constructor Testing");
+    TCase *create = tcase_create("lsm::sampling::ISAMTreeLevel Constructor Testing");
     tcase_add_test(create, t_create);
 
     suite_add_tcase(unit, create);
 
 
-    TCase *merge = tcase_create("lsm::sampling::merge Testing");
+    TCase *merge = tcase_create("lsm::sampling::ISAMTreeLevel::merge Testing");
     tcase_add_test(merge, t_merge);
 
     suite_add_tcase(unit, merge);
 
 
-    TCase *range = tcase_create("lsm::sampling::get_sample_ranges Testing");
+    TCase *range = tcase_create("lsm::sampling::ISAMTreeLevel::get_sample_ranges Testing");
     tcase_add_test(range, t_sample_range);
 
     suite_add_tcase(unit, range);
