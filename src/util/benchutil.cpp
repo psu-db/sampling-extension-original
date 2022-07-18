@@ -20,6 +20,18 @@ static int key_cmp_func(const byte * a, const byte *b)
 }
 
 
+static int standalone_val_cmp_func(const byte *a, const byte *b) 
+{
+    if (*((int64_t*) a) > *((int64_t*) b)) {
+        return 1;
+    } else if (*((int64_t*) a) < *((int64_t*) b)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
 static int rec_cmp_func(const byte *a, const byte *b) 
 {
     int64_t key1 = *((int64_t*) (a + io::RecordHeaderLength));
@@ -86,6 +98,12 @@ catalog::ValCmpFunc val_cmp()
 }
 
 
+catalog::ValCmpFunc standalone_cal_cmp()
+{
+    return std::bind(&standalone_val_cmp_func, _1, _2);
+}
+
+
 std::unique_ptr<global::g_state> bench_state(std::string root_dir)
 {
     return bench_state(sizeof(int64_t), sizeof(int64_t), 1024, root_dir);
@@ -103,7 +121,7 @@ std::unique_ptr<global::g_state> bench_state(size_t key_size, size_t value_size,
 
     new_state->cache = std::make_unique<io::ReadCache>(cache_size, true);
     new_state->file_manager = std::make_unique<io::FileManager>(root_dir);
-    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(key_size, value_size, io::RecordHeaderLength, key_cmp(), rec_cmp());
+    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(key_size, value_size, io::RecordHeaderLength, key_cmp(), standalone_cal_cmp(), rec_cmp());
     new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
 
     return std::unique_ptr<global::g_state>(new_state);

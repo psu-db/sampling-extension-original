@@ -28,10 +28,10 @@ public:
         header_length(header_length), has_cmps(false) {}
 
 
-    FixedKVSchema(size_t key_length, size_t value_length, size_t header_length, KeyCmpFunc key_cmp, RecordCmpFunc record_cmp) 
+    FixedKVSchema(size_t key_length, size_t value_length, size_t header_length, KeyCmpFunc key_cmp, ValCmpFunc val_cmp, RecordCmpFunc record_cmp) 
     : key_length(key_length), value_length(value_length),
         header_length(header_length), key_cmp(key_cmp), rec_cmp(record_cmp),
-        has_cmps(true) {}
+        val_cmp(val_cmp), has_cmps(true) {}
 
     ~FixedKVSchema() = default;
 
@@ -136,6 +136,16 @@ public:
         return this->key_cmp;
     }
 
+    /*
+     * Returns a comparison function for the values created according to this schema.
+     * The inputs should be pointers to the beginning of the value data within a record 
+     * (or just an isolated string of bytes that represents a valid value). The output of
+     * this function is only defined if has_defined_comparators returns true on this object.
+     */
+    ValCmpFunc get_val_cmp() {
+        return this->val_cmp;
+    }
+
 
 private:
     PageOffset key_length;
@@ -143,6 +153,7 @@ private:
     PageOffset header_length;
     KeyCmpFunc key_cmp;
     RecordCmpFunc rec_cmp;
+    ValCmpFunc val_cmp;
     bool has_cmps;
 };
 

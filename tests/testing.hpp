@@ -671,6 +671,18 @@ int reccmp1(const byte *a, const byte *b) {
     return 0;
 }
 
+
+int valcmp1(const byte *a, const byte *b) {
+    if (*((int64_t*) a) > *((int64_t*) b)) {
+        return 1;
+    } else if (*((int64_t*) a) < *((int64_t*) b)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
 std::unique_ptr<global::g_state> make_state1()
 {
 
@@ -678,12 +690,13 @@ std::unique_ptr<global::g_state> make_state1()
 
     const catalog::RecordCmpFunc reccmp = std::bind(&reccmp1, _1, _2);
     const catalog::KeyCmpFunc keycmp = std::bind(&keycmp1, _1, _2);
+    const catalog::ValCmpFunc valcmp = std::bind(&valcmp1, _1, _2);
 
     gsl_rng_env_setup();
 
     new_state->cache = std::make_unique<io::ReadCache>(1024);
     new_state->file_manager = std::make_unique<io::FileManager>("tests/data/filemanager1/");
-    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(sizeof(int64_t), sizeof(int64_t), io::RecordHeaderLength, keycmp, reccmp);
+    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(sizeof(int64_t), sizeof(int64_t), io::RecordHeaderLength, keycmp, valcmp, reccmp);
     new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
 
     return std::unique_ptr<global::g_state>(new_state);
@@ -696,12 +709,13 @@ std::unique_ptr<global::g_state> make_state(size_t keylen, size_t vallen)
 
     const catalog::RecordCmpFunc reccmp = std::bind(&reccmp1, _1, _2);
     const catalog::KeyCmpFunc keycmp = std::bind(&keycmp1, _1, _2);
+    const catalog::ValCmpFunc valcmp = std::bind(&valcmp1, _1, _2);
 
     gsl_rng_env_setup();
 
     new_state->cache = std::make_unique<io::ReadCache>(1024);
     new_state->file_manager = std::make_unique<io::FileManager>("tests/data/filemanager1/");
-    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(keylen, vallen, io::RecordHeaderLength, keycmp, reccmp);
+    new_state->record_schema = std::make_unique<catalog::FixedKVSchema>(keylen, vallen, io::RecordHeaderLength, keycmp, valcmp, reccmp);
     new_state->rng = gsl_rng_alloc(gsl_rng_gfsr4);
 
     return std::unique_ptr<global::g_state>(new_state);
