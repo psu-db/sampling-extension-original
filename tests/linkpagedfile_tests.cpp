@@ -3,7 +3,7 @@
  */
 
 #include <check.h>
-#include "io/indexpagedfile.hpp"
+#include "io/linkpagedfile.hpp"
 #include "testing.hpp"
 
 using namespace lsm;
@@ -23,22 +23,24 @@ START_TEST(t_initialize)
     dfile2->close_file();
 
     // initializing an open dfile should work
-    ck_assert_int_eq(io::IndexPagedFile::initialize(dfile1.get(), test_flid1), 1);
+    ck_assert_int_eq(io::LinkPagedFile::initialize(dfile1.get(), test_flid1), 1);
     
     // initializing a closed dfile should fail
-    ck_assert_int_eq(io::IndexPagedFile::initialize(dfile2.get(), test_flid2), 0);
+    ck_assert_int_eq(io::LinkPagedFile::initialize(dfile2.get(), test_flid2), 0);
 
     // the initialized file should have its first page allocated
     ck_assert_int_eq(dfile1->get_size(), parm::PAGE_SIZE);
 
     // validate that the header is correct
-    auto buf = mem::page_alloc_raw();
+    byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
     pread(dfile1->get_fd(), buf, parm::PAGE_SIZE, 0);
-    io::IndexPagedFileHeaderData *header = (io::IndexPagedFileHeaderData *) buf;
+    io::LinkPagedFileHeaderData *header = (io::LinkPagedFileHeaderData *) buf;
 
+    ck_assert_int_eq(header->first_free_page, INVALID_PNUM);
+    ck_assert_int_eq(header->first_page, INVALID_PNUM);
+    ck_assert_int_eq(header->last_page, INVALID_PNUM);
     ck_assert_int_eq(header->paged_header.page_count, 0);
     ck_assert_int_eq(header->paged_header.flid, test_flid1);
-    free(buf);
 }
 END_TEST
 
@@ -46,7 +48,7 @@ END_TEST
 START_TEST(t_constructor_empty)
 {
     auto dfile = testing::create_dfile_empty();
-    auto pfile = io::IndexPagedFile(std::move(dfile), false);
+    auto pfile = io::LinkPagedFile(std::move(dfile), false);
 
     auto first_page = pfile.get_first_pid();
     auto last_page = pfile.get_last_pid();
@@ -66,7 +68,7 @@ END_TEST
 START_TEST(t_allocate_page)
 {
     auto dfile = testing::create_dfile_empty();
-    auto pfile = io::IndexPagedFile(std::move(dfile), false);
+    auto pfile = io::LinkPagedFile(std::move(dfile), false);
 
     ck_assert_int_eq(pfile.allocate_page().page_number, 1);
     ck_assert_int_eq(pfile.allocate_page().page_number, 2);
@@ -78,20 +80,27 @@ START_TEST(t_allocate_page)
 END_TEST
 
 
-START_TEST(t_allocate_bulk)
+START_TEST(t_allocate_page_linking)
 {
     auto dfile = testing::create_dfile_empty();
-    auto pfile = io::IndexPagedFile(std::move(dfile), false);
+    int fd = dfile->get_fd();
+    auto pfile = io::LinkPagedFile(std::move(dfile), false);
 
-    ck_assert_int_eq(pfile.allocate_page_bulk(10).page_number, 1);
-    ck_assert_int_eq(pfile.get_page_count(), 10);
-    ck_assert_int_eq(pfile.get_first_pid().page_number, 1);
-    ck_assert_int_eq(pfile.get_last_pid().page_number, 10);
+    for (size_t i=0; i<20; i++) {
+        ck_assert_int_gt(pfile.allocate_page().page_number, 0);
+    }
 
-    ck_assert_int_eq(pfile.allocate_page_bulk(10).page_number, 11);
-    ck_assert_int_eq(pfile.get_first_pid().page_number, 1);
-    ck_assert_int_eq(pfile.get_last_pid().page_number, 20);
-    ck_assert_int_eq(pfile.get_page_count(), 20);
+    byte *buf = (byte *) std::aligned_alloc(parm::SECTOR_SIZE, parm::PAGE_SIZE);
+    pread(fd, buf, parm::PAGE_SIZE, parm::PAGE_SIZE);
+    io::PageHeaderData *header = (io::PageHeaderData *) buf;
+
+    PageNum i = 1;
+    while (header->next_page != INVALID_PNUM) {
+        header = (io::PageHeaderData *) buf;
+        ck_assert_int_eq(header->prev_page, i - 1);
+        ck_assert_int_eq(header->next_page, i + 1);
+        pread(fd, buf, parm::PAGE_SIZE, parm::PAGE_SIZE * ++i);
+    }
 }
 END_TEST
 
@@ -99,14 +108,40 @@ END_TEST
 START_TEST(t_free_page)
 {
     auto dfile = testing::create_dfile_empty();
-    auto pfile = io::IndexPagedFile(std::move(dfile), false);
+    auto pfile = io::LinkPagedFile(std::move(dfile), false);
 
     pfile.allocate_page();
     pfile.allocate_page();
 
-    ck_assert_int_eq(pfile.supports_free(), 0);
-    ck_assert_int_eq(pfile.free_page(1), 0);
-    ck_assert_int_eq(pfile.free_page(2), 0);
+    ck_assert_int_eq(pfile.get_first_pid().page_number, 1);
+    ck_assert_int_eq(pfile.get_last_pid().page_number, 2);
+
+    ck_assert_int_eq(pfile.free_page(1), 1);
+    ck_assert_int_eq(pfile.get_first_pid().page_number, 2);
+    ck_assert_int_eq(pfile.get_last_pid().page_number, 2);
+    ck_assert_int_eq(pfile.get_page_count(), 1);
+
+    ck_assert_int_eq(pfile.free_page(2), 1);
+    ck_assert_int_eq(pfile.get_first_pid().page_number, INVALID_PNUM);
+    ck_assert_int_eq(pfile.get_last_pid().page_number, INVALID_PNUM);
+    ck_assert_int_eq(pfile.get_page_count(), 0);
+
+    pfile.allocate_page();
+    ck_assert_int_eq(pfile.get_first_pid().page_number, 2);
+    ck_assert_int_eq(pfile.get_last_pid().page_number, 2);
+    ck_assert_int_eq(pfile.get_page_count(), 1);
+    
+    pfile.allocate_page();
+    ck_assert_int_eq(pfile.get_first_pid().page_number, 2);
+    ck_assert_int_eq(pfile.get_last_pid().page_number, 1);
+    ck_assert_int_eq(pfile.get_page_count(), 2);
+
+    // cannot free the header page
+    ck_assert_int_eq(pfile.free_page(INVALID_PNUM), 0);
+
+    // cannot free a page larger than the allocated number
+    // of pages
+    ck_assert_int_eq(pfile.free_page(100), 0);
 }
 END_TEST
 
@@ -115,7 +150,7 @@ START_TEST(t_write)
 {
     auto dfile = testing::create_dfile_empty();
     std::string fname = dfile->get_fname();
-    auto pfile = new io::IndexPagedFile(std::move(dfile), false);
+    auto pfile = new io::LinkPagedFile(std::move(dfile), false);
 
     PageId pid = pfile->allocate_page();
     auto data1 = testing::test_page1();
@@ -131,7 +166,7 @@ START_TEST(t_write)
 
     dfile = io::DirectFile::create(fname, false);
     int fd = dfile->get_fd();
-    pfile = new io::IndexPagedFile(std::move(dfile), false);
+    pfile = new io::LinkPagedFile(std::move(dfile), false);
 
     ck_assert_int_eq(pfile->get_page_count(), 2);
     ck_assert_int_eq(pfile->get_last_pid().page_number, 2);
@@ -145,7 +180,7 @@ START_TEST(t_write)
     ck_assert_mem_eq(buf + io::PageHeaderSize, data2.get() + io::PageHeaderSize, parm::PAGE_SIZE - io::PageHeaderSize);
 
     delete pfile;
-    std::free(buf);
+    delete buf;
 }
 END_TEST
 
@@ -154,7 +189,7 @@ START_TEST(t_read)
 {
     testing::initialize_file2();
     auto dfile = io::DirectFile::create(testing::existing_fname2, false);
-    io::IndexPagedFile pfile = io::IndexPagedFile(std::move(dfile), false);
+    io::LinkPagedFile pfile = io::LinkPagedFile(std::move(dfile), false);
 
     auto data1 = testing::test_page1();
     auto data2 = testing::test_page2();
@@ -172,76 +207,44 @@ START_TEST(t_read)
 END_TEST
 
 
-START_TEST(t_iterator)
-{
-    auto fname = testing::generate_test_file1();
-    auto pfile = io::IndexPagedFile::create(fname, false, 5);
-    auto rcache = std::make_unique<io::ReadCache>();
-    auto schema = testing::test_schema1(sizeof(int64_t));
-
-    auto rec_itr = io::IndexPagedFileRecordIterator(pfile.get(), rcache.get());
-
-    size_t rec_cnt = 0;
-    int64_t key = -100;
-    int64_t val = 8;
-
-    while (rec_itr.next()) {
-        auto rec = rec_itr.get_item();
-        ck_assert_int_eq(schema->get_key(rec.get_data()).Int64(), key++);
-        ck_assert_int_eq(schema->get_val(rec.get_data()).Int64(), val++);
-        rec_cnt++;
-    }
-
-    rec_itr.end_scan();
-}
-END_TEST
-
-
 Suite *unit_testing()
 {
-    Suite *unit = suite_create("IndexPagedFile Unit Testing");
-    TCase *initialize = tcase_create("lsm::io::IndexPagedFile::initialize Testing");
+    Suite *unit = suite_create("LinkPagedFile Unit Testing");
+    TCase *initialize = tcase_create("lsm::io::LinkPagedFile::initialize Testing");
     tcase_add_test(initialize, t_initialize);
 
     suite_add_tcase(unit, initialize);
 
 
-    TCase *constructor = tcase_create("lsm::io::IndexPagedFile::IndexPagedFile() Testing");
+    TCase *constructor = tcase_create("lsm::io::LinkPagedFile::LinkPagedFile() Testing");
     tcase_add_test(constructor, t_constructor_empty);
 
     suite_add_tcase(unit, constructor);
 
 
-    TCase *allocate = tcase_create("lsm::io::IndexPagedFile::allocate Testing");
+    TCase *allocate = tcase_create("lsm::io::LinkPagedFile::allocate Testing");
     tcase_add_test(allocate, t_allocate_page);
-    tcase_add_test(allocate, t_allocate_bulk);
+    tcase_add_test(allocate, t_allocate_page_linking);
 
     suite_add_tcase(unit, allocate);
 
 
-    TCase *free_page = tcase_create("lsm::io::IndexPagedFile::free_page Testing");
+    TCase *free_page = tcase_create("lsm::io::LinkPagedFile::free_page Testing");
     tcase_add_test(free_page, t_free_page);
 
     suite_add_tcase(unit, free_page);
 
 
-    TCase *write = tcase_create("lsm::io::IndexPagedFile::write Testing");
+    TCase *write = tcase_create("lsm::io::LinkPagedFile::write Testing");
     tcase_add_test(write, t_write);
 
     suite_add_tcase(unit, write);
 
 
-    TCase *read = tcase_create("lsm::io::IndexPagedFile::read Testing");
+    TCase *read = tcase_create("lsm::io::LinkPagedFile::read Testing");
     tcase_add_test(read, t_read);
 
     suite_add_tcase(unit, read);
-
-
-
-    TCase *iter = tcase_create("lsm::io::IndexPagedFile::IndexPagedFileRecordIterator Testing");
-    tcase_add_test(iter, t_iterator);
-
-    suite_add_tcase(unit, iter);
 
     return unit;
 }

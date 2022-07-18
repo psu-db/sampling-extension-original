@@ -411,7 +411,7 @@ int run_unit_tests()
     Suite *unit = unit_testing();
     SRunner *unit_runner = srunner_create(unit);
 
-    srunner_run_all(unit_runner, CK_VERBOSE);
+    srunner_run_all(unit_runner, CK_NORMAL);
     failed = srunner_ntests_failed(unit_runner);
     srunner_free(unit_runner);
 

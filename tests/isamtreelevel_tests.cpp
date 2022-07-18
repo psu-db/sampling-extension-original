@@ -116,7 +116,6 @@ START_TEST(t_sample_range)
     auto range4 = test_level.get_sample_ranges((byte*) &key5, (byte*) &key2);
     ck_assert_int_eq(range4.size(), 0);
 
-    fprintf(stderr, "[%ld, %ld]", key1, key4);
     size_t valid_recs;
     for (size_t i=0; i<10000; i++) {
         FrameId frid;
@@ -168,7 +167,7 @@ int run_unit_tests()
     Suite *unit = unit_testing();
     SRunner *unit_runner = srunner_create(unit);
 
-    srunner_run_all(unit_runner, CK_VERBOSE);
+    srunner_run_all(unit_runner, CK_NORMAL);
     failed = srunner_ntests_failed(unit_runner);
     srunner_free(unit_runner);
 

@@ -98,9 +98,10 @@ START_TEST(t_erase)
 
     int64_t key = 550;
     int64_t value = 10;
+    Timestamp time = 0;
 
     for (size_t i=0; i < 10000; i++) {
-        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value), 1);
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
         key++;
         value++;
     }
@@ -108,7 +109,7 @@ START_TEST(t_erase)
     int64_t rm_key = 551;
     int64_t rm_val = 11;
 
-    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val), 1);
+    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val, time++), 1);
 
     FrameId frid;
     auto rec = lsm->get((byte*) &rm_key, &frid);
@@ -116,11 +117,11 @@ START_TEST(t_erase)
 
     rm_key = 550 + 1200;
     rm_val = 10 + 1200;
-    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val), 1);
+    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val, time++), 1);
     rec = lsm->get((byte*) &rm_key, &frid);
     ck_assert_int_eq(rec.is_valid(), 0);
 
-    ck_assert_int_eq(lsm->insert((byte*) &rm_key, (byte*) &rm_val), 1);
+    ck_assert_int_eq(lsm->insert((byte*) &rm_key, (byte*) &rm_val, time++), 1);
     rec = lsm->get((byte*) &rm_key, &frid);
     ck_assert_int_eq(rec.is_valid(), 1);
     lsm->cache()->unpin(frid);
@@ -390,7 +391,7 @@ int run_unit_tests()
     Suite *unit = unit_testing();
     SRunner *unit_runner = srunner_create(unit);
 
-    srunner_run_all(unit_runner, CK_VERBOSE);
+    srunner_run_all(unit_runner, CK_NORMAL);
     failed = srunner_ntests_failed(unit_runner);
     srunner_free(unit_runner);
 
