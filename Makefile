@@ -34,6 +34,8 @@ build:
 	mkdir -p build/util
 	mkdir -p build/sampling
 	mkdir -p tests/data/filemanager
+	mkdir -p tests/data/filemanager1
+	mkdir -p benchmarks/data/default_bench
 
 
 build/%.o: src/%.cpp
