@@ -199,7 +199,6 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time)
 
 bool LSMTree::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-
     if (this->memtable->has_tombstone(key, val, time)) {
         return true;
     }
@@ -366,10 +365,10 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
         auto record = ranges[range]->get(&frid);
         auto sample_stop = std::chrono::high_resolution_clock::now();
 
-
+        bool rejected = true;
         auto rejection_start = std::chrono::high_resolution_clock::now();
         if (record.is_valid() && !this->is_deleted(record)) {
-            sample->add_record(record);
+            rejected = false;
             i++;
         } else {
             rej++;
@@ -378,7 +377,14 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
         atmpts++;
         auto rejection_stop = std::chrono::high_resolution_clock::now();
 
+        auto add_start = std::chrono::high_resolution_clock::now();
+        if (rejected == false) {
+            sample->add_record(record);
+        }
+        auto add_stop = std::chrono::high_resolution_clock::now();
+
         total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
+        total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(add_stop - add_start).count();
         total_rejection += std::chrono::duration_cast<std::chrono::nanoseconds>(rejection_stop - rejection_start).count();
 
         // Adding a record to the sample makes a deep copy of
