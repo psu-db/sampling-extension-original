@@ -8,3 +8,5 @@ tests/*
 
 benchmarks/*
 !benchmarks/*.{cpp,sh}
+
+utilities/*
