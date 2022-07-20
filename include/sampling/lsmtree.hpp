@@ -58,9 +58,9 @@ public:
     /*
      * Search the index for a tombstone for the record with the specified key
      * and value, that is active relative to time. If the tombstone exists,
-     * return it. Otherwise, return an invalid record.
+     * return true. Otherwise, return false.
      */
-    io::Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0);
+    bool has_tombstone(const byte *key, const byte *val, Timestamp time=0);
 
     /*
      * Insert a new record into the LSMTree. The input key and value
@@ -144,8 +144,6 @@ private:
     std::unique_ptr<global::g_state> state;
     std::vector<std::unique_ptr<ISAMTreeLevel>> levels;
     std::unique_ptr<ds::MemoryTable> memtable;
-
-    std::unique_ptr<ds::BloomFilter<int64_t>> memtable_bf;
 
     size_t rec_count;
     size_t memtable_capacity;

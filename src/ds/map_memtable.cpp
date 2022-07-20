@@ -17,6 +17,7 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
     sl_global_key_cmp = state->record_schema->get_key_cmp();
 
     this->table = std::make_unique<SkipList>();
+    this->tombstone_table = std::multimap<TombstoneKey, Timestamp, tombstone_cmp>(tombstone_cmp{state->record_schema->get_key_cmp(), state->record_schema->get_val_cmp()});
 }
 
 
@@ -48,6 +49,7 @@ int MapMemTable::insert_internal(io::Record record)
 {
     Timestamp time = record.get_timestamp();
     const byte *key = this->get_key(record);
+    const byte *val = this->get_val(record);
     bool tomb = record.is_tombstone();
 
     // should be okay -- but I ought to figure out a better
@@ -58,7 +60,9 @@ int MapMemTable::insert_internal(io::Record record)
     auto res = this->table->insert({memtable_key, record.get_data()});
 
     if (res.second && tomb) {
+        TombstoneKey tomb_key = {key, val};
         this->tombstones++;
+        this->tombstone_table.insert({tomb_key, time});
     }
     
     return res.second;
@@ -68,6 +72,12 @@ int MapMemTable::insert_internal(io::Record record)
 const byte *MapMemTable::get_key(io::Record record) 
 {
     return this->state->record_schema->get_key(record.get_data()).Bytes();
+}
+
+
+const byte *MapMemTable::get_val(io::Record record) 
+{
+    return this->state->record_schema->get_val(record.get_data()).Bytes();
 }
 
 
@@ -111,19 +121,21 @@ io::Record MapMemTable::get(const byte *key, Timestamp time)
 }
 
 
-io::Record MapMemTable::get(const byte *key, const byte *val, Timestamp time)
+bool MapMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    auto result = this->table->find(MapKey{const_cast<byte*>(key), time});
+    // FIXME: this is not fully functional just yet. Namely, we need to account
+    // still for scanning the full set of cached matches to get the newest
+    // timestamp associated with the tombstone, and then we need to do a lookup
+    // against the memory table to ensure that the newest tombstone isn't
+    // superseded by an active record. This shouldn't happen in any current
+    // benchmarks, so we'll do a simple point lookup for now.
+    //
+    // This would only crop up if we were to update a record, and then update
+    // it back to its original configuration prior to the memtable merging.
+    // Once the records are within the on-disk structure, the above situation
+    // should be automatically handled correctly.
 
-    while (result != this->table->end() && result->first.time <= time && this->state->record_schema->get_key_cmp()(result->first.key, key) == 0) {
-        if (this->state->record_schema->get_val_cmp()(val, this->state->record_schema->get_val(result->second).Bytes()) == 1) {
-            return io::Record(result->second, this->state->record_schema->record_length());
-        }
-
-        ++result;
-    }
-
-    return io::Record();
+    return this->tombstone_table.find({key, val}) != this->tombstone_table.end();
 }
 
 
@@ -133,6 +145,7 @@ void MapMemTable::truncate()
         delete[] rec.second;
     }
 
+    this->tombstone_table.clear();
     this->table.reset();
     this->table = std::make_unique<SkipList>();
     this->tombstones = 0;

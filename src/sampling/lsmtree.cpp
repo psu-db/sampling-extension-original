@@ -45,10 +45,6 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
         this->memtable = std::make_unique<ds::MapMemTable>(memtable_capacity, this->state.get());
     }
 
-    if (bloom_filters) {
-        this->memtable_bf = std::make_unique<ds::BloomFilter<int64_t>>(.5, this->memtable_capacity, 7);
-    }
-
     if (range_filters) {
         // TODO: Implement range filtering
     }
@@ -123,10 +119,6 @@ void LSMTree::merge_memtable()
     
     // truncate the memtable
     this->memtable->truncate();
-
-    if (this->bloom_filters) {
-        this->memtable_bf->clear();
-    }
 }
 
 
@@ -154,10 +146,6 @@ int LSMTree::remove(byte *key, byte *value, Timestamp time)
     }
 
     auto res = this->memtable->insert(key, value, time, true);
-
-    if (res && this->bloom_filters) {
-        this->memtable_bf->insert(*(int64_t*) key);
-    }
 
     this->rec_count += res;
     return res;
@@ -209,39 +197,31 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time)
 }
 
 
-io::Record LSMTree::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
+bool LSMTree::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    bool check_memtable = true;
-    if (this->bloom_filters) {
-       check_memtable = this->memtable_bf->lookup(*((int64_t*) key));
+
+    if (this->memtable->has_tombstone(key, val, time)) {
+        return true;
     }
 
-    io::Record record;
-    if (check_memtable) {
-        record = this->memtable->get(key, val, time);
-        if (record.is_valid()) {
-            *frid = INVALID_FRID;
-            return record;
-        }
-    }
-
+    FrameId frid = INVALID_FRID;
     for (auto &level : this->levels) {
         if (level) {
-            record = level->get_tombstone(key, val, frid, time);
+            auto record = level->get_tombstone(key, val, &frid, time);
             if (record.is_valid()) {
-                return record;
+                this->state->cache->unpin(frid);
+                return true;
             }
         }
     }
 
     // if we get here, the desired record doesn't exist, so we
     // return an invalid record.
-    if (*frid != INVALID_FRID) {
-        this->state->cache->unpin(*frid);
+    if (frid != INVALID_FRID) {
+        this->state->cache->unpin(frid);
     }
 
-    *frid = INVALID_FRID;
-    return io::Record();
+    return false;
 }
 
 
@@ -437,22 +417,7 @@ bool LSMTree::is_deleted(io::Record record)
     auto val = this->state->record_schema->get_val(record.get_data()).Bytes();
     auto time = record.get_timestamp();
 
-    bool deleted = false;
-
-    FrameId frid = INVALID_FRID;
-    auto res = this->get_tombstone(key, val, &frid, time);
-
-    if (res.is_valid() && res.is_tombstone()) {
-        deleted = true;
-    } else {
-        deleted = false;
-    }
-
-    if (frid != INVALID_FRID) {
-        this->state->cache->unpin(frid);
-    }
-
-    return deleted;
+    return this->has_tombstone(key, val, time);
 }
 
 
@@ -472,12 +437,6 @@ size_t LSMTree::memory_utilization(bool detail_print)
 {
     size_t total = 0;
 
-    if (this->bloom_filters) {
-        total += this->memtable_bf->memory_utilization();
-            if (detail_print) {
-                fprintf(stderr, "Memtable aux memory: %ld\n", total);
-            }
-    }
     for (size_t i=0; i<this->levels.size(); i++) {
         if (this->levels[i]) {
             auto level_util = this->levels[i]->memory_utilization();

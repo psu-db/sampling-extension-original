@@ -392,7 +392,7 @@ START_TEST(t_erase_duplicate_keys)
     value = 10 + 800;
     for (size_t i=0; i < 500; i++) {
         FrameId frid = INVALID_FRID;
-        ck_assert(lsm->get_tombstone((byte*) &key, (byte*) &value, &frid, time).is_valid());
+        ck_assert(lsm->has_tombstone((byte*) &key, (byte*) &value, time));
         if (frid != INVALID_FRID) {
             lsm->cache()->unpin(frid);
         }
@@ -404,7 +404,7 @@ START_TEST(t_erase_duplicate_keys)
     value = 100 + 800;
     for (size_t i=0; i< 500; i++) {
         FrameId frid = INVALID_FRID;
-        ck_assert(!lsm->get_tombstone((byte*) &key, (byte*) &value, &frid, time).is_valid());
+        ck_assert(!lsm->has_tombstone((byte*) &key, (byte*) &value, time));
         if (frid != INVALID_FRID) {
             lsm->cache()->unpin(frid);
         }
