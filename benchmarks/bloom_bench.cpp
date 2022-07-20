@@ -32,5 +32,5 @@ int main(int argc, char **argv)
 
     size_t per_lookup = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count() / trials;
 
-    fprintf(stderr, "%ld\n", per_lookup);
+    fprintf(stdout, "%ld\n", per_lookup);
 }
