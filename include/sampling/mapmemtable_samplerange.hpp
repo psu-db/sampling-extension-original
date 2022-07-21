@@ -15,7 +15,7 @@ namespace lsm { namespace sampling {
 
 class MapMemTableSampleRange : public SampleRange {
 public:
-    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, global::g_state *state);
+    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state);
 
     /*
      * Randomly select and return a record from this sample range, pinning the

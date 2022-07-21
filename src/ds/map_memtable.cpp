@@ -168,13 +168,14 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower
 
     auto start = this->table->lower_bound(lower);
     auto stop = this->table->upper_bound(upper);
+    auto end = this->table->end();
     
     // the range doesn't work for the memtable
     if (start == this->table->end()) {
         return nullptr;
     }
 
-    return std::make_unique<sampling::MapMemTableSampleRange>(std::move(start), std::move(stop), this->state);
+    return std::make_unique<sampling::MapMemTableSampleRange>(std::move(start), std::move(stop), std::move(end), this->state);
 }
 
 
@@ -188,13 +189,15 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range_bench(byte 
     auto stop = this->table->upper_bound(upper);
     auto bounds_stop = std::chrono::high_resolution_clock::now();
     
+    auto end = this->table->end();
+
     // the range doesn't work for the memtable
     if (start == this->table->end()) {
         return nullptr;
     }
 
     auto iter_start = std::chrono::high_resolution_clock::now();
-    auto range = new sampling::MapMemTableSampleRange(std::move(start), std::move(stop), this->state);
+    auto range = new sampling::MapMemTableSampleRange(std::move(start), std::move(stop), std::move(end), this->state);
     auto iter_stop = std::chrono::high_resolution_clock::now();
 
     *bounds_time = std::chrono::duration_cast<std::chrono::nanoseconds>(bounds_stop - bounds_start).count();
