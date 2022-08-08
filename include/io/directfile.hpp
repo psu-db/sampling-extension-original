@@ -5,8 +5,10 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <fcntl.h>
 #include <string>
+#include <vector>
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -52,6 +54,11 @@ public:
     * It is the caller's responsibility to allocate memory for the buffer.
     */
     int read(byte *buffer, off_t amount, off_t offset);
+
+    /*
+     *
+     */
+    int readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset);
 
     /*
     * writes amount bytes from the buffer to the file, starting at offset.

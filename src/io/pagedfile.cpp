@@ -42,6 +42,28 @@ int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
 }
 
 
+int PagedFile::read_pages(std::vector<std::pair<PageId, byte*>> pages)
+{
+    size_t res = 0;
+    for (auto pb_pair : pages) {
+       res += this->read_page(pb_pair.first, pb_pair.second); 
+    }
+
+    return (res == pages.size()) ? 1 : 0;
+}
+
+
+int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages) 
+{
+    size_t res = 0;
+    for (auto pb_pair : pages) {
+       res += this->read_page(pb_pair.first, pb_pair.second); 
+    }
+
+    return (res == pages.size()) ? 1 : 0;
+}
+
+
 int PagedFile::write_page(PageId pid, const byte *buffer_ptr)
 {
     return this->write_page(pid.page_number, buffer_ptr);

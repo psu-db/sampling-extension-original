@@ -27,6 +27,15 @@ public:
     virtual io::Record get(FrameId *frid) = 0;
 
     /*
+     * Randomly select and return a page_id from this sample range, without
+     * performing any IO. The returned page must be pinned externally to this
+     * call.  If the underlying data structure does not support page access (as
+     * is the case with memtables, generally), or the sample range is empty,
+     * the returned value will be INVALID_PID.
+     */
+    virtual PageId get_page() = 0;
+
+    /*
      * Return the number of records falling within the sampling range. Note
      * that, in rejection sampling, the length of the range may be larger than
      * than the number of valid records falling within that range.

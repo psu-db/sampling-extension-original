@@ -7,11 +7,6 @@
  * files--there is no flushing or modification. Any updates to the memory
  * within the cache will be lost when the associated frame is evicted and
  * replaced, and will not be persisted in the underlying file.
- *
- * TODO: Once the file manager is implement, a few more overloads can be
- *       added to allow operations with PageIds alone, rather than PageId
- *       and files. Also, some signatures will need to be updated to support
- *       virtual files as well, once those are implemented.
  */
 #ifndef READCACHE_H
 #define READCACHE_H
@@ -19,6 +14,7 @@
 #include <unordered_map>
 #include <vector>
 #include <chrono>
+#include <algorithm>
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -34,15 +30,26 @@ struct FrameMeta {
     int32_t clock_value; // used for eviction purposes
 };
 
+const double NO_PIN_LIMIT = 1.0;
+
 class ReadCache {
 public:
     /*
      * A simple cache for storing data from PagedFile objects within memory.
      * frame_capacity is the maximum number of buffer frames, each with size
      * parm::PAGE_SIZE, allocated by the buffer. When these are exhausted, it
-     * will begin evicting unpinned pages using the clock algorithm.
+     * will begin evicting unpinned pages using the clock algorithm. 
+     *
+     * The benchmarks flag controls whether the cache tracks access and miss statistics--if 
+     * it is true, these statistics will be tracked, otherwise they will not.
+     *
+     * max_pin_prop determines the maximum proportion of total frame_capacity
+     * that can be pinned in a single call to pin_multiple. A value of
+     * NO_PIN_LIMIT (1.0) means no limits will be enforced, and a single call
+     * may pin frame_capacity pages at once. Smaller values may be used to
+     * limit this behavior.
      */
-    ReadCache(size_t frame_capacity=1000, bool benchmarks=false);
+    ReadCache(size_t frame_capacity=1000, bool benchmarks=false, double max_pin_prop=NO_PIN_LIMIT);
 
     /*
      * Default destructor for ReadCache. All memory is either stack-allocated,
@@ -80,6 +87,40 @@ public:
      * do nothing.
      */
     void unpin(FrameId frid);
+
+    /*
+     * Pin several pages. Returns a vector containing the pids and associated
+     * frids of the pinned pages. Not all pages are guaranteed to be pinned
+     * successfully. The input vector will be updated to contain only those
+     * pages that weren't pinned.
+     */
+    std::vector<std::pair<PageId, FrameId>> pin_multiple(std::vector<std::pair<PageId, PagedFile*>> &pids);
+
+    /*
+     * See pin_multiple(vector<pair<PageId, PagedFile*>) for details. Works the same way,
+     * but uses pnums rather than pids.
+     */
+    // std::vector<std::pair<PageId, FrameId>> pin_multiple(std::vector<std::pair<PageNum, PagedFile*>> &pnums);
+
+    /*
+     * Unpin several frames at once. For each frid, if an associated frame has
+     * at least 1 pin, reduce the number of pins by 1. If the specified frame
+     * has no pins, or is invalid, it is ignored and no action is taken for
+     * that frame.
+     */
+    void unpin(std::vector<FrameId> &frids);
+
+    /*
+     * Unpin several frames at once. For each frid, if an associated frame has
+     * at least 1 pin, reduce the number of pins by 1. If the specified frame
+     * has no pins, or is invalid, it is ignored and no action is taken for
+     * that frame. 
+     *
+     * Identical to the other vector version, but accepts a vector of pairs of
+     * pids and frids so as to directly accept as input the output of
+     * pin_multiple.
+     */
+    void unpin(std::vector<std::pair<PageId, FrameId>> &frids);
 
     /*
      * Looks up the PageId associated with the frame given by frid and returns it.
@@ -142,6 +183,8 @@ private:
 
     bool benchmarks;
 
+    double max_pin_prop;
+
     /*
      * Internal version of get_frame_ptr without any error checking. Calling
      * this with a frid that is greater than the cache's frame_cap is undefined.
@@ -166,6 +209,8 @@ private:
      * eviction--that must be handled by the caller.
      */
     FrameId find_frame_to_evict();
+
+    void initialize_frame(FrameId frid, PageId pid);
 };
 
 }}

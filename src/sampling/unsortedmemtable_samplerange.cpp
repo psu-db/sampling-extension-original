@@ -41,7 +41,9 @@ io::Record UnsortedMemTableSampleRange::get(FrameId *frid)
 
     // This is the memtable, so frid will always be invalid as
     // no pages were pinned.
-    *frid = INVALID_FRID;
+    if (frid) {
+        *frid = INVALID_FRID;
+    }
 
     if (!record.is_valid()) {
         return io::Record();
@@ -54,6 +56,12 @@ io::Record UnsortedMemTableSampleRange::get(FrameId *frid)
 
     // Otherwise, we're good to return the record.
     return record;
+}
+
+
+PageId UnsortedMemTableSampleRange::get_page() 
+{
+    return INVALID_PID;
 }
 
 

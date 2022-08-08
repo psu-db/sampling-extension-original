@@ -24,7 +24,9 @@ MapMemTableSampleRange::MapMemTableSampleRange(
 io::Record MapMemTableSampleRange::get(FrameId *frid)
 {
     auto record = this->get_random_record();
-    *frid = INVALID_FRID;
+    if (frid) {
+        *frid = INVALID_FRID;
+    }
 
     if (!record.is_valid()) {
         //fprintf(stderr, "invalid frid or record\n");
@@ -41,6 +43,12 @@ io::Record MapMemTableSampleRange::get(FrameId *frid)
     //fprintf(stderr, "%ld\t was sampled successfully.\n", tkey);
     // Otherwise, we're good to return the record.
     return record;
+}
+
+
+PageId MapMemTableSampleRange::get_page() 
+{
+    return INVALID_PID;
 }
 
 

@@ -51,6 +51,60 @@ PageId IndexPagedFile::allocate_page_bulk(PageNum new_page_count)
 }
 
 
+int IndexPagedFile::read_pages(std::vector<std::pair<PageId, byte*>> pages)
+{
+    if (pages.size() == 0) {
+        return 0;
+    }
+
+    if (pages.size() == 1) {
+        this->read_page(pages[0].first, pages[0].second);
+    }
+
+    std::sort(pages.begin(), pages.end());
+
+    PageNum range_start = pages[0].first.page_number;
+    PageNum prev_pnum = range_start;
+
+    std::vector<byte *> buffers;
+    buffers.push_back(pages[0].second);
+
+    for (size_t i=1; i<pages.size(); i++) {
+        if (pages[i].first.page_number == prev_pnum + 1) {
+            buffers.push_back(pages[i].second);
+            prev_pnum = pages[i].first.page_number;
+        } else {
+            int res;
+            if (this->dfile) {
+                res = this->dfile->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+            } else {
+                res = this->dfile_ptr->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+            }
+
+
+            if (res == 0) {
+                return 0;
+            }
+
+            range_start = pages[i].first.page_number;
+            prev_pnum = range_start;
+
+            buffers.clear();
+            buffers.push_back(pages[i].second);
+        }
+    }
+
+    int res;
+    if (this->dfile) {
+        res = this->dfile->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+    } else {
+        res = this->dfile_ptr->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+    }
+
+    return res;
+}
+
+
 int IndexPagedFile::free_page(PageId /*pid*/)
 {
     return 0;

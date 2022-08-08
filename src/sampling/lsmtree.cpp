@@ -224,6 +224,7 @@ bool LSMTree::has_tombstone(const byte *key, const byte *val, Timestamp time)
 }
 
 
+/*
 std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, size_t *attempts)
 {
     auto sample = std::make_unique<Sample>(sample_size);
@@ -302,7 +303,114 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
 
     return sample;
 }
+*/
 
+std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, size_t *attempts)
+{
+    auto sample = std::make_unique<Sample>(sample_size);
+    std::vector<std::unique_ptr<SampleRange>> ranges;
+    size_t total_elements = 0;
+
+    size_t rej = 0;
+    size_t atmpts = 0;
+
+    auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
+    if (memtable_range) {
+        total_elements += memtable_range->length();
+        ranges.emplace_back(std::move(memtable_range));
+    }
+
+    for (auto &level : this->levels) {
+        auto level_ranges = level->get_sample_ranges(start_key, stop_key);
+        for (auto &range : level_ranges) {
+            total_elements += range->length();
+            ranges.emplace_back(std::move(range));
+        }
+    }
+
+    if (total_elements == 0) {
+        return nullptr;
+    }
+
+    std::vector<double> weights(ranges.size());
+    for (size_t i=0; i<ranges.size(); i++) {
+        weights[i] = (double) ranges[i]->length() / (double) total_elements;
+    }
+
+    walker::AliasStructure alias(&weights, this->state->rng);
+
+    size_t memtable_samples = 0;
+    std::vector<std::pair<PageId, io::PagedFile *>> pages;
+    for (size_t i=0; i<sample_size; i++) {
+        this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
+    }
+
+    this->state->cache->reset_miss_counter();
+    this->state->cache->reset_io_time();
+
+    // NOTE: The memtable_samples check here is not technically redundant, as
+    // it covers the case of all records to be sampled falling into the
+    // memtable initially, in which case pages.size() == 0, but
+    // memtable_samples > 0 would be true, and without the check we'd bypass
+    // the memtable sampling procedure altogether.
+    while (pages.size() > 0 || memtable_samples > 0) { 
+        auto pinned = this->cache()->pin_multiple(pages);
+        for (auto pin : pinned) {
+            atmpts++;
+
+            auto record = this->sample_from(pin.second);
+
+            // check if we should reject the sample, and if so add another page
+            // to the pages vector
+            bool rejected = false;
+            if (this->reject_sample(record, start_key, stop_key)) {
+                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
+                rejected = true;
+                rej++;
+            } 
+
+            if (!rejected) {
+                sample->add_record(record);
+            }
+        }
+
+        this->cache()->unpin(pinned);
+
+        // perform sampling from the memtable
+        while (memtable_samples > 0) {
+            // If we can sample from the memtable, it will be at index 0 of the array.
+            // If index 0 is *not* the memtable, it should be impossible to get here as
+            // memtable_samples == 0 must be true.
+            auto record = ranges[0]->get(nullptr); 
+            memtable_samples--;
+
+            bool rejected = false;
+            if (this->reject_sample(record, start_key, stop_key)) {
+                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
+                rejected = true;
+                rej++;
+            } 
+
+            if (!rejected) {
+                sample->add_record(record);
+            }
+        }
+
+        // quick + dirty check to avoid infinite loops when sampling an empty
+        // range; breaks correctness, but this situation should be avoidable 
+        // during testing/benchmarking. A more formally correct solution is an
+        // implementation detail that shouldn't be relevant here, I don't think.
+        if (atmpts > 5 * sample_size && rej == atmpts) {
+            // assume nothing in the sample range
+            return nullptr;
+        }
+    }
+
+    *rejections = rej;
+    *attempts = atmpts;
+
+    return sample;
+}
 
 std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, 
                                            size_t *attempts, long *buffer_time, long *bounds_time, long *walker_time,
@@ -346,54 +454,80 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     walker::AliasStructure alias(&weights, this->state->rng);
     auto walker_stop = std::chrono::high_resolution_clock::now();
 
+    size_t memtable_samples = 0;
+    std::vector<std::pair<PageId, io::PagedFile *>> pages;
+    for (size_t i=0; i<sample_size; i++) {
+        this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
+    }
+
     long total_rejection = 0;
     long total_sample = 0;
-    size_t i=0;
 
     this->state->cache->reset_miss_counter();
     this->state->cache->reset_io_time();
-    while (i < sample_size) {
-        auto sample_start = std::chrono::high_resolution_clock::now();
-        size_t range = alias.get();
 
-        // If the sample range resides on disk, a page will
-        // need to be pinned in the cache. For memory safety,
-        // we pass the pinned FrameId back to here, and unpin
-        // it later, once the record has been copied into the
-        // sample.
-        FrameId frid;
-        auto record = ranges[range]->get(&frid);
-        auto sample_stop = std::chrono::high_resolution_clock::now();
+    // NOTE: The memtable_samples check here is not technically redundant, as
+    // it covers the case of all records to be sampled falling into the
+    // memtable initially, in which case pages.size() == 0, but
+    // memtable_samples > 0 would be true, and without the check we'd bypass
+    // the memtable sampling procedure altogether.
+    while (pages.size() > 0 || memtable_samples > 0) { 
+        auto pinned = this->cache()->pin_multiple(pages);
+        for (auto pin : pinned) {
+            atmpts++;
 
-        bool rejected = true;
-        auto rejection_start = std::chrono::high_resolution_clock::now();
-        if (record.is_valid() && !this->is_deleted(record)) {
-            rejected = false;
-            i++;
-        } else {
-            rej++;
+            auto sample_start = std::chrono::high_resolution_clock::now();
+            auto record = this->sample_from(pin.second);
+            auto sample_stop = std::chrono::high_resolution_clock::now();
+
+            // check if we should reject the sample, and if so add another page
+            // to the pages vector
+            auto rejection_start = std::chrono::high_resolution_clock::now();
+            bool rejected = false;
+            if (this->reject_sample(record, start_key, stop_key)) {
+                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
+                rejected = true;
+                rej++;
+            } 
+            auto rejection_stop = std::chrono::high_resolution_clock::now();
+
+            auto add_start = std::chrono::high_resolution_clock::now();
+            if (!rejected) {
+                sample->add_record(record);
+            }
+            auto add_stop = std::chrono::high_resolution_clock::now();
+
+            total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
+            total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(add_stop - add_start).count();
+            total_rejection += std::chrono::duration_cast<std::chrono::nanoseconds>(rejection_stop - rejection_start).count();
         }
 
-        atmpts++;
-        auto rejection_stop = std::chrono::high_resolution_clock::now();
+        this->cache()->unpin(pinned);
 
-        auto add_start = std::chrono::high_resolution_clock::now();
-        if (rejected == false) {
-            sample->add_record(record);
+        // perform sampling from the memtable
+        while (memtable_samples > 0) {
+            // If we can sample from the memtable, it will be at index 0 of the array.
+            // If index 0 is *not* the memtable, it should be impossible to get here as
+            // memtable_samples == 0 must be true.
+            auto record = ranges[0]->get(nullptr); 
+            memtable_samples--;
+
+            bool rejected = false;
+            if (this->reject_sample(record, start_key, stop_key)) {
+                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
+                rejected = true;
+                rej++;
+            } 
+
+            if (!rejected) {
+                sample->add_record(record);
+            }
         }
-        auto add_stop = std::chrono::high_resolution_clock::now();
 
-        total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count();
-        total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(add_stop - add_start).count();
-        total_rejection += std::chrono::duration_cast<std::chrono::nanoseconds>(rejection_stop - rejection_start).count();
-
-        // Adding a record to the sample makes a deep copy of
-        // it, so it is now safe to unpin the page it was drawn
-        // from.
-        if (frid != INVALID_FRID) {
-            this->state->cache->unpin(frid);
-        }
-
+        // quick + dirty check to avoid infinite loops when sampling an empty
+        // range; breaks correctness, but this situation should be avoidable 
+        // during testing/benchmarking. A more formally correct solution is an
+        // implementation detail that shouldn't be relevant here, I don't think.
         if (atmpts > 5 * sample_size && rej == atmpts) {
             // assume nothing in the sample range
             return nullptr;
@@ -414,6 +548,71 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     (*rejection_time) += total_rejection;
 
     return sample;
+}
+
+
+io::Record LSMTree::sample_from(FrameId frid)
+{
+    byte *frame = this->cache()->get_frame_ptr(frid);
+    auto page = io::wrap_page(frame);
+
+    // the page is empty--shouldn't happen, but just in case...
+    if (page->get_max_sid() == INVALID_SID) {
+        return io::Record();
+    }
+
+    SlotId sid = 1 + gsl_rng_uniform_int(this->state->rng, page->get_max_sid());
+
+    return page->get_record(sid);
+}
+
+
+void LSMTree::add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>> &pages, walker::AliasStructure *alias, size_t *memtable_samples, std::vector<std::unique_ptr<SampleRange>> &ranges, long *sample_time)
+{
+    if (sample_time) {
+        auto start = std::chrono::high_resolution_clock::now();
+        auto pid = ranges[alias->get()]->get_page();
+                
+        // note: any INVALID_PIDs in here indicate that the memtable should be sampled
+        if (pid == INVALID_PID) {
+            (*memtable_samples)++;
+        } else {
+            pages.push_back({pid, this->state->file_manager->get_pfile(pid.file_id)});
+        }
+        auto stop = std::chrono::high_resolution_clock::now();
+
+        (*sample_time) += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
+    } else {
+        auto pid = ranges[alias->get()]->get_page();
+                
+        // note: any INVALID_PIDs in here indicate that the memtable should be sampled
+        if (pid == INVALID_PID) {
+            (*memtable_samples)++;
+        } else {
+            pages.push_back({pid, this->state->file_manager->get_pfile(pid.file_id)});
+        }
+    }
+}
+
+
+bool LSMTree::reject_sample(io::Record record, byte *lower_key, byte *upper_key)
+{
+    if (!record.is_valid() || record.is_tombstone()) {
+        return true;
+    }
+
+    auto key = this->state->record_schema->get_key(record.get_data()).Bytes();
+
+    if (this->state->record_schema->get_key_cmp()(key, lower_key) < 0 
+        || this->state->record_schema->get_key_cmp()(key, upper_key) > 0) {
+        return true;
+    }
+
+    if (this->is_deleted(record)) {
+        return true;
+    }
+
+    return false;
 }
 
 

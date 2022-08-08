@@ -72,6 +72,29 @@ int DirectFile::read(byte *buffer, off_t amount, off_t offset)
 }
 
 
+int DirectFile::readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset)
+{
+    size_t buffer_cnt = buffers.size();
+
+    size_t amount = buffer_size * buffer_cnt;
+    if (!this->verify_io_parms(amount, initial_offset)) {
+        return 0;
+    }
+
+    auto iov = new iovec[buffer_cnt];
+    for (size_t i=0; i<buffer_cnt; i++) {
+        iov[i].iov_base = buffers[i];
+        iov[i].iov_len = buffer_size;
+    }
+
+    if (preadv(this->fd, iov, buffer_cnt, initial_offset) != amount) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
 int DirectFile::write(const byte *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {

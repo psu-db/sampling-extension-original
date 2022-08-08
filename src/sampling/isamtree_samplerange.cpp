@@ -93,6 +93,17 @@ io::Record ISAMTreeSampleRange::get(FrameId *frid)
 }
 
 
+PageId ISAMTreeSampleRange::get_page()
+{
+    if (this->length() == 0) {
+        return INVALID_PID; 
+    }
+
+    auto pnum = this->start_page + gsl_rng_uniform_int(this->state->rng, this->range_len);
+    return this->btree->get_pfile()->pnum_to_pid(pnum);
+}
+
+
 size_t ISAMTreeSampleRange::length()
 {
     return this->record_count;

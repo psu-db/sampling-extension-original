@@ -44,6 +44,11 @@ public:
     io::Record get(FrameId *frid) override;
 
     /*
+     * UNSUPPORTED BY THIS TYPE
+     */
+    PageId get_page() override;
+
+    /*
      * Return the number of records falling within the sampling range. Note
      * that, in rejection sampling, the length of the range may be larger than
      * than the number of valid records falling within that range.

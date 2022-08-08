@@ -165,6 +165,14 @@ private:
     void merge_memtable();
     size_t grow();
     bool is_deleted(io::Record rec);
+
+    bool reject_sample(io::Record rec, byte *lower_key, byte *upper_key);
+    void add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>>
+                            &pages, walker::AliasStructure *alias, size_t
+                            *memtable_samples,
+                            std::vector<std::unique_ptr<SampleRange>> &ranges,
+                            long *sample_time = nullptr);
+    io::Record sample_from(FrameId frid);
 };
 
 }}

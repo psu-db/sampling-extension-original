@@ -21,6 +21,7 @@
 #include <string>
 #include <memory>
 #include <cassert>
+#include <map>
 
 #include "util/types.hpp"
 #include "util/base.hpp"
@@ -165,6 +166,16 @@ public:
      * somewhere else.
      */
     IndexPagedFile(DirectFile *dfile, bool is_temp_file);
+
+    /*
+     * Reads several pages into associated buffers. It is necessary for the
+     * buffer referred to by each pointer to be parm::SECTOR_SIZE aligned and
+     * large enough to accommodate parm::PAGE_SIZE bytes. Vectorized IO will be
+     * used to read adjacent pages. If the reads succeed, returns 1. If a read
+     * fails, returns 0. The contents of all the buffers are undefined in the
+     * case of an error.
+     */
+    int read_pages(std::vector<std::pair<PageId, byte*>> pages) override;
 
     /*
      * Add a new page to the file and return its associated PageId. Note that

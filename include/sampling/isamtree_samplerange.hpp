@@ -33,6 +33,8 @@ public:
      */
     io::Record get(FrameId *frid) override;
 
+    PageId get_page() override;
+
     /*
      * Return the number of records falling within the sampling range. Note
      * that, in rejection sampling, the length of the range may be larger than

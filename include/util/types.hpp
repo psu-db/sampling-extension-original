@@ -49,6 +49,10 @@ struct PageId {
     friend bool operator==(const PageId& pid, const PageId &other_pid) {
         return pid.file_id == other_pid.file_id && pid.page_number == other_pid.page_number;
     }
+
+    friend bool operator <(const PageId &pid, const PageId &other_pid) {
+        return pid.page_number < other_pid.page_number;
+    }
 };
 
 // Hash function for PageIds required to use these as a key in hash maps,

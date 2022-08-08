@@ -11,6 +11,7 @@
 #include <string>
 #include <memory>
 #include <cassert>
+#include <vector>
 
 #include "util/types.hpp"
 #include "util/base.hpp"
@@ -108,6 +109,22 @@ public:
      * PageId.
      */
     virtual int read_page(PageNum pnum, byte *buffer_ptr);
+
+    /*
+     * Reads several pages into associated buffers. It is necessary for the
+     * buffer referred to by each pointer to be parm::SECTOR_SIZE aligned and
+     * large enough to accommodate parm::PAGE_SIZE bytes. If possible,
+     * vectorized IO may be used to read adjacent pages. If the reads succeed,
+     * returns 1. If a read fails, returns 0. The contents of all the buffers
+     * are undefined in the case of an error.
+     */
+    virtual int read_pages(std::vector<std::pair<PageId, byte*>> pages);
+
+    /*
+     * Same as read_pages(std::vector<std::pair<PageId, byte*>>) but accepts
+     * pnums rather than pids.
+     */
+    virtual int read_pages(std::vector<std::pair<PageNum, byte*>> pages);
 
     /*
      * Writes data from the provided buffer into the specified page within the
