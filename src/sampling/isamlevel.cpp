@@ -6,7 +6,7 @@
 
 namespace lsm { namespace sampling {
 
-ISAMTreeLevel::ISAMTreeLevel(size_t run_capacity, size_t record_capacity, 
+ISAMLevel::ISAMLevel(size_t run_capacity, size_t record_capacity, 
                        std::vector<io::IndexPagedFile *> files, 
                        global::g_state *state,
                        double max_deletion_proportion,
@@ -37,7 +37,7 @@ ISAMTreeLevel::ISAMTreeLevel(size_t run_capacity, size_t record_capacity,
 }
 
 
-ds::ISAMTree *ISAMTreeLevel::get_run(size_t idx) 
+ds::ISAMTree *ISAMLevel::get_run(size_t idx) 
 {
     if (idx > this->run_capacity) {
         return nullptr;
@@ -47,7 +47,7 @@ ds::ISAMTree *ISAMTreeLevel::get_run(size_t idx)
 }
 
 
-int ISAMTreeLevel::emplace_run(std::unique_ptr<ds::ISAMTree> run)
+int ISAMLevel::emplace_run(std::unique_ptr<ds::ISAMTree> run)
 {
     if (this->run_count == this->run_capacity) {
         return 0; // no room
@@ -66,13 +66,13 @@ int ISAMTreeLevel::emplace_run(std::unique_ptr<ds::ISAMTree> run)
 }
 
 
-bool ISAMTreeLevel::can_emplace_run() 
+bool ISAMLevel::can_emplace_run() 
 {
     return this->run_count < this->run_capacity;
 }
 
 
-bool ISAMTreeLevel::can_merge_with(size_t incoming_record_count)
+bool ISAMLevel::can_merge_with(size_t incoming_record_count)
 {
     if (this->run_count < this->run_capacity) {
         return true;
@@ -84,13 +84,13 @@ bool ISAMTreeLevel::can_merge_with(size_t incoming_record_count)
 }
 
 
-bool ISAMTreeLevel::can_merge_with(ISAMTreeLevel *level) 
+bool ISAMLevel::can_merge_with(LSMTreeLevel *level) 
 {
     return this->can_merge_with(level->get_record_count());
 }
 
 
-io::Record ISAMTreeLevel::get(const byte *key, FrameId *frid, Timestamp time)
+io::Record ISAMLevel::get(const byte *key, FrameId *frid, Timestamp time)
 {
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
         auto rec = this->runs[i]->get(key, frid, time);
@@ -103,7 +103,7 @@ io::Record ISAMTreeLevel::get(const byte *key, FrameId *frid, Timestamp time)
 }
 
 
-io::Record ISAMTreeLevel::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
+io::Record ISAMLevel::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
 {
 
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
@@ -117,13 +117,13 @@ io::Record ISAMTreeLevel::get_tombstone(const byte *key, const byte *val, FrameI
 }
 
 
-int ISAMTreeLevel::remove(byte* /*key*/, byte* /*value*/, Timestamp /*time*/)
+int ISAMLevel::remove(byte* /*key*/, byte* /*value*/, Timestamp /*time*/)
 {
     return 0;
 }
 
 
-void ISAMTreeLevel::truncate()
+void ISAMLevel::truncate()
 {
     // Because files are std::moved from level to level, this should be safe to
     // do. Any file that has been relocated will no longer be here, so there
@@ -142,7 +142,7 @@ void ISAMTreeLevel::truncate()
 }
 
 
-std::unique_ptr<ds::ISAMTree> ISAMTreeLevel::merge_runs()
+std::unique_ptr<ds::ISAMTree> ISAMLevel::merge_runs()
 {
     std::vector<std::unique_ptr<iter::GenericIterator<io::Record>>> iters;
     PageNum page_cnt = 0;
@@ -161,7 +161,7 @@ std::unique_ptr<ds::ISAMTree> ISAMTreeLevel::merge_runs()
 }
 
 
-int ISAMTreeLevel::merge_with(std::unique_ptr<ds::ISAMTree> new_run)
+int ISAMLevel::merge_with(std::unique_ptr<ds::ISAMTree> new_run)
 {
     // For tiering, we emplace the run if we can. This also catches the 
     // case of merging into an empty level under leveling.
@@ -204,14 +204,14 @@ int ISAMTreeLevel::merge_with(std::unique_ptr<ds::ISAMTree> new_run)
 }
 
 
-int ISAMTreeLevel::merge_with(ISAMTreeLevel *level) 
+int ISAMLevel::merge_with(LSMTreeLevel *level) 
 {
     auto temp = level->merge_runs();
     return this->merge_with(std::move(temp));
 }
 
 
-int ISAMTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr, size_t tombstone_count)
+int ISAMLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr, size_t tombstone_count)
 {
     // iterator must support element count to merge it.
     if (!sorted_itr->supports_element_count()) {
@@ -252,7 +252,7 @@ int ISAMTreeLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>>
 }
 
 
-std::vector<std::unique_ptr<SampleRange>> ISAMTreeLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
+std::vector<std::unique_ptr<SampleRange>> ISAMLevel::get_sample_ranges(byte *lower_key, byte *upper_key)
 {
     std::vector<std::unique_ptr<SampleRange>> ranges;
     for (size_t i=0; i<this->run_capacity; i++) {
@@ -269,31 +269,31 @@ std::vector<std::unique_ptr<SampleRange>> ISAMTreeLevel::get_sample_ranges(byte 
 }
 
 
-size_t ISAMTreeLevel::get_record_capacity()
+size_t ISAMLevel::get_record_capacity()
 {
     return this->record_capacity;
 }
 
 
-size_t ISAMTreeLevel::get_record_count()
+size_t ISAMLevel::get_record_count()
 {
     return this->record_count;
 }
 
 
-size_t ISAMTreeLevel::get_run_capacity()
+size_t ISAMLevel::get_run_capacity()
 {
     return this->run_capacity;
 }
 
 
-size_t ISAMTreeLevel::get_run_count()
+size_t ISAMLevel::get_run_count()
 {
     return this->run_count;
 }
 
 
-size_t ISAMTreeLevel::memory_utilization()
+size_t ISAMLevel::memory_utilization()
 {
     size_t util = 0;
     for (size_t i=0; i<this->run_capacity; i++) {
@@ -306,12 +306,18 @@ size_t ISAMTreeLevel::memory_utilization()
 }
 
 
-void ISAMTreeLevel::print_level()
+bool ISAMLevel::is_memory_resident() 
+{
+    return false;
+}
+
+
+void ISAMLevel::print_level()
 {
     return;
 }
 
-std::unique_ptr<iter::GenericIterator<Record>> ISAMTreeLevel::start_scan()
+std::unique_ptr<iter::GenericIterator<Record>> ISAMLevel::start_scan()
 {
     if (this->runs.size() == 0) {
         return nullptr;

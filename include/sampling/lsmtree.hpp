@@ -38,7 +38,8 @@ public:
                                        merge_policy policy=LEVELING,
                                        bool bloom_filters=false, bool range_filters=false, 
                                        double max_deleted_proportion=1.0,
-                                       bool unsorted_memtable=false);
+                                       bool unsorted_memtable=false,
+                                       size_t in_mem_levels=0);
 
     /*
      * Open an already existing LSMTree index from disk and return
@@ -142,7 +143,7 @@ public:
 
 private:
     std::unique_ptr<global::g_state> state;
-    std::vector<std::unique_ptr<ISAMTreeLevel>> levels;
+    std::vector<std::unique_ptr<LSMTreeLevel>> levels;
     std::unique_ptr<ds::MemoryTable> memtable;
 
     size_t rec_count;
@@ -151,6 +152,7 @@ private:
     size_t scale_factor;
     merge_policy policy;
     double max_deleted_proportion;
+    size_t memory_levels;
 
     bool bloom_filters;
     bool range_filters;
@@ -160,7 +162,8 @@ private:
            merge_policy policy=LEVELING,
            bool bloom_filters=false, bool range_filters=false, 
            double max_deleted_proportion=1.0,
-           bool unsorted_memtable=false);
+           bool unsorted_memtable=false,
+           size_t in_mem_levels=0);
 
     void merge_memtable();
     size_t grow();

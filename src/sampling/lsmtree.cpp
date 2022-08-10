@@ -13,11 +13,12 @@ std::unique_ptr<LSMTree> LSMTree::create(size_t memtable_capacity,
                                          merge_policy policy,
                                          bool bloom_filters, bool range_filters, 
                                          double max_deleted_proportion,
-                                         bool unsorted_memtable) 
+                                         bool unsorted_memtable,
+                                         size_t in_mem_levels) 
 {
     auto lsm = new LSMTree(memtable_capacity, scale_factor, std::move(state),
                            policy, bloom_filters, range_filters, max_deleted_proportion, 
-                           unsorted_memtable);
+                           unsorted_memtable, in_mem_levels);
 
     return std::unique_ptr<LSMTree>(lsm);
 }
@@ -27,7 +28,8 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
                  std::unique_ptr<global::g_state> state, merge_policy policy,
                  bool bloom_filters, bool range_filters, 
                  double max_deleted_proportion,
-                 bool unsorted_memtable)
+                 bool unsorted_memtable,
+                 size_t in_mem_levels)
 {
     this->rec_count = 0;
     this->memtable_capacity = memtable_capacity;
@@ -35,6 +37,7 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
     this->policy = policy;
     this->max_deleted_proportion = max_deleted_proportion;
     this->state = std::move(state);
+    this->memory_levels = in_mem_levels;
 
     this->bloom_filters = bloom_filters;
     this->range_filters = range_filters;
@@ -77,7 +80,7 @@ size_t LSMTree::grow()
         }
     }
 
-    auto new_level = std::make_unique<ISAMTreeLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
+    auto new_level = std::make_unique<ISAMLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
 
     this->levels.emplace_back(std::move(new_level));
 

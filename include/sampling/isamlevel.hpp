@@ -2,8 +2,8 @@
  *
  */
 
-#ifndef H_LEVEL
-#define H_LEVEL
+#ifndef H_ISAMLEVEL
+#define H_ISAMLEVEL
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -15,23 +15,24 @@
 #include "ds/isamtree.hpp"
 #include "ds/bloomfilter.hpp"
 #include "sampling/isamtree_samplerange.hpp"
+#include "sampling/lsmlevel.hpp"
 
 namespace lsm { namespace sampling {
 
-class ISAMTreeLevel {
+class ISAMLevel : public LSMTreeLevel {
 public:
     /*
-     * Create a new ISAMTreeLevel object of specified run capacity (1=LEVELING,
+     * Create a new ISAMLevel object of specified run capacity (1=LEVELING,
      * >1=TIERING) and record capacity. The files vector contains the filenames
      * for pre-existing ISAM Trees that make up this level. The length of this
      * vector must be no greater than the run capacity. An empty vector can be
      * provided if the run is to be created empty, with no pre-existing data.
      */
-    ISAMTreeLevel(size_t run_capacity, size_t record_capacity,
+    ISAMLevel(size_t run_capacity, size_t record_capacity,
                std::vector<io::IndexPagedFile *> files, global::g_state *state,
                double max_deletion_proportion, bool bloom_filters);
 
-    ~ISAMTreeLevel() = default;
+    ~ISAMLevel() = default;
 
     /*
      * Return a raw pointer to the specified run within this level,
@@ -51,32 +52,32 @@ public:
      * pointer into the Level, and so the passed in pointer will
      * be nulled.
      */
-    int emplace_run(std::unique_ptr<ds::ISAMTree> run);
+    int emplace_run(std::unique_ptr<ds::ISAMTree> run) override;
 
     /*
      * Returns true if the level's run count is less than its capacity
      * (i.e. it is a valid target for merging the previous level into),
      * and false if not.
      */
-    bool can_emplace_run();
+    bool can_emplace_run() override;
 
-    int merge_with(ISAMTreeLevel *level);
-    int merge_with(std::unique_ptr<ds::ISAMTree> run);
-    int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr, size_t tombstone_count);
+    int merge_with(LSMTreeLevel *level) override;
+    int merge_with(std::unique_ptr<ds::ISAMTree> run) override;
+    int merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> sorted_itr, size_t tombstone_count) override;
 
     /*
      * Determine if a run containing incoming_record_count records can be
      * merged into this one without exceeding its record capacity. If so,
      * return true, otherwise return false.
      */
-    bool can_merge_with(size_t incoming_record_count);
+    bool can_merge_with(size_t incoming_record_count) override;
 
     /*
      * Determine if a level containing incoming_record_count can be merged into
      * this one without exceeding its record capacity. If so, return true,
      * otherwise return false.
      */
-    bool can_merge_with(ISAMTreeLevel *level);
+    bool can_merge_with(LSMTreeLevel *level) override;
 
     /*
      * Merge all of the runs stored on this level into one
@@ -87,15 +88,15 @@ public:
      *
      * Leaves the run objects contained within the level untouched
      */
-    std::unique_ptr<ds::ISAMTree> merge_runs();
+    std::unique_ptr<ds::ISAMTree> merge_runs() override;
 
-    std::vector<std::unique_ptr<SampleRange>> get_sample_ranges(byte *lower_key, byte *upper_key);
+    std::vector<std::unique_ptr<SampleRange>> get_sample_ranges(byte *lower_key, byte *upper_key) override;
 
     /*
      * Remove the references to all runs within the level, and
      * reset the run count and record count to 0.
      */
-    void truncate();
+    void truncate() override;
 
     /*
      * Perform a search for the specified key within this level, and return a
@@ -103,7 +104,7 @@ public:
      * having a timestamp less than or equal to the specified one, or an
      * invalid record if no match is found. 
      */
-     Record get(const byte *key, FrameId *frid, Timestamp time=0);
+     Record get(const byte *key, FrameId *frid, Timestamp time=0) override;
 
 
     /*
@@ -111,7 +112,7 @@ public:
      * and value, that is active with respect to time. Return this tombstone
      * if found, otherwise return an invalid record.
      */
-     Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0);
+     Record get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time=0) override;
 
     /*
      * Perform a search for the specified key within this level and mark the
@@ -119,49 +120,52 @@ public:
      * than or equal to the specified one as deleted. If a record is marked
      * deleted, returns 1. Otherwise, returns 0.
      */
-    int remove(byte *key, std::byte *value, Timestamp time=0);
+    int remove(byte *key, std::byte *value, Timestamp time=0) override;
 
     /*
      * Returns the maximum number of records that this level
      * can store.
      */
-    size_t get_record_capacity();
+    size_t get_record_capacity() override;
 
     /*
      * Returns the maximum number of runs that can be present
      * on this level.
      */
-    size_t get_run_capacity();
+    size_t get_run_capacity() override;
 
     /*
      * Returns the current number of records that are stored
      * on this level.
      */
-    size_t get_record_count();
+    size_t get_record_count() override;
 
     /*
      * Returns the current number of runs that are stored on
      * this level.
      */
-    size_t get_run_count();
+    size_t get_run_count() override;
 
     /*
      * Returns the current amount of memory used by all of
      * the runs within this level.
      */
-    size_t memory_utilization();
+    size_t memory_utilization() override;
 
     /*
      * Print a graphical representation of this level to stdout, 
      * showing each run on the level, with its record count and
      * capacity.
      */
-    void print_level();
+    void print_level() override;
+
+
+    bool is_memory_resident() override;
 
     /*
      * Opens an iterator on this level.
      */
-    std::unique_ptr<iter::GenericIterator<Record>> start_scan();
+    std::unique_ptr<iter::GenericIterator<Record>> start_scan() override;
 
 private:
     size_t record_capacity; // the maximum number of records on this level

@@ -23,7 +23,7 @@ START_TEST(t_create)
 
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level = sampling::ISAMTreeLevel(1, cnt, files, state.get(), 1.0, false);
+    auto test_level = sampling::ISAMLevel(1, cnt, files, state.get(), 1.0, false);
 
     ck_assert_ptr_nonnull(test_level.get_run(0));
     ck_assert_int_eq(test_level.can_emplace_run(), 0);
@@ -44,14 +44,14 @@ START_TEST(t_merge)
     auto filename = state->file_manager->get_name(isamtree1->get_pfile()->get_flid());
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level1 = sampling::ISAMTreeLevel(1, cnt1, files, state.get(), 1.0, false);
+    auto test_level1 = sampling::ISAMLevel(1, cnt1, files, state.get(), 1.0, false);
 
     size_t cnt2 = 0;
     auto isamtree2 = testing::test_isamtree2(100, state.get(), &cnt2);
     auto filename2 = state->file_manager->get_name(isamtree2->get_pfile()->get_flid());
     std::vector<io::IndexPagedFile *> files2(1);
     files2[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level2 = sampling::ISAMTreeLevel(1, cnt2 + cnt1, files2, state.get(), 1.0, false);
+    auto test_level2 = sampling::ISAMLevel(1, cnt2 + cnt1, files2, state.get(), 1.0, false);
 
     ck_assert_int_eq(test_level2.can_merge_with(&test_level1), 1);
 
@@ -87,7 +87,7 @@ START_TEST(t_sample_range)
 
     std::vector<io::IndexPagedFile *> files(1);
     files[0] = (io::IndexPagedFile *) state->file_manager->get_pfile(filename);
-    auto test_level = sampling::ISAMTreeLevel(1, cnt, files, state.get(), 1.0, false);
+    auto test_level = sampling::ISAMLevel(1, cnt, files, state.get(), 1.0, false);
 
     int64_t key1 = 100;
     int64_t key2 = -7;
@@ -140,19 +140,19 @@ END_TEST
 Suite *unit_testing()
 {
     Suite *unit = suite_create("Level Unit Testing");
-    TCase *create = tcase_create("lsm::sampling::ISAMTreeLevel Constructor Testing");
+    TCase *create = tcase_create("lsm::sampling::ISAMLevel Constructor Testing");
     tcase_add_test(create, t_create);
 
     suite_add_tcase(unit, create);
 
 
-    TCase *merge = tcase_create("lsm::sampling::ISAMTreeLevel::merge Testing");
+    TCase *merge = tcase_create("lsm::sampling::ISAMLevel::merge Testing");
     tcase_add_test(merge, t_merge);
 
     suite_add_tcase(unit, merge);
 
 
-    TCase *range = tcase_create("lsm::sampling::ISAMTreeLevel::get_sample_ranges Testing");
+    TCase *range = tcase_create("lsm::sampling::ISAMLevel::get_sample_ranges Testing");
     tcase_add_test(range, t_sample_range);
 
     suite_add_tcase(unit, range);
