@@ -55,9 +55,7 @@ START_TEST(t_merge)
 
     ck_assert_int_eq(test_level2.can_merge_with(&test_level1), 1);
 
-    auto temp_run = test_level1.merge_runs();
-
-    ck_assert_int_eq(test_level2.merge_with(std::move(temp_run)), 1);
+    ck_assert_int_eq(test_level2.merge_with(&test_level1), 1);
     ck_assert_int_eq(test_level2.get_record_count(), cnt1 + cnt2);
 
     auto iter = test_level2.start_scan();

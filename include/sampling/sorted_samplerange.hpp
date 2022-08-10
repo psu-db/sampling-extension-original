@@ -2,20 +2,23 @@
  *
  */
 
-#ifndef H_MAPMEMTABLESAMPLERANGE
-#define H_MAPMEMTABLESAMPLERANGE
-
-#include <vector>
+#ifndef H_SORTEDSAMPLERANGE
+#define H_SORTEDSAMPLERANGE
 
 #include "sampling/samplerange.hpp"
+#include "ds/sortedrun.hpp"
 #include "util/global.hpp"
-#include "ds/skiplist_core.hpp"
+#include "io/record.hpp"
 
 namespace lsm { namespace sampling {
 
-class MapMemTableSampleRange : public SampleRange {
+class SortedSampleRange : public SampleRange {
 public:
-    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state);
+    static std::unique_ptr<SampleRange> create(ds::SortedRun *run, byte *lower_key, 
+                                               byte *upper_key, global::g_state *state);
+
+    SortedSampleRange(ds::SortedRun *run, size_t start_idx, byte *lower_key, size_t stop_idx, 
+                     byte *upper_key, size_t record_count, global::g_state *state);
 
     /*
      * Randomly select and return a record from this sample range, pinning the
@@ -32,9 +35,6 @@ public:
      */
     io::Record get(FrameId *frid) override;
 
-    /*
-     * UNSUPPORTED BY THIS TYPE
-     */
     PageId get_page() override;
 
     /*
@@ -47,13 +47,21 @@ public:
     bool is_memtable() override;
     bool is_memory_resident() override;
 
-    ~MapMemTableSampleRange() {}
+    ~SortedSampleRange() {}
 
 private:
-    io::Record get_random_record();
 
-    std::vector<byte *> records;
+    io::Record get_random_record(FrameId *frid);
+
+    ds::SortedRun *run;
+    PageNum start_idx;
+    PageNum stop_idx;
+    byte *upper_key;
+    byte *lower_key;
     global::g_state *state;
+    size_t record_count;
+    PageNum range_len;
+    catalog::KeyCmpFunc cmp;
 };
 
 }}

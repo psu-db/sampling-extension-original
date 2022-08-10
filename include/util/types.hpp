@@ -50,6 +50,10 @@ struct PageId {
         return pid.file_id == other_pid.file_id && pid.page_number == other_pid.page_number;
     }
 
+    friend bool operator !=(const PageId& pid, const PageId &other_pid) {
+        return pid.file_id != other_pid.file_id || pid.page_number != other_pid.page_number;
+    }
+
     friend bool operator <(const PageId &pid, const PageId &other_pid) {
         return pid.page_number < other_pid.page_number;
     }

@@ -516,7 +516,7 @@ SlotId ISAMTree::search_leaf_page(byte *page_buf, const byte *key)
 
 std::unique_ptr<iter::GenericIterator<Record>> ISAMTree::start_scan()
 {
-    return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page);
+    return std::make_unique<io::IndexPagedFileRecordIterator>(this->pfile, this->cache, this->first_data_page, this->last_data_page, this->get_record_count());
 }
 
 

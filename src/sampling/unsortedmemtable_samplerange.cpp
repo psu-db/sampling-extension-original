@@ -85,4 +85,16 @@ io::Record UnsortedMemTableSampleRange::get_random_record()
 }
 
 
+bool UnsortedMemTableSampleRange::is_memtable() 
+{
+    return true;
+}
+
+
+bool UnsortedMemTableSampleRange::is_memory_resident()
+{
+    return true;
+}
+
+
 }}

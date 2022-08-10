@@ -134,5 +134,15 @@ Record ISAMTreeSampleRange::get_random_record(FrameId *frid)
     return rec;
 }
 
+bool ISAMTreeSampleRange::is_memtable() 
+{
+    return false;
+}
+
+
+bool ISAMTreeSampleRange::is_memory_resident() 
+{
+    return false;
+}
 
 }}

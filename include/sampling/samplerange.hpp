@@ -42,6 +42,9 @@ public:
      */
     virtual size_t length() = 0;
 
+    virtual bool is_memtable() = 0;
+    virtual bool is_memory_resident() = 0;
+
     virtual ~SampleRange() = default;
 };
 

@@ -12,6 +12,7 @@
 #include "io/record.hpp"
 #include "sampling/sample.hpp"
 #include "sampling/isamlevel.hpp"
+#include "sampling/sortedlevel.hpp"
 #include "catalog/schema.hpp"
 #include "ds/memtable.hpp"
 #include "ds/walker.hpp"

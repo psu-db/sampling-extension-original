@@ -42,6 +42,9 @@ public:
      */
     size_t length() override;
 
+    bool is_memtable() override;
+    bool is_memory_resident() override;
+
     ~ISAMTreeSampleRange() {}
 
 private:

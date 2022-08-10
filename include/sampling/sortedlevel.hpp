@@ -2,8 +2,8 @@
  *
  */
 
-#ifndef H_ISAMLEVEL
-#define H_ISAMLEVEL
+#ifndef H_SORTEDLEVEL
+#define H_SORTEDLEVEL
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -12,27 +12,27 @@
 
 #include <cmath>
 
-#include "ds/isamtree.hpp"
+#include "ds/sortedrun.hpp"
 #include "ds/bloomfilter.hpp"
-#include "sampling/isamtree_samplerange.hpp"
+#include "sampling/sorted_samplerange.hpp"
 #include "sampling/lsmlevel.hpp"
 
 namespace lsm { namespace sampling {
 
-class ISAMLevel : public LSMTreeLevel {
+class SortedLevel : public LSMTreeLevel {
 public:
     /*
-     * Create a new ISAMLevel object of specified run capacity (1=LEVELING,
+     * Create a new SortedLevel object of specified run capacity (1=LEVELING,
      * >1=TIERING) and record capacity. The files vector contains the filenames
-     * for pre-existing ISAM Trees that make up this level. The length of this
+     * for pre-existing SortedRuns that make up this level. The length of this
      * vector must be no greater than the run capacity. An empty vector can be
      * provided if the run is to be created empty, with no pre-existing data.
      */
-    ISAMLevel(size_t run_capacity, size_t record_capacity,
+    SortedLevel(size_t run_capacity, size_t record_capacity,
                std::vector<io::IndexPagedFile *> files, global::g_state *state,
                double max_deletion_proportion, bool bloom_filters);
 
-    ~ISAMLevel() = default;
+    ~SortedLevel() = default;
 
     /*
      * Return a raw pointer to the specified run within this level,
@@ -42,7 +42,7 @@ public:
      * not be freed, and the owner of this pointer does NOT control
      * the lifetime of the object.
      */
-    ds::ISAMTree *get_run(size_t idx);
+    ds::SortedRun *get_run(size_t idx);
 
 
     /*
@@ -121,8 +121,8 @@ public:
     size_t get_record_count() override;
 
     /*
-     * Returns the current number of tombstones stored on
-     * this level.
+     * Returns the current number of tombstones that are stored
+     * on this level.
      */
     size_t get_tombstone_count() override;
 
@@ -169,7 +169,8 @@ private:
     catalog::RecordCmpFunc record_cmp;
     catalog::KeyCmpFunc key_cmp;
 
-    std::vector<std::unique_ptr<ds::ISAMTree>> runs; // the runs stored on this level
+    std::vector<std::unique_ptr<ds::SortedRun>> runs; // the runs stored on this level
+
     /*
      * Place the specified pointer to a run into the level,
      * and return the index at which it was stored. If there is
@@ -178,7 +179,8 @@ private:
      * pointer into the Level, and so the passed in pointer will
      * be nulled.
      */
-    int emplace_run(std::unique_ptr<ds::ISAMTree> run);
+    int emplace_run(std::unique_ptr<ds::SortedRun> run);
+
     };
 }}
 #endif

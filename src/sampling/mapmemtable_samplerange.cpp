@@ -72,4 +72,16 @@ io::Record MapMemTableSampleRange::get_random_record()
 }
 
 
+bool MapMemTableSampleRange::is_memtable() 
+{
+    return true;
+}
+
+
+bool MapMemTableSampleRange::is_memory_resident() 
+{
+    return true;
+}
+
+
 }}

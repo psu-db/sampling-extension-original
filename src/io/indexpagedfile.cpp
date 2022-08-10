@@ -351,11 +351,12 @@ bool IndexPagedFilePageIterator::supports_element_count()
 }
 
 
-IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page)
+IndexPagedFileRecordIterator::IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, PageNum stop_page, ssize_t rec_cnt)
 {
     this->page_itr = std::make_unique<IndexPagedFilePageIterator>(file, cache, start_page, stop_page);
     this->page_itr->next();
     this->current_page = this->page_itr->get_item();
+    this->record_count = rec_cnt;
     if (this->current_page) {
         this->record_itr = this->current_page->start_scan();
     }
@@ -426,13 +427,13 @@ void IndexPagedFileRecordIterator::rewind(iter::IteratorPosition /*position*/)
 
 size_t IndexPagedFileRecordIterator::element_count()
 {
-    return 0;
+    return (this->record_count >= 0) ? this->record_count : 0;
 }
 
 
 bool IndexPagedFileRecordIterator::supports_element_count()
 {
-    return false;
+    return this->record_count >= 0;
 }
 
 void IndexPagedFileRecordIterator::end_scan()

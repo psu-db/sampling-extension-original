@@ -80,7 +80,13 @@ size_t LSMTree::grow()
         }
     }
 
-    auto new_level = std::make_unique<ISAMLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
+    std::unique_ptr<LSMTreeLevel> new_level;
+
+    if (this->levels.size() < this->memory_levels) {
+        new_level = std::make_unique<SortedLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
+    } else {
+        new_level = std::make_unique<ISAMLevel>(new_run_capacity, new_record_capacity, std::vector<io::IndexPagedFile *>(), this->state.get(), this->max_deleted_proportion, this->bloom_filters);
+    }
 
     this->levels.emplace_back(std::move(new_level));
 
@@ -574,12 +580,16 @@ void LSMTree::add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>>
 {
     if (sample_time) {
         auto start = std::chrono::high_resolution_clock::now();
-        auto pid = ranges[alias->get()]->get_page();
-                
-        // note: any INVALID_PIDs in here indicate that the memtable should be sampled
-        if (pid == INVALID_PID) {
+
+        auto range = ranges[alias->get()].get();
+
+        if (range->is_memtable()) {
             (*memtable_samples)++;
+        } else if (range->is_memory_resident()) {
+
         } else {
+            auto pid = range->get_page();
+            assert(pid != INVALID_PID);
             pages.push_back({pid, this->state->file_manager->get_pfile(pid.file_id)});
         }
         auto stop = std::chrono::high_resolution_clock::now();

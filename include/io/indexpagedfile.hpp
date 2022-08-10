@@ -88,7 +88,7 @@ class IndexPagedFileRecordIterator : public iter::GenericIterator<Record> {
 friend IndexPagedFile;
 
 public:
-    IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page=INVALID_PNUM, PageNum stop_page=INVALID_PNUM);
+    IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page=INVALID_PNUM, PageNum stop_page=INVALID_PNUM, ssize_t reccnt=-1);
     IndexPagedFileRecordIterator(IndexPagedFile *file, ReadCache *cache, PageNum start_page, SlotId start_slot);
 
     bool next() override;
@@ -110,6 +110,8 @@ private:
     Page *current_page;
     std::unique_ptr<iter::GenericIterator<Page *>> page_itr;
     std::unique_ptr<iter::GenericIterator<Record>> record_itr;
+
+    ssize_t record_count;
 
     bool at_end;
     union iter_position {
