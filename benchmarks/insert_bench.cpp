@@ -122,7 +122,6 @@ static bool benchmark(lsm::sampling::LSMTree *tree, std::fstream *file,
                                  &walker_time, &sample_time, &reject_time);
 
         io_time += tree->cache()->io_time();
-        sample_time -= tree->cache()->io_time();
         cache_misses += tree->cache()->cache_misses();
 
         total_rejections += rejections;
