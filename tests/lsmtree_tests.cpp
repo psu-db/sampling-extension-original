@@ -46,6 +46,35 @@ START_TEST(t_insert)
 END_TEST
 
 
+START_TEST(t_insert_memlevels)
+{
+    auto state = testing::make_state1();
+
+    auto lsm = sampling::LSMTree::create(1000, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, false, 2);
+
+    int64_t key = 150;
+    int64_t value = 10;
+
+    for (size_t i=0; i<1000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value), 1);
+        key++;
+        value++;
+    }
+
+    ck_assert_int_eq(lsm->depth(), 0);
+    ck_assert_int_eq(lsm->record_count(), 1000);
+
+    for (size_t i=0; i<10000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value), 1);
+        key++;
+    }
+
+    ck_assert_int_eq(lsm->record_count(), 11000);
+    ck_assert_int_eq(lsm->depth(), 3);
+}
+END_TEST
+
+
 START_TEST(t_range_sample)
 {
     auto state = testing::make_state1();
@@ -118,6 +147,59 @@ START_TEST(t_erase)
     rm_key = 550 + 1200;
     rm_val = 10 + 1200;
     ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val, time++), 1);
+
+    for (size_t i=0; i < 105; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+    ck_assert_int_eq(lsm->has_tombstone((byte*) &rm_key, (byte*) &rm_val, time), 1);
+
+    rec = lsm->get((byte*) &rm_key, &frid);
+    ck_assert_int_eq(rec.is_valid(), 0);
+
+    ck_assert_int_eq(lsm->insert((byte*) &rm_key, (byte*) &rm_val, time++), 1);
+    rec = lsm->get((byte*) &rm_key, &frid, time);
+    ck_assert_int_eq(rec.is_valid(), 1);
+    lsm->cache()->unpin(frid);
+}
+END_TEST
+
+
+START_TEST(t_erase_memlevels)
+{
+    auto state = testing::make_state1();
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, false, 3);
+
+    int64_t key = 550;
+    int64_t value = 10;
+    Timestamp time = 0;
+
+    for (size_t i=0; i < 10000; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+
+    int64_t rm_key = 551;
+    int64_t rm_val = 11;
+
+    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val, time++), 1);
+
+    FrameId frid;
+    auto rec = lsm->get((byte*) &rm_key, &frid);
+    ck_assert_int_eq(rec.is_valid(), 0);
+
+    rm_key = 550 + 10000 - 300;
+    rm_val = 10 + 10000 - 300;
+    ck_assert_int_eq(lsm->remove((byte*) &rm_key, (byte*) &rm_val, time++), 1);
+
+    for (size_t i=0; i < 105; i++) {
+        ck_assert_int_eq(lsm->insert((byte*) &key, (byte*) &value, time++), 1);
+        key++;
+        value++;
+    }
+    ck_assert_int_eq(lsm->has_tombstone((byte*) &rm_key, (byte*) &rm_val, time), 1);
     rec = lsm->get((byte*) &rm_key, &frid);
     ck_assert_int_eq(rec.is_valid(), 0);
 
@@ -447,6 +529,7 @@ Suite *unit_testing()
 
     TCase *insert = tcase_create("lsm::sampling::LSMTree::insert Testing");
     tcase_add_test(insert, t_insert);
+    tcase_add_test(insert, t_insert_memlevels);
 
     suite_add_tcase(unit, insert);
 
@@ -462,6 +545,7 @@ Suite *unit_testing()
 
     TCase *remove = tcase_create("lsm::sampling::LSMTree::remove Testing");
     tcase_add_test(remove, t_erase);
+    tcase_add_test(remove, t_erase_memlevels);
     tcase_add_test(remove, t_bulk_erase);
     tcase_add_test(remove, t_erase_duplicate_keys);
 

@@ -123,6 +123,8 @@ io::Record SortedRun::get_record(size_t idx) const
 
 io::Record SortedRun::get(const byte *key, Timestamp time) 
 {
+    auto key_cmp = this->state->record_schema->get_key_cmp();
+
     auto idx = this->get_lower_bound(key);
 
     if (idx == -1) {
@@ -130,8 +132,10 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
     }
 
     io::Record rec;
+    const byte *key_ptr;
     do {
         rec = this->get_record(idx);
+        key_ptr = this->state->record_schema->get_key(rec.get_data()).Bytes();
 
         if (rec.get_timestamp() <= time) {
             return rec;
@@ -140,7 +144,7 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
         if (++idx >= this->record_cnt) {
             return io::Record();
         }
-    } while (this->get_key_cmp()(key, this->state->record_schema->get_key(rec.get_data()).Bytes()) == 0);
+    } while (key_cmp(key, key_ptr) == 0);
 
     return io::Record();
 }
@@ -148,6 +152,32 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
 
 io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp time)
 {
+    auto key_cmp = this->state->record_schema->get_key_cmp();
+    auto val_cmp = this->state->record_schema->get_val_cmp();
+
+    auto idx = this->get_lower_bound(key);
+
+    if (idx == -1) {
+        return io::Record();
+    }
+
+    io::Record rec;
+    const byte *key_ptr;
+    const byte *val_ptr;
+    do {
+        rec = this->get_record(idx);
+        key_ptr = this->state->record_schema->get_key(rec.get_data()).Bytes();
+        val_ptr = this->state->record_schema->get_val(rec.get_data()).Bytes();
+
+        if (rec.get_timestamp() <= time && rec.is_tombstone()) {
+            return rec;
+        }
+
+        if (++idx >= this->record_cnt) {
+            return io::Record();
+        }
+    } while (key_cmp(key_ptr, key) == 0 && val_cmp(val_ptr, val) == 0);
+
     return io::Record();
 }
 

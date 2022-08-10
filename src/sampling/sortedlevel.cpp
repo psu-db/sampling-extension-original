@@ -120,6 +120,10 @@ void SortedLevel::truncate()
     // using. This will, of course, need to be revisited for concurrency.
     this->run_count = 0;
     this->record_count = 0;
+    for (size_t i=0; i<this->runs.size(); i++) {
+        this->runs[i].reset();
+        this->runs[i] = nullptr;
+    }
 }
 
 
