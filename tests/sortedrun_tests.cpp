@@ -155,7 +155,6 @@ START_TEST(t_bounds_lower_out_of_range)
     const catalog::RecordCmpFunc cmp = std::bind(&compare_func, _1, _2);
     auto iterator = std::make_unique<iter::MergeIterator>(iters, cmp);
 
-    auto pfile = state->file_manager->create_indexed_pfile();
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2));
 
@@ -332,13 +331,23 @@ START_TEST(t_get)
     auto state = testing::make_state1();
     auto isamtree1 = testing::test_isamtree1(100, state.get(), &cnt);
     auto tree_iterator1 = isamtree1->start_scan();
+    
+    std::vector<std::unique_ptr<iter::GenericIterator<Record>>> iters(1);
+    iters[0] = std::move(tree_iterator1);
+    auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
 
-    while (tree_iterator1->next()) {
-        auto rec = tree_iterator1->get_item();
+    auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt));
+
+    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, state.get(), false, 0);
+    auto run = ds::SortedRun(std::move(buffer), cnt, state.get(), 0);
+
+    auto run_iterator = run.start_scan();
+
+    while (run_iterator->next()) {
+        auto rec = run_iterator->get_item();
         auto key_val = state->record_schema->get_key(rec.get_data()).Bytes();
 
-        FrameId frid;
-        auto res = isamtree1->get(key_val, &frid);
+        auto res = run.get(key_val);
         ck_assert_int_eq(res.is_valid(), 1);
         ck_assert_int_eq(*(int64_t *) key_val, state->record_schema->get_key(res.get_data()).Int64());
     }
@@ -358,26 +367,25 @@ START_TEST(t_general_large_keys)
     iters[0] = std::make_unique<io::IndexPagedFileRecordIterator>(pfile, state->cache.get());
 
     auto merged = std::make_unique<iter::MergeIterator>(iters, state->record_schema->get_record_cmp());
-    auto tree_file = state->file_manager->create_indexed_pfile();
-    ds::ISAMTree::initialize(tree_file, std::move(merged), page_count, state.get(), false, 0);
-    auto isamtree = ds::ISAMTree(tree_file, state.get());
+
+    auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt));
+
+    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, state.get(), false, 0);
+    auto run = ds::SortedRun(std::move(buffer), cnt, state.get(), 0);
 
     int64_t key = 0;
-    for (auto iter=isamtree.start_scan(); iter->next();) {
+    for (auto iter=run.start_scan(); iter->next();) {
         auto rec = iter->get_item();
         auto rec_key_bytes = state->record_schema->get_key(rec.get_data()).Bytes();
         auto rec_key = state->record_schema->get_key(rec.get_data()).Int64();
         ck_assert_int_eq(key, rec_key);
 
-        FrameId frid;
-        auto get_rec = isamtree.get(rec_key_bytes, &frid);
+        auto get_rec = run.get(rec_key_bytes);
 
-        ck_assert_int_ne(frid, INVALID_FRID);
         auto get_rec_key = state->record_schema->get_key(get_rec.get_data()).Int64();
         ck_assert(get_rec.is_valid());
         ck_assert_int_eq(key, get_rec_key);
 
-        state->cache->unpin(frid);
         key++;
     }
 }
@@ -416,13 +424,10 @@ Suite *unit_testing()
 
     suite_add_tcase(unit, get);
 
-    /*
     TCase *misc = tcase_create("lsm::ds::SortedRun::miscellaneous");
     tcase_add_test(misc, t_general_large_keys);
 
     suite_add_tcase(unit, misc);
-    */
-    
 
     return unit;
 }

@@ -63,8 +63,8 @@ public:
     size_t record_count();
     size_t tombstone_count();
 
-    io::Record get(const byte *key, Timestamp time);
-    io::Record get_tombstone(const byte *key, const byte *val, Timestamp time);
+    io::Record get(const byte *key, Timestamp time=0);
+    io::Record get_tombstone(const byte *key, const byte *val, Timestamp time=0);
 
     std::unique_ptr<iter::GenericIterator<io::Record>> start_scan();
 
