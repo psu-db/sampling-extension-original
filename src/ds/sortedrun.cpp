@@ -154,6 +154,10 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
 
 io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp time)
 {
+    if (this->tombstones == 0) {
+        return io::Record();
+    }
+
     auto key_cmp = this->state->record_schema->get_key_cmp();
     auto val_cmp = this->state->record_schema->get_val_cmp();
 
