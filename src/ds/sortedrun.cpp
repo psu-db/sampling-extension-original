@@ -21,6 +21,8 @@ SortedRun::SortedRun(io::PagedFile *pfile, global::g_state *state)
     : data_array(mem::wrap_aligned_buffer(nullptr))
 {
     this->state = state;
+    this->tombstones = 0;
+    this->record_cnt = 0;
 }
 
 
@@ -47,7 +49,7 @@ SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global
 {
     this->record_cnt = record_count;
     this->state = state;
-    size_t tombstones = tombstone_count;
+    this->tombstones = tombstone_count;
 }
 
 
