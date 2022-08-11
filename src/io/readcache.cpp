@@ -84,6 +84,7 @@ std::vector<std::pair<PageId, FrameId>> ReadCache::pin_multiple(std::vector<std:
     size_t last_pin = 0;
     for (size_t i=0; i<max_pin_cnt; i++) {
         // check if the page is already in the cache
+        this->pin_reqs++;
         auto map_entry = this->frame_map.find(pids[i].first);
         FrameId frid;
         if (map_entry != this->frame_map.end()) {
@@ -101,6 +102,7 @@ std::vector<std::pair<PageId, FrameId>> ReadCache::pin_multiple(std::vector<std:
 
             this->initialize_frame(frid, pids[i].first);
             pending_ios[pids[i].second].push_back({pids[i].first, this->get_frame(frid)});
+            this->misses++;
         }
 
         last_pin++;
