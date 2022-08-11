@@ -141,8 +141,8 @@ static bool benchmark(lsm::sampling::LSMTree *tree, std::fstream *file,
 
 int main(int argc, char **argv)
 {
-    if (argc < 6) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity>\n");
+    if (argc < 7) {
+        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels>\n");
         exit(EXIT_FAILURE);
     }
 
@@ -151,6 +151,7 @@ int main(int argc, char **argv)
     size_t memtable_size = atol(argv[3]);
     size_t scale_factor = atol(argv[4]);
     double selectivity = atof(argv[5]);
+    size_t memory_levels = atol(argv[6]);
 
     // change these to enlarge the data size
     //size_t key_size = sizeof(int64_t);
@@ -172,7 +173,7 @@ int main(int argc, char **argv)
     }
 
     gsl_rng_set(state->rng, seed);
-    auto sampling_lsm = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), lsm::sampling::LEVELING, true);
+    auto sampling_lsm = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), lsm::sampling::LEVELING, true, false, 1.0, false, memory_levels);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

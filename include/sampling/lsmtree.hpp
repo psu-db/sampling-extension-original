@@ -172,8 +172,8 @@ private:
 
     bool reject_sample(io::Record rec, byte *lower_key, byte *upper_key);
     void add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>>
-                            &pages, walker::AliasStructure *alias, size_t
-                            *memtable_samples,
+                            &pages, walker::AliasStructure *alias, 
+                            std::map<size_t, size_t> &memory_ranges,
                             std::vector<std::unique_ptr<SampleRange>> &ranges,
                             long *sample_time = nullptr);
     io::Record sample_from(FrameId frid);

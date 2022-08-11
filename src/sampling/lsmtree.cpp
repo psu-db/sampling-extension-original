@@ -233,7 +233,6 @@ bool LSMTree::has_tombstone(const byte *key, const byte *val, Timestamp time)
 }
 
 
-/*
 std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, size_t *attempts)
 {
     auto sample = std::make_unique<Sample>(sample_size);
@@ -243,9 +242,11 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
     size_t rej = 0;
     size_t atmpts = 0;
 
+    std::map<size_t, size_t> memory_ranges;
     auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
     if (memtable_range) {
         total_elements += memtable_range->length();
+        memory_ranges.insert({0, 0});
         ranges.emplace_back(std::move(memtable_range));
     }
 
@@ -253,6 +254,9 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
         auto level_ranges = level->get_sample_ranges(start_key, stop_key);
         for (auto &range : level_ranges) {
             total_elements += range->length();
+            if (range->is_memory_resident()) {
+                memory_ranges.insert({ranges.size(), 0});
+            }
             ranges.emplace_back(std::move(range));
         }
     }
@@ -268,101 +272,15 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
 
     walker::AliasStructure alias(&weights, this->state->rng);
 
-    size_t i=0;
-    while (i < sample_size) {
-        size_t range = alias.get();
-
-        // If the sample range resides on disk, a page will
-        // need to be pinned in the cache. For memory safety,
-        // we pass the pinned FrameId back to here, and unpin
-        // it later, once the record has been copied into the
-        // sample.
-        FrameId frid = INVALID_FRID;
-        auto record = ranges[range]->get(&frid);
-
-        if (record.is_valid() && !this->is_deleted(record)) {
-            sample->add_record(record);
-            i++;
-        } else {
-            rej++;
-        }
-
-        atmpts++;
-
-        // Adding a record to the sample makes a deep copy of
-        // it, so it is now safe to unpin the page it was drawn
-        // from.
-        if (frid != INVALID_FRID) {
-            this->state->cache->unpin(frid);
-        }
-
-        if (atmpts > 5 * sample_size && rej == atmpts) {
-            // assume nothing in the sample range
-            return nullptr;
-        }
-    }
-
-    if (rejections) {
-        *rejections = rej;
-    }
-
-    if (attempts) {
-        *attempts = atmpts;
-    }
-
-    return sample;
-}
-*/
-
-std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, size_t sample_size, size_t *rejections, size_t *attempts)
-{
-    auto sample = std::make_unique<Sample>(sample_size);
-    std::vector<std::unique_ptr<SampleRange>> ranges;
-    size_t total_elements = 0;
-
-    size_t rej = 0;
-    size_t atmpts = 0;
-
-    auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
-    if (memtable_range) {
-        total_elements += memtable_range->length();
-        ranges.emplace_back(std::move(memtable_range));
-    }
-
-    for (auto &level : this->levels) {
-        auto level_ranges = level->get_sample_ranges(start_key, stop_key);
-        for (auto &range : level_ranges) {
-            total_elements += range->length();
-            ranges.emplace_back(std::move(range));
-        }
-    }
-
-    if (total_elements == 0) {
-        return nullptr;
-    }
-
-    std::vector<double> weights(ranges.size());
-    for (size_t i=0; i<ranges.size(); i++) {
-        weights[i] = (double) ranges[i]->length() / (double) total_elements;
-    }
-
-    walker::AliasStructure alias(&weights, this->state->rng);
-
-    size_t memtable_samples = 0;
     std::vector<std::pair<PageId, io::PagedFile *>> pages;
     for (size_t i=0; i<sample_size; i++) {
-        this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
+        this->add_page_to_sample(pages, &alias, memory_ranges, ranges);
     }
 
     this->state->cache->reset_miss_counter();
     this->state->cache->reset_io_time();
 
-    // NOTE: The memtable_samples check here is not technically redundant, as
-    // it covers the case of all records to be sampled falling into the
-    // memtable initially, in which case pages.size() == 0, but
-    // memtable_samples > 0 would be true, and without the check we'd bypass
-    // the memtable sampling procedure altogether.
-    while (pages.size() > 0 || memtable_samples > 0) { 
+    while (sample->sample_size() < sample_size) { 
         auto pinned = this->cache()->pin_multiple(pages);
         for (auto pin : pinned) {
             atmpts++;
@@ -373,7 +291,7 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
             // to the pages vector
             bool rejected = false;
             if (this->reject_sample(record, start_key, stop_key)) {
-                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
+                this->add_page_to_sample(pages, &alias, memory_ranges, ranges);
                 rejected = true;
                 rej++;
             } 
@@ -385,23 +303,24 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
 
         this->cache()->unpin(pinned);
 
-        // perform sampling from the memtable
-        while (memtable_samples > 0) {
-            // If we can sample from the memtable, it will be at index 0 of the array.
-            // If index 0 is *not* the memtable, it should be impossible to get here as
-            // memtable_samples == 0 must be true.
-            auto record = ranges[0]->get(nullptr); 
-            memtable_samples--;
+        // perform sampling from in-memory levels
+        for (auto memrange : memory_ranges) {
+            size_t sample_cnt = memrange.second;
+            for (size_t i=0; i<sample_cnt; i++) {
+                atmpts++;
+                auto record = ranges[memrange.first]->get(nullptr);
+                memory_ranges.find(memrange.first)->second--;
 
-            bool rejected = false;
-            if (this->reject_sample(record, start_key, stop_key)) {
-                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges);
-                rejected = true;
-                rej++;
-            } 
+                bool rejected = false;
+                if (this->reject_sample(record, start_key, stop_key)) {
+                    this->add_page_to_sample(pages, &alias, memory_ranges, ranges);
+                    rejected = true;
+                    rej++;
+                }
 
-            if (!rejected) {
-                sample->add_record(record);
+                if (!rejected) {
+                    sample->add_record(record);
+                }
             }
         }
 
@@ -432,19 +351,27 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     size_t rej = 0;
     size_t atmpts = 0;
 
+    std::map<size_t, size_t> memory_ranges;
+    
     auto buffer_proc_start = std::chrono::high_resolution_clock::now();
     auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
     if (memtable_range) {
         total_elements += memtable_range->length();
+        memory_ranges.insert({0, 0});
+
         ranges.emplace_back(std::move(memtable_range));
     }
     auto buffer_proc_stop = std::chrono::high_resolution_clock::now();
+
 
     auto bounds_start = std::chrono::high_resolution_clock::now();
     for (auto &level : this->levels) {
         auto level_ranges = level->get_sample_ranges(start_key, stop_key);
         for (auto &range : level_ranges) {
             total_elements += range->length();
+            if (range->is_memory_resident()) {
+                memory_ranges.insert({ranges.size(), 0});
+            }
             ranges.emplace_back(std::move(range));
         }
     }
@@ -463,10 +390,9 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     walker::AliasStructure alias(&weights, this->state->rng);
     auto walker_stop = std::chrono::high_resolution_clock::now();
 
-    size_t memtable_samples = 0;
     std::vector<std::pair<PageId, io::PagedFile *>> pages;
     for (size_t i=0; i<sample_size; i++) {
-        this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
+        this->add_page_to_sample(pages, &alias, memory_ranges, ranges, sample_time);
     }
 
     long total_rejection = 0;
@@ -475,12 +401,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     this->state->cache->reset_miss_counter();
     this->state->cache->reset_io_time();
 
-    // NOTE: The memtable_samples check here is not technically redundant, as
-    // it covers the case of all records to be sampled falling into the
-    // memtable initially, in which case pages.size() == 0, but
-    // memtable_samples > 0 would be true, and without the check we'd bypass
-    // the memtable sampling procedure altogether.
-    while (pages.size() > 0 || memtable_samples > 0) { 
+    while (sample->sample_size() < sample_size) { 
         auto pinned = this->cache()->pin_multiple(pages);
         for (auto pin : pinned) {
             atmpts++;
@@ -494,7 +415,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
             auto rejection_start = std::chrono::high_resolution_clock::now();
             bool rejected = false;
             if (this->reject_sample(record, start_key, stop_key)) {
-                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
+                this->add_page_to_sample(pages, &alias, memory_ranges, ranges, sample_time);
                 rejected = true;
                 rej++;
             } 
@@ -513,25 +434,31 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
 
         this->cache()->unpin(pinned);
 
-        // perform sampling from the memtable
-        while (memtable_samples > 0) {
-            // If we can sample from the memtable, it will be at index 0 of the array.
-            // If index 0 is *not* the memtable, it should be impossible to get here as
-            // memtable_samples == 0 must be true.
-            auto record = ranges[0]->get(nullptr); 
-            memtable_samples--;
 
-            bool rejected = false;
-            if (this->reject_sample(record, start_key, stop_key)) {
-                this->add_page_to_sample(pages, &alias, &memtable_samples, ranges, sample_time);
-                rejected = true;
-                rej++;
-            } 
+        auto mem_start = std::chrono::high_resolution_clock::now();
+        // perform sampling from in-memory levels and memtable
+        for (auto memrange : memory_ranges) {
+            size_t sample_cnt = memrange.second;
+            for (size_t i=0; i<sample_cnt; i++) {
+                atmpts++;
+                auto record = ranges[memrange.first]->get(nullptr);
+                memory_ranges.find(memrange.first)->second--;
 
-            if (!rejected) {
-                sample->add_record(record);
+                bool rejected = false;
+                if (this->reject_sample(record, start_key, stop_key)) {
+                    this->add_page_to_sample(pages, &alias, memory_ranges, ranges, sample_time);
+                    rejected = true;
+                    rej++;
+                }
+
+                if (!rejected) {
+                    sample->add_record(record);
+                }
             }
         }
+        auto mem_stop = std::chrono::high_resolution_clock::now();
+
+        total_sample += std::chrono::duration_cast<std::chrono::nanoseconds>(mem_stop - mem_start).count();
 
         // quick + dirty check to avoid infinite loops when sampling an empty
         // range; breaks correctness, but this situation should be avoidable 
@@ -576,17 +503,19 @@ io::Record LSMTree::sample_from(FrameId frid)
 }
 
 
-void LSMTree::add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>> &pages, walker::AliasStructure *alias, size_t *memtable_samples, std::vector<std::unique_ptr<SampleRange>> &ranges, long *sample_time)
-{
+void LSMTree::add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>> &pages, 
+                                 walker::AliasStructure *alias,
+                                 std::map<size_t, size_t> &memory_ranges,
+                                 std::vector<std::unique_ptr<SampleRange>> &ranges,
+                                 long *sample_time) {
     if (sample_time) {
         auto start = std::chrono::high_resolution_clock::now();
 
-        auto range = ranges[alias->get()].get();
+        auto range_idx = alias->get();
+        auto range = ranges[range_idx].get();
 
-        if (range->is_memtable()) {
-            (*memtable_samples)++;
-        } else if (range->is_memory_resident()) {
-
+        if (range->is_memory_resident()) {
+           memory_ranges.find(range_idx)->second++;
         } else {
             auto pid = range->get_page();
             assert(pid != INVALID_PID);
@@ -596,12 +525,14 @@ void LSMTree::add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>>
 
         (*sample_time) += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
     } else {
-        auto pid = ranges[alias->get()]->get_page();
-                
-        // note: any INVALID_PIDs in here indicate that the memtable should be sampled
-        if (pid == INVALID_PID) {
-            (*memtable_samples)++;
+        auto range_idx = alias->get();
+        auto range = ranges[range_idx].get();
+
+        if (range->is_memory_resident()) {
+           memory_ranges.find(range_idx)->second++;
         } else {
+            auto pid = range->get_page();
+            assert(pid != INVALID_PID);
             pages.push_back({pid, this->state->file_manager->get_pfile(pid.file_id)});
         }
     }
