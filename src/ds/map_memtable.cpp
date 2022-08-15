@@ -17,7 +17,7 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
     sl_global_key_cmp = state->record_schema->get_key_cmp();
 
     this->table = std::make_unique<SkipList>();
-    this->tombstone_table = std::multimap<TombstoneKey, Timestamp, tombstone_cmp>(tombstone_cmp{state->record_schema->get_key_cmp(), state->record_schema->get_val_cmp()});
+    this->tombstone_cache = util::TombstoneCache(-1, state->record_schema.get());
 }
 
 
@@ -60,9 +60,8 @@ int MapMemTable::insert_internal(io::Record record)
     auto res = this->table->insert({memtable_key, record.get_data()});
 
     if (res.second && tomb) {
-        TombstoneKey tomb_key = {key, val};
         this->tombstones++;
-        this->tombstone_table.insert({tomb_key, time});
+        this->tombstone_cache.insert(key, val, time);
     }
     
     return res.second;
@@ -135,7 +134,7 @@ bool MapMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time
     // Once the records are within the on-disk structure, the above situation
     // should be automatically handled correctly.
 
-    return this->tombstone_table.find({key, val}) != this->tombstone_table.end();
+    return this->tombstone_cache.exists(key, val, time);
 }
 
 
@@ -145,7 +144,7 @@ void MapMemTable::truncate()
         delete[] rec.second;
     }
 
-    this->tombstone_table.clear();
+    this->tombstone_cache.truncate();
     this->table.reset();
     this->table = std::make_unique<SkipList>();
     this->tombstones = 0;

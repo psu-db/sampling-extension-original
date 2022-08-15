@@ -13,6 +13,7 @@
 #include "ds/memtable.hpp"
 #include "io/record.hpp"
 #include "util/global.hpp"
+#include "util/tombstonecache.hpp"
 
 #include "ds/skiplist_core.hpp"
 #include "sampling/mapmemtable_samplerange.hpp"
@@ -110,33 +111,12 @@ public:
 
     SkipList *get_table();
 private:
-    struct TombstoneKey {
-        const byte *key;
-        const byte *value;
-    };
-
-    struct tombstone_cmp{
-        catalog::KeyCmpFunc key_cmp;
-        catalog::ValCmpFunc val_cmp;
-
-        bool operator()(const TombstoneKey a, const TombstoneKey b) const {
-            auto key_res = key_cmp(a.key, b.key);
-
-            if (key_res == 0) {
-                auto val_res = val_cmp(a.value, b.value);
-                return val_res == -1;
-            }
-
-            return key_res == -1;
-        }
-    };
-
-    std::multimap<TombstoneKey, Timestamp, tombstone_cmp> tombstone_table;
-
     size_t capacity;
     global::g_state *state;
     std::unique_ptr<SkipList> table;
     size_t tombstones;
+
+    util::TombstoneCache tombstone_cache;
 
     const byte *get_key(io::Record record);
     const byte *get_val(io::Record record);

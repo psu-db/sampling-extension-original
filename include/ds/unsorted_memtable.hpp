@@ -14,6 +14,7 @@
 #include "sampling/unsortedmemtable_samplerange.hpp"
 #include "ds/memtable.hpp"
 #include "util/global.hpp"
+#include "util/tombstonecache.hpp"
 
 namespace lsm { namespace ds {
 
@@ -28,6 +29,14 @@ public:
     int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) override;
     int remove(byte *key, byte *value, Timestamp time=0) override;
     io::Record get(const byte *key, Timestamp time=0) override;
+
+    /*
+     * Attempts to retrieve a record with a given key, value, and timestamp
+     * from the memtable. Returns the record on success. Returns in invalid
+     * record on failure. This can fail because the desired key-timestamp pair
+     * does not appear within the memtable.
+     */
+    bool has_tombstone(const byte *key, const byte *val, Timestamp time=0) override;
 
     size_t get_record_count() override;
     size_t get_capacity() override;
@@ -44,6 +53,7 @@ public:
 
 private:
     std::vector<io::Record> table;
+    util::TombstoneCache tombstone_cache;
     global::g_state *state;
 
     catalog::KeyCmpFunc key_cmp;
