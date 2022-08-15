@@ -6,17 +6,17 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<SortedRun> SortedRun::create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, bool bloom_filters, global::g_state *state, size_t tombstone_count)
+std::unique_ptr<SortedRun> SortedRun::create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, global::g_state *state, size_t tombstone_count)
 {
     size_t buffer_size = record_cnt * state->record_schema->record_length();
     auto buffer = mem::create_aligned_buffer(buffer_size);
 
-    auto tombstone_cache = SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, state, bloom_filters, tombstone_count);
+    auto tombstone_cache = SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, state);
     return std::make_unique<SortedRun>(std::move(buffer), record_cnt, state, tombstone_count, std::move(tombstone_cache));
 }
 
 
-SortedRun::SortedRun(io::PagedFile *pfile, global::g_state *state)
+SortedRun::SortedRun(io::PagedFile* /* pfile */ , global::g_state *state)
     : data_array(mem::wrap_aligned_buffer(nullptr))
 {
     this->state = state;
@@ -26,7 +26,7 @@ SortedRun::SortedRun(io::PagedFile *pfile, global::g_state *state)
 }
 
 
-std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, global::g_state *state, bool bloom_filters, size_t tombstone_count)
+std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, global::g_state *state)
 {
     size_t offset = 0;
     size_t idx = 0;
@@ -52,7 +52,7 @@ std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::u
         idx++;
     }
 
-    return std::move(tombstone_cache);
+    return tombstone_cache;
 }
 
 
@@ -140,11 +140,13 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
 {
     auto key_cmp = this->state->record_schema->get_key_cmp();
 
-    auto idx = this->get_lower_bound(key);
+    auto res = this->get_lower_bound(key);
 
-    if (idx == -1) {
+    if (res == -1) {
         return io::Record();
     }
+
+    size_t idx = res;
 
     io::Record rec;
     const byte *key_ptr;
@@ -180,11 +182,13 @@ io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp 
     auto key_cmp = this->state->record_schema->get_key_cmp();
     auto val_cmp = this->state->record_schema->get_val_cmp();
 
-    auto idx = this->get_lower_bound(key);
+    auto res = this->get_lower_bound(key);
 
-    if (idx == -1) {
+    if (res == -1) {
         return io::Record();
     }
+
+    size_t idx = res;
 
     io::Record rec;
     const byte *key_ptr;
@@ -243,7 +247,7 @@ SortedRunRecordIterator::SortedRunRecordIterator(const SortedRun *run, size_t re
 
 bool SortedRunRecordIterator::next()
 {
-    if (++this->cur_idx <= this->stop_idx) {
+    if ((size_t) (++this->cur_idx) <= this->stop_idx) {
         this->current_record = this->run->get_record(this->cur_idx);
         return true;
     }

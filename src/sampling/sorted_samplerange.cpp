@@ -84,6 +84,10 @@ size_t SortedSampleRange::length()
 
 io::Record SortedSampleRange::get_random_record(FrameId *frid)
 {
+    if (frid) {
+        *frid = INVALID_FRID;
+    }
+
     auto idx = this->start_idx + gsl_rng_uniform_int(this->state->rng, this->range_len);
     return this->run->get_record(idx);
 }

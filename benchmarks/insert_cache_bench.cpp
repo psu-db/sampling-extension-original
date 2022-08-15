@@ -65,7 +65,6 @@ static std::pair<int64_t, int64_t> sample_range(int64_t min, int64_t max, double
 
 static bool benchmark(lsm::sampling::LSMTree *tree, std::fstream *file, 
                       size_t inserts, size_t samples, size_t sample_size, 
-                      size_t min_key, size_t max_key, double selectivity,
                       std::pair<int64_t, int64_t> range) {
     // for looking at the insert time distribution
     std::vector<size_t> insert_times;
@@ -195,7 +194,7 @@ int main(int argc, char **argv)
     auto range = sample_range(min_key, max_key, selectivity, sampling_lsm->global_state());
 
     while (benchmark(sampling_lsm.get(), &datafile, inserts, samples,
-                     sample_size, min_key, max_key, selectivity, range)) {
+                     sample_size, range)) {
             ;
         }
 

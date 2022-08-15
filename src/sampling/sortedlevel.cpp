@@ -82,6 +82,10 @@ bool SortedLevel::can_merge_with(LSMTreeLevel *level)
 
 io::Record SortedLevel::get(const byte *key, FrameId *frid, Timestamp time)
 {
+    if (frid) {
+        *frid = INVALID_FRID;
+    }
+
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
         auto rec = this->runs[i]->get(key, time);
         if (rec.is_valid()) {
@@ -95,6 +99,10 @@ io::Record SortedLevel::get(const byte *key, FrameId *frid, Timestamp time)
 
 io::Record SortedLevel::get_tombstone(const byte *key, const byte *val, FrameId *frid, Timestamp time)
 {
+    if (frid) {
+        *frid = INVALID_FRID;
+    }
+
     for (int32_t i=this->run_capacity - 1; i >= 0; i--) {
         auto rec = this->runs[i]->get_tombstone(key, val, time);
         if (rec.is_valid()) {
@@ -158,7 +166,7 @@ int SortedLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> s
         auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
         size_t total_record_count = existing_record_cnt + new_record_cnt;
 
-        auto new_run = ds::SortedRun::create(std::move(merge_itr), total_record_count, this->bloom_filters, this->state, tombstones);
+        auto new_run = ds::SortedRun::create(std::move(merge_itr), total_record_count, this->state, tombstones);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_run) {

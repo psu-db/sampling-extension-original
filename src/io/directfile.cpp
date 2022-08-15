@@ -76,7 +76,7 @@ int DirectFile::readv(std::vector<byte *> buffers, off_t buffer_size, off_t init
 {
     size_t buffer_cnt = buffers.size();
 
-    size_t amount = buffer_size * buffer_cnt;
+    off_t amount = buffer_size * buffer_cnt;
     if (!this->verify_io_parms(amount, initial_offset)) {
         return 0;
     }
