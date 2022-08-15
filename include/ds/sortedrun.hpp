@@ -12,6 +12,7 @@
 #include "util/iterator.hpp"
 #include "util/mergeiter.hpp"
 #include "util/mem.hpp"
+#include "util/tombstonecache.hpp"
 
 namespace lsm { namespace ds {
 
@@ -47,11 +48,11 @@ class SortedRun {
     friend SortedRunRecordIterator;
 public:
     static std::unique_ptr<SortedRun> create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, bool bloom_filters, global::g_state *state, size_t tombstone_count);
-    static void initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, 
-                           size_t record_count, global::g_state *state, bool bloom_filters, size_t tombstone_count);
+    static std::unique_ptr<util::TombstoneCache> initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, 
+                                                            size_t record_count, global::g_state *state, bool bloom_filters, size_t tombstone_count);
 
     SortedRun(io::PagedFile *pfile, global::g_state *state);
-    SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count);
+    SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<util::TombstoneCache> tombstone_cache=nullptr);
 
     ssize_t get_lower_bound(const byte *key);
     ssize_t get_upper_bound(const byte *key);
@@ -76,9 +77,9 @@ private:
     size_t record_cnt;
 
     size_t tombstones;
+    std::unique_ptr<util::TombstoneCache> tombstone_cache;
 
 };
-
 }}
 
 #endif

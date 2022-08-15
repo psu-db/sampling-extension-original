@@ -46,6 +46,7 @@ public:
 
 private:
     ssize_t capacity;
+    TombstoneCmp cmp;
     std::multimap<TombstoneKey, Timestamp, TombstoneCmp> table;
 };
 

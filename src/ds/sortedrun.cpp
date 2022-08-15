@@ -11,9 +11,8 @@ std::unique_ptr<SortedRun> SortedRun::create(std::unique_ptr<iter::MergeIterator
     size_t buffer_size = record_cnt * state->record_schema->record_length();
     auto buffer = mem::create_aligned_buffer(buffer_size);
 
-    SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, state, bloom_filters, tombstone_count);
-
-    return std::make_unique<SortedRun>(std::move(buffer), record_cnt, state, tombstone_count);
+    auto tombstone_cache = SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, state, bloom_filters, tombstone_count);
+    return std::make_unique<SortedRun>(std::move(buffer), record_cnt, state, tombstone_count, std::move(tombstone_cache));
 }
 
 
@@ -23,33 +22,47 @@ SortedRun::SortedRun(io::PagedFile *pfile, global::g_state *state)
     this->state = state;
     this->tombstones = 0;
     this->record_cnt = 0;
+    this->tombstone_cache = nullptr;
 }
 
 
-void SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, global::g_state *state, bool bloom_filters, size_t tombstone_count)
+std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, global::g_state *state, bool bloom_filters, size_t tombstone_count)
 {
     size_t offset = 0;
     size_t idx = 0;
+    std::unique_ptr<util::TombstoneCache> tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get());
 
     while (idx < record_count && record_iter->next()) {
         auto rec = record_iter->get_item();
         memcpy(buffer + offset, rec.get_data(), rec.get_length());
-        offset += rec.get_length();
-        idx++;
 
         if (rec.is_tombstone()) {
-            // do tombstoney stuff
+            // Make sure that the cache points to the record within the new
+            // sorted run, and not the dangling reference to the iterator's
+            // current record.
+            io::Record new_record = {buffer + offset, rec.get_length()};
+            auto key = state->record_schema->get_key(new_record.get_data()).Bytes();
+            auto val = state->record_schema->get_val(new_record.get_data()).Bytes();
+            auto time = new_record.get_timestamp();
+
+            tombstone_cache->insert(key, val, time);
         }
+
+        offset += rec.get_length();
+        idx++;
     }
+
+    return std::move(tombstone_cache);
 }
 
 
-SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count) 
+SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<util::TombstoneCache> tombstone_cache) 
                 : data_array(std::move(data_array))
 {
     this->record_cnt = record_count;
     this->state = state;
     this->tombstones = tombstone_count;
+    this->tombstone_cache = std::move(tombstone_cache);
 }
 
 
@@ -156,6 +169,12 @@ io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp 
 {
     if (this->tombstones == 0) {
         return io::Record();
+    }
+
+    if (this->tombstone_cache) {
+        if (!this->tombstone_cache->exists(key, val, time)) {
+            return io::Record();
+        }
     }
 
     auto key_cmp = this->state->record_schema->get_key_cmp();
