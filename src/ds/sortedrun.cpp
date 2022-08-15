@@ -63,6 +63,7 @@ SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global
     this->state = state;
     this->tombstones = tombstone_count;
     this->tombstone_cache = std::move(tombstone_cache);
+    this->buffer_size = record_cnt * state->record_schema->record_length();
 }
 
 
@@ -213,7 +214,10 @@ io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp 
 
 size_t SortedRun::memory_utilization()
 {
-    return 0;
+    // TODO: Proper size calculation for the tombstone cache--may require a custom
+    // map implementation (which I'll likely want to do for concurrency reasons
+    // anyway)
+    return this->buffer_size + 32 * tombstones;
 }
 
 

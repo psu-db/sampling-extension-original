@@ -15,6 +15,7 @@
 #include "ds/memtable.hpp"
 #include "util/global.hpp"
 #include "util/tombstonecache.hpp"
+#include "util/mem.hpp"
 
 namespace lsm { namespace ds {
 
@@ -52,6 +53,11 @@ public:
     ~UnsortedMemTable() override;
 
 private:
+    mem::aligned_buffer data_array;
+    size_t buffer_size;
+    size_t record_cnt;
+    size_t record_cap;
+
     std::vector<io::Record> table;
     util::TombstoneCache tombstone_cache;
     global::g_state *state;

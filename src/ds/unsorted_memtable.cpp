@@ -6,8 +6,11 @@
 
 namespace lsm { namespace ds {
 
-UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state)
+UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state) : data_array(nullptr, free)
 {
+    this->buffer_size = capacity * state->record_schema->record_length();
+    this->data_array = mem::create_aligned_buffer(buffer_size);
+
     this->table = std::vector<io::Record>(capacity);
 
     this->state = state;
@@ -34,8 +37,10 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
         return 0;
     }
 
-    auto record_buffer = this->state->record_schema->create_record_raw(key, value);
-    auto record = io::Record(record_buffer, this->state->record_schema->record_length(), time, tombstone);
+    auto rec_ptr = this->data_array.get() + (idx * this->state->record_schema->record_length());
+    this->state->record_schema->create_record_at(rec_ptr, key, value);
+
+    auto record = io::Record(rec_ptr, this->state->record_schema->record_length(), time, tombstone);
 
     this->table[idx] = record;
 
@@ -100,12 +105,6 @@ void UnsortedMemTable::truncate()
     // the table is empty, nothing to do
     if (upper_bound == -1) {
         return;
-    }
-
-    // free the memory associated with all the records in
-    // the memtable
-    for (size_t i=0; i<(size_t)upper_bound; i++) {
-        this->table[i].free_data();
     }
 
     // reset the tail index

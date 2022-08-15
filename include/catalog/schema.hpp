@@ -58,8 +58,10 @@ public:
     /*
      * Creates a new record according to this schema with the specified key and
      * value. The lengths of the provided key and value must match the
-     * requirements of the schema, or the output is not defined. This version
-     * returns a raw pointer, which must be freed manually when necessary.
+     * requirements of the schema, or the output is not defined. The record header
+     * region of the buffer will be zeroed, and should be initialized following
+     * the return of this function, if desired. This version returns a raw
+     * pointer, which must be freed manually when necessary.
      */
     byte *create_record_raw(const byte *key, const byte *val) {
         PageOffset total_length = this->record_length(); 
@@ -72,12 +74,31 @@ public:
     }
 
     /*
-     * Creates a new record according to this schema with the specified key and value. The
-     * lengths of the provided key and value must match the requirements of the schema, or
-     * the output is not defined. This version returns a unique_ptr.
+     * Creates a new record according to this schema with the specified key and
+     * value. The lengths of the provided key and value must match the
+     * requirements of the schema, or the output is not defined. The record
+     * header region of the buffer will be zeroed, and should be initialized
+     * following the return of this function, if desired. This version returns
+     * a unique_ptr.
      */
     std::unique_ptr<byte[]> create_record(const byte *key, const byte *val) {
         return std::unique_ptr<byte[]>(this->create_record_raw(key, val));
+    }
+
+    /*
+     * Creates a new record according to this schema with the specified key and
+     * value, stored at the location pointed to by dest. The lengths of the
+     * provided key and value must match the requirements of the schema, and
+     * the size of the allocated memory pointed to by dest must be sufficient
+     * to store a fully formatted record, or the results of this call are
+     * undefined. The key and val pointers cannot be overlapping with the
+     * dest region. The header region of the buffer will be zeroed and should
+     * be initialized following the return of this function.
+     */
+    void create_record_at(byte *dest, const byte *key, const byte *val) {
+        memset(dest, 0, this->header_length);
+        memcpy(dest + this->header_length, key, this->key_length);
+        memcpy(dest + this->header_length + MAXALIGN(this->key_length), val, this->value_length);
     }
 
     /*

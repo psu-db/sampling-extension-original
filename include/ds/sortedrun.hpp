@@ -75,6 +75,7 @@ private:
     mem::aligned_buffer data_array;
     global::g_state *state;
     size_t record_cnt;
+    size_t buffer_size;
 
     size_t tombstones;
     std::unique_ptr<util::TombstoneCache> tombstone_cache;
