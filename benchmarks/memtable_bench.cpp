@@ -5,6 +5,7 @@
 #include <chrono>
 
 #include "ds/unsorted_memtable.hpp"
+#include "ds/map_memtable.hpp"
 #include "util/benchutil.hpp"
 
 using std::byte;
@@ -112,14 +113,15 @@ void populate_test_vectors(size_t count, std::vector<int64_t> &keys_v, std::vect
 
 int main(int argc, char **argv) 
 {
-    if (argc < 4) {
-        fprintf(stderr, "bench <table_capacity> <record_count> <thread_count>\n");
+    if (argc < 5) {
+        fprintf(stderr, "bench <unsorted> <table_capacity> <record_count> <thread_count>\n");
         exit(EXIT_FAILURE);
     }
 
-    size_t capacity = atol(argv[1]);
-    size_t count = atol(argv[2]);
-    size_t threads = atol(argv[3]);
+    bool unsorted = atoi(argv[1]);
+    size_t capacity = atol(argv[2]);
+    size_t count = atol(argv[3]);
+    size_t threads = atol(argv[4]);
 
     std::vector<int64_t> key_v;
     std::vector<int64_t> val_v;
@@ -127,14 +129,20 @@ int main(int argc, char **argv)
     populate_test_vectors(count, key_v, val_v);
     auto state = bench::bench_state();
 
-    auto table = ds::UnsortedMemTable(capacity, state.get());
+    std::unique_ptr<ds::MemoryTable> table;
+
+    if (unsorted) {
+        table = std::make_unique<ds::UnsortedMemTable>(capacity, state.get());
+    } else {
+        table = std::make_unique<ds::MapMemTable>(capacity, state.get());
+    }
 
     auto start_insert = std::chrono::high_resolution_clock::now();
-    threaded_insert(&table, &key_v, &val_v, threads);
+    threaded_insert(table.get(), &key_v, &val_v, threads);
     auto stop_insert = std::chrono::high_resolution_clock::now();
 
     auto start_read = std::chrono::high_resolution_clock::now();
-    threaded_check_records(&table, &key_v, &val_v, state.get(), threads);
+    threaded_check_records(table.get(), &key_v, &val_v, state.get(), threads);
     auto stop_read = std::chrono::high_resolution_clock::now();
 
     size_t insert_time = std::chrono::duration_cast<std::chrono::nanoseconds>(stop_insert - start_insert).count();
