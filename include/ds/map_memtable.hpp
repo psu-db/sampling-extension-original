@@ -123,7 +123,7 @@ private:
     std::unique_ptr<SkipList> table;
     size_t tombstones;
 
-    util::TombstoneCache tombstone_cache;
+    std::unique_ptr<util::TombstoneCache> tombstone_cache;
 
     const byte *get_key(io::Record record);
     const byte *get_val(io::Record record);
@@ -132,8 +132,8 @@ private:
 
 class MapRecordIterator : public iter::GenericIterator<io::Record> {
 public:
-    MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state);
-    ~MapRecordIterator() override = default;
+    MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state, ds::MemoryTable *table);
+    ~MapRecordIterator() override;
     bool next() override;
     io::Record get_item() override;
     void end_scan() override;
@@ -154,6 +154,8 @@ private:
     size_t element_cnt;
     io::Record current_record;
     global::g_state *state;
+    MemoryTable *table;
+    bool unpinned;
 };
 
 }}

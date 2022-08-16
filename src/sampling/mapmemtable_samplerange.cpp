@@ -7,9 +7,11 @@
 namespace lsm { namespace sampling {
 
 MapMemTableSampleRange::MapMemTableSampleRange(
-    ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state)
+    ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state,
+    ds::MemoryTable *table)
 {
     this->state = state;
+    this->table = table;
 
     while (start != stop) {
         this->records.push_back(start->second);
@@ -19,6 +21,11 @@ MapMemTableSampleRange::MapMemTableSampleRange(
     if (start != end) {
         this->records.push_back(start->second);
     }
+}
+
+MapMemTableSampleRange::~MapMemTableSampleRange()
+{
+    this->table->thread_unpin();
 }
 
 io::Record MapMemTableSampleRange::get(FrameId *frid)

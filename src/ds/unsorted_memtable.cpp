@@ -18,7 +18,7 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool
     this->tombstones = 0;
 
     this->key_cmp = this->state->record_schema->get_key_cmp();
-    this->tombstone_cache = util::TombstoneCache(-1, state->record_schema.get());
+    this->tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get(), true);
 
     this->thread_pins = 0;
 
@@ -51,7 +51,7 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
     if (record.is_tombstone()) {
         tombstones++;
 
-        tombstone_cache.insert(key, value, time);
+        tombstone_cache->insert(key, value, time);
     }
 
     return 1;
@@ -106,7 +106,7 @@ bool UnsortedMemTable::is_full()
 
 bool UnsortedMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    return this->tombstone_cache.exists(key, val, time);
+    return this->tombstone_cache->exists(key, val, time);
 }
 
 
@@ -132,7 +132,7 @@ bool UnsortedMemTable::truncate()
 
     this->tombstones = 0;
 
-    this->tombstone_cache.truncate();
+    this->tombstone_cache->truncate();
 
     return true;
 }

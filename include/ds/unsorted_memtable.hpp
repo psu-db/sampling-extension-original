@@ -62,7 +62,7 @@ private:
     size_t record_cap;
 
     std::vector<io::Record> table;
-    util::TombstoneCache tombstone_cache;
+    std::unique_ptr<util::TombstoneCache> tombstone_cache;
     global::g_state *state;
 
     catalog::KeyCmpFunc key_cmp;

@@ -17,7 +17,7 @@ MapMemTable::MapMemTable(size_t capacity, global::g_state *state)
     sl_global_key_cmp = state->record_schema->get_key_cmp();
 
     this->table = std::make_unique<SkipList>();
-    this->tombstone_cache = util::TombstoneCache(-1, state->record_schema.get());
+    this->tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get(), true);
 }
 
 
@@ -61,7 +61,7 @@ int MapMemTable::insert_internal(io::Record record)
 
     if (res.second && tomb) {
         this->tombstones++;
-        this->tombstone_cache.insert(key, val, time);
+        this->tombstone_cache->insert(key, val, time);
     }
     
     return res.second;
@@ -122,19 +122,7 @@ io::Record MapMemTable::get(const byte *key, Timestamp time)
 
 bool MapMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    // FIXME: this is not fully functional just yet. Namely, we need to account
-    // still for scanning the full set of cached matches to get the newest
-    // timestamp associated with the tombstone, and then we need to do a lookup
-    // against the memory table to ensure that the newest tombstone isn't
-    // superseded by an active record. This shouldn't happen in any current
-    // benchmarks, so we'll do a simple point lookup for now.
-    //
-    // This would only crop up if we were to update a record, and then update
-    // it back to its original configuration prior to the memtable merging.
-    // Once the records are within the on-disk structure, the above situation
-    // should be automatically handled correctly.
-
-    return this->tombstone_cache.exists(key, val, time);
+    return this->tombstone_cache->exists(key, val, time);
 }
 
 
@@ -148,7 +136,7 @@ bool MapMemTable::truncate()
         delete[] rec.second;
     }
 
-    this->tombstone_cache.truncate();
+    this->tombstone_cache->truncate();
     this->table.reset();
     this->table = std::make_unique<SkipList>();
     this->tombstones = 0;
@@ -161,7 +149,8 @@ std::unique_ptr<iter::GenericIterator<io::Record>> MapMemTable::start_sorted_sca
 {
     auto start = this->table->begin();
     auto end = this->table->end();
-    return std::make_unique<MapRecordIterator>(std::move(start), std::move(end), this->get_record_count(), this->state);
+    this->thread_pin();
+    return std::make_unique<MapRecordIterator>(std::move(start), std::move(end), this->get_record_count(), this->state, this);
 }
 
 
@@ -180,7 +169,8 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range(byte *lower
         return nullptr;
     }
 
-    return std::make_unique<sampling::MapMemTableSampleRange>(std::move(start), std::move(stop), std::move(end), this->state);
+    this->thread_pin();
+    return std::make_unique<sampling::MapMemTableSampleRange>(std::move(start), std::move(stop), std::move(end), this->state, this);
 }
 
 
@@ -201,8 +191,10 @@ std::unique_ptr<sampling::SampleRange> MapMemTable::get_sample_range_bench(byte 
         return nullptr;
     }
 
+    this->thread_pin();
+
     auto iter_start = std::chrono::high_resolution_clock::now();
-    auto range = new sampling::MapMemTableSampleRange(std::move(start), std::move(stop), std::move(end), this->state);
+    auto range = new sampling::MapMemTableSampleRange(std::move(start), std::move(stop), std::move(end), this->state, this);
     auto iter_stop = std::chrono::high_resolution_clock::now();
 
     *bounds_time = std::chrono::duration_cast<std::chrono::nanoseconds>(bounds_stop - bounds_start).count();
@@ -224,7 +216,7 @@ size_t MapMemTable::tombstone_count()
 }
 
 
-MapRecordIterator::MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state)
+MapRecordIterator::MapRecordIterator(SkipList::iterator begin, SkipList::iterator end, size_t record_count, global::g_state *state, ds::MemoryTable *table)
     : iter(std::move(begin)), end(std::move(end))
 {
     this->at_end = (this->iter == this->end);
@@ -232,6 +224,16 @@ MapRecordIterator::MapRecordIterator(SkipList::iterator begin, SkipList::iterato
     this->state = state;
     this->current_record = io::Record();
     this->element_cnt = record_count;
+    this->table = table;
+    this->unpinned = false;
+}
+
+
+MapRecordIterator::~MapRecordIterator()
+{
+    if (!this->unpinned) {
+        this->table->thread_unpin();
+    }
 }
 
 
@@ -262,6 +264,8 @@ void MapRecordIterator::end_scan()
 {
     // this releases the block on any node pointed to by the iterator.
     this->iter = this->end;
+    this->table->thread_unpin();
+    this->unpinned = true;
 }
 
 

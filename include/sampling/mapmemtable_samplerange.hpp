@@ -10,12 +10,13 @@
 #include "sampling/samplerange.hpp"
 #include "util/global.hpp"
 #include "ds/skiplist_core.hpp"
+#include "ds/memtable.hpp"
 
 namespace lsm { namespace sampling {
 
 class MapMemTableSampleRange : public SampleRange {
 public:
-    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state);
+    MapMemTableSampleRange(ds::SkipList::iterator start, ds::SkipList::iterator stop, ds::SkipList::iterator end, global::g_state *state, ds::MemoryTable *table);
 
     /*
      * Randomly select and return a record from this sample range, pinning the
@@ -47,13 +48,14 @@ public:
     bool is_memtable() override;
     bool is_memory_resident() override;
 
-    ~MapMemTableSampleRange() {}
+    ~MapMemTableSampleRange() override;
 
 private:
     io::Record get_random_record();
 
     std::vector<byte *> records;
     global::g_state *state;
+    ds::MemoryTable *table;
 };
 
 }}

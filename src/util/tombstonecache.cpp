@@ -6,17 +6,25 @@
 
 namespace lsm { namespace util {
 
-TombstoneCache::TombstoneCache(ssize_t capacity, catalog::FixedKVSchema *schema) 
+TombstoneCache::TombstoneCache(ssize_t capacity, catalog::FixedKVSchema *schema, bool locking) 
 {
     this->capacity = capacity;
     this->cmp = {schema->get_key_cmp(), schema->get_val_cmp()};
     this->table =  std::multimap<TombstoneKey, Timestamp, TombstoneCmp>(this->cmp);
+    this->locking = locking;
 }
 
 
 void TombstoneCache::insert(const byte *key, const byte *value, Timestamp time) 
 {
-    this->table.insert({{key, value}, time});
+    if (this->locking) {
+        this->mut.lock();
+        this->table.insert({{key, value}, time});
+        this->mut.unlock();
+    } else {
+        this->table.insert({{key, value}, time});
+    }
+
 }
 
 
@@ -45,7 +53,13 @@ bool TombstoneCache::exists(const byte *key, const byte *value, Timestamp time)
 
 void TombstoneCache::truncate()
 {
-    this->table.clear();
+    if (this->locking) {
+        this->mut.lock();
+        this->table.clear();
+        this->mut.unlock();
+    } else {
+        this->table.clear();
+    }
 }
 
 }}

@@ -6,6 +6,7 @@
 #define H_TOMBSTONE_CACHE
 
 #include <map>
+#include <mutex>
 
 #include "util/base.hpp"
 #include "util/types.hpp"
@@ -37,7 +38,7 @@ struct TombstoneCmp {
 class TombstoneCache {
 public:
     TombstoneCache() = default;
-    TombstoneCache(ssize_t capacity, catalog::FixedKVSchema *schema);
+    TombstoneCache(ssize_t capacity, catalog::FixedKVSchema *schema, bool locking=false);
 
     void insert(const byte *key, const byte *val, Timestamp time);
     void truncate();
@@ -47,6 +48,9 @@ public:
 private:
     ssize_t capacity;
     TombstoneCmp cmp;
+    bool locking;
+    std::mutex mut;
+
     std::multimap<TombstoneKey, Timestamp, TombstoneCmp> table;
 };
 
