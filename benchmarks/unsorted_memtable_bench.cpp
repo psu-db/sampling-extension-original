@@ -143,8 +143,8 @@ int main(int argc, char **argv)
     double insert_tput = (double) count / (double) insert_time * 1e9;
     double read_tput = (double) count / (double) read_time * 1e9;
 
-    fprintf(stderr, "Capacity, Count, Insert Tput (rec/s), Read Tput(rec/s)\n");
-    fprintf(stdout, "%ld\t%ld\t%.0lf\t%.0lf\n", capacity, count, insert_tput, read_tput);
+    fprintf(stderr, "Capacity, Count, Threads, Insert Tput (rec/s), Read Tput(rec/s)\n");
+    fprintf(stdout, "%ld\t%ld\t%ld\t%.0lf\t%.0lf\n", capacity, count, threads, insert_tput, read_tput);
 
     exit(EXIT_SUCCESS);
 }
