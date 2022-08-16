@@ -6,7 +6,7 @@
 #define H_UNSORTEDMEMTABLE
 
 #include <atomic>
-
+#include <semaphore>
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "util/iterator.hpp"
@@ -37,7 +37,7 @@ public:
     /*
      * Attempts to retrieve a record with a given key, value, and timestamp
      * from the memtable. Returns the record on success. Returns in invalid
-     * record on failure. This can fail because the desired key-timestamp pair
+     * record on failure. This can fail because  17568548the desired key-timestamp pair
      * does not appear within the memtable.
      */
     bool has_tombstone(const byte *key, const byte *val, Timestamp time=0) override;
@@ -46,6 +46,18 @@ public:
     size_t get_capacity() override;
     bool is_full() override;
 
+    /*
+     * Erase all records within the table and reset it to an empty state. If
+     * any active thread pins are held on the memtable, it will fail and return
+     * false. Otherwise, it will return true.
+     *
+     * NOTE: No additional synchronization is performed. It is the caller's
+     * responsibility to ensure that no additional threads claim a pin, or
+     * attempt to perform any operation, on the table during truncation. This
+     * should not be a problem for normal LSM Tree operation, as the
+     * truncations will only occur when the table is full (avoiding
+     * insertions).
+     */
     bool truncate() override;
 
     std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) override;
@@ -58,7 +70,6 @@ public:
 private:
     mem::aligned_buffer data_array;
     size_t buffer_size;
-    size_t record_cnt;
     size_t record_cap;
 
     std::vector<io::Record> table;
@@ -66,14 +77,14 @@ private:
     global::g_state *state;
 
     catalog::KeyCmpFunc key_cmp;
-
     bool rejection_sampling;
 
-    size_t tombstones;
+    std::atomic<size_t> tombstones;
 
     std::atomic<size_t> current_tail;
     ssize_t find_record(const byte* key, Timestamp time);
     ssize_t get_index();
+    void finalize_insertion(size_t idx, io::Record record);
 };
 
 

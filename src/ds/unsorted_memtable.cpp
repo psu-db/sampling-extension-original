@@ -11,7 +11,7 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool
     this->buffer_size = capacity * state->record_schema->record_length();
     this->data_array = mem::create_aligned_buffer(buffer_size);
 
-    this->table = std::vector<io::Record>(capacity);
+    this->table = std::vector<io::Record>(capacity, io::Record());
 
     this->state = state;
     this->current_tail = 0;
@@ -46,13 +46,12 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
 
     auto record = io::Record(rec_ptr, this->state->record_schema->record_length(), time, tombstone);
 
-    this->table[idx] = record;
-
     if (record.is_tombstone()) {
-        tombstones++;
-
+        tombstones.fetch_add(1);
         tombstone_cache->insert(key, value, time);
     }
+
+    this->finalize_insertion(idx, record);
 
     return 1;
 }
@@ -68,21 +67,21 @@ io::Record UnsortedMemTable::get(const byte *key, Timestamp time)
 {
     auto idx = this->find_record(key, time);
 
-    if (idx >= 0) {
-        return this->table[idx];
+    if (idx == -1) {
+        return io::Record();
     }
 
-    return io::Record();
+    return this->table[idx];
 }
 
 
 io::Record UnsortedMemTable::get(size_t idx) 
 {
-    if (idx <= this->table.size()){
-        return this->table[idx];
+    if (idx >= this->table.size()){
+        return io::Record();
     }
 
-    return io::Record();
+    return this->table[idx];
 }
 
 
@@ -116,20 +115,14 @@ bool UnsortedMemTable::truncate()
         return false;
     }
 
-    // FIXME: This could have some synchronization problems when we
-    // implement concurrency, if we end up trying a concurrent version
-    // of this memtable implementation.
+    // We need to re-zero the record vector to ensure that sampling during the
+    // gap between an insert obtaining an index, and finalizing the insert,
+    // doesn't return an old record. This ensures that, should this occur, the
+    // resulting record will be tagged as invalid and skipped until insert
+    // finalization.
+    this->table = std::vector<io::Record>(this->record_cap, io::Record());
     
-    ssize_t upper_bound = this->get_record_count() - 1;
-
-    // the table is empty, nothing to do
-    if (upper_bound == -1) {
-        return true;
-    }
-
-    // reset the tail index
     this->current_tail = 0;
-
     this->tombstones = 0;
 
     this->tombstone_cache->truncate();
@@ -197,6 +190,12 @@ ssize_t UnsortedMemTable::get_index()
 }
 
 
+void UnsortedMemTable::finalize_insertion(size_t idx, io::Record record)
+{
+    this->table[idx] = record;
+}
+
+
 UnsortedRecordIterator::UnsortedRecordIterator(UnsortedMemTable *table, global::g_state *state)
 {
     this->cmp.rec_cmp = state->record_schema->get_record_cmp();
@@ -214,7 +213,7 @@ UnsortedRecordIterator::UnsortedRecordIterator(UnsortedMemTable *table, global::
 
 bool UnsortedRecordIterator::next()
 {
-    while ((size_t) ++this->current_index < this->element_count()) {
+    while ((size_t) ++this->current_index < this->element_count() && this->get_item().is_valid()) {
         return true;
     }
 

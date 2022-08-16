@@ -15,11 +15,12 @@ UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>
     for (auto iter=begin; iter<end; iter++) {
         io::Record rec = *iter;
         auto key = state->record_schema->get_key(rec.get_data()).Bytes();
-        if (key_cmp(key, lower_key) >= 0 && key_cmp(key, upper_key) <= 0) {
+        if (rec.is_valid() && key_cmp(key, lower_key) >= 0 && key_cmp(key, upper_key) <= 0) {
             this->records.push_back(rec.get_data());
         }
     }
 }
+
 
 UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(ds::SkipList::iterator begin, ds::SkipList::iterator end,
                                                          const byte *lower_key, const byte *upper_key, global::g_state *state, ds::MemoryTable *table)
