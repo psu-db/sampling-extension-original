@@ -142,61 +142,55 @@ void thread_get_records(ds::MemoryTable *table, std::vector<int64_t> *keys, std:
 }
 
 
-void threaded_insert(ds::MemoryTable *table, std::vector<int64_t> *keys_v, std::vector<int64_t> *vals_v)
+void threaded_insert(ds::MemoryTable *table, std::vector<int64_t> *keys_v, std::vector<int64_t> *vals_v, size_t threads=4)
 {
     size_t count = keys_v->size();
-    size_t threads = 4;
     size_t per_thread = count / threads;
 
+    std::vector<std::thread> workers;
     size_t start = 0;
     size_t stop = start + per_thread;
-    std::thread first (thread_insert_records, table, keys_v, vals_v, start, stop);
+    for (size_t i=0; i<threads; i++) {
+        if (i == threads - 1) {
+            stop = keys_v->size() - 1;
+        }
 
-    start = stop + 1;
-    stop += per_thread;
-    std::thread second (thread_insert_records, table, keys_v, vals_v, start, stop);
+        workers.push_back(std::thread(thread_insert_records, table, keys_v, vals_v, start, stop));
+        start = stop + 1;
+        stop = start + per_thread;
+    }
 
-    start = stop + 1;
-    stop += per_thread;
-    std::thread third (thread_insert_records, table, keys_v, vals_v, start, stop);
-
-    start = stop + 1;
-    stop = count - 1;
-    std::thread fourth (thread_insert_records, table, keys_v, vals_v, start, stop);
-
-    first.join();
-    second.join();
-    third.join();
-    fourth.join();
+    for (size_t i=0; i<threads; i++) {
+        if (workers[i].joinable()) {
+            workers[i].join();
+        }
+    }
 }
 
 
-void threaded_check_records(ds::MemoryTable *table, std::vector<int64_t> *keys_v, std::vector<int64_t> *vals_v, global::g_state *state)
+void threaded_check_records(ds::MemoryTable *table, std::vector<int64_t> *keys_v, std::vector<int64_t> *vals_v, global::g_state *state, size_t threads=4)
 {
     size_t count = keys_v->size();
-    size_t threads = 4;
     size_t per_thread = count / threads;
 
+    std::vector<std::thread> workers;
     size_t start = 0;
     size_t stop = start + per_thread;
-    std::thread get_first (thread_get_records, table, keys_v, vals_v, start, stop, state);
+    for (size_t i=0; i<threads; i++) {
+        if (i == threads - 1) {
+            stop = keys_v->size() - 1;
+        }
 
-    start = stop + 1;
-    stop = start + per_thread;
-    std::thread get_second (thread_get_records, table, keys_v, vals_v, start, stop, state);
+        workers.push_back(std::thread(thread_get_records, table, keys_v, vals_v, start, stop, state));
+        start = stop + 1;
+        stop = start + per_thread;
+    }
 
-    start = stop + 1;
-    stop = start + per_thread;
-    std::thread get_third (thread_get_records, table, keys_v, vals_v, start, stop, state);
-
-    start = stop + 1;
-    stop = count - 1;
-    std::thread get_fourth (thread_get_records, table, keys_v, vals_v, start, stop, state);
-
-    get_first.join();
-    get_second.join();
-    get_third.join();
-    get_fourth.join();
+    for (size_t i=0; i<threads; i++) {
+        if (workers[i].joinable()) {
+            workers[i].join();
+        }
+    }
 }
 
 
@@ -222,7 +216,7 @@ void populate_test_vectors(size_t count, std::vector<int64_t> &keys_v, std::vect
 
 START_TEST(t_insert_threaded)
 {
-    size_t capacity = 1000;
+    size_t capacity = 100000;
     size_t count = capacity * 0.9;
 
     auto state = testing::make_state1();
@@ -233,12 +227,12 @@ START_TEST(t_insert_threaded)
 
     populate_test_vectors(count, keys_v, vals_v);
 
-    threaded_insert(&table, &keys_v, &vals_v);
+    threaded_insert(&table, &keys_v, &vals_v, 25);
 
     ck_assert_int_eq(table.is_full(), 0);
     ck_assert_int_eq(table.get_record_count(), count);
 
-    threaded_check_records(&table, &keys_v, &vals_v, state.get());
+    threaded_check_records(&table, &keys_v, &vals_v, state.get(), 25);
 }
 END_TEST
 
@@ -434,7 +428,7 @@ Suite *unit_testing()
     tcase_add_test(insert, t_insert_to_full);
     tcase_add_test(insert, t_insert_threaded);
 
-    tcase_set_timeout(insert, 100);
+    tcase_set_timeout(insert, 1000);
 
     suite_add_tcase(unit, insert);
 
