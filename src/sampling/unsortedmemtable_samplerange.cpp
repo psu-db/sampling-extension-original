@@ -7,9 +7,10 @@
 namespace lsm { namespace sampling {
 
 UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>::const_iterator begin, std::vector<io::Record>::const_iterator end,
-                                                         const byte *lower_key, const byte *upper_key, global::g_state *state)
+                                                         const byte *lower_key, const byte *upper_key, global::g_state *state, ds::MemoryTable *table)
 {
     this->state = state;
+    this->table = table;
     auto key_cmp = state->record_schema->get_key_cmp();
     for (auto iter=begin; iter<end; iter++) {
         io::Record rec = *iter;
@@ -21,9 +22,10 @@ UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>
 }
 
 UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(ds::SkipList::iterator begin, ds::SkipList::iterator end,
-                                                         const byte *lower_key, const byte *upper_key, global::g_state *state)
+                                                         const byte *lower_key, const byte *upper_key, global::g_state *state, ds::MemoryTable *table)
 {
     this->state = state;
+    this->table = table;
     auto key_cmp = state->record_schema->get_key_cmp();
     for (auto iter=std::move(begin); iter!=end; ++iter) {
         io::Record rec = {iter->second, state->record_schema->record_length()};
@@ -94,6 +96,13 @@ bool UnsortedMemTableSampleRange::is_memtable()
 bool UnsortedMemTableSampleRange::is_memory_resident()
 {
     return true;
+}
+
+UnsortedMemTableSampleRange::~UnsortedMemTableSampleRange()
+{
+    if (this->table) {
+        this->table->thread_unpin();
+    }
 }
 
 

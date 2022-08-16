@@ -19,6 +19,8 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state) : da
 
     this->key_cmp = this->state->record_schema->get_key_cmp();
     this->tombstone_cache = util::TombstoneCache(-1, state->record_schema.get());
+
+    this->thread_pins = 0;
 }
 
 
@@ -89,13 +91,19 @@ bool UnsortedMemTable::is_full()
     return this->get_record_count() == this->get_capacity();
 }
 
+
 bool UnsortedMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
     return this->tombstone_cache.exists(key, val, time);
 }
 
-void UnsortedMemTable::truncate()
+
+bool UnsortedMemTable::truncate()
 {
+    if (this->thread_pins > 0) {
+        return false;
+    }
+
     // FIXME: This could have some synchronization problems when we
     // implement concurrency, if we end up trying a concurrent version
     // of this memtable implementation.
@@ -104,7 +112,7 @@ void UnsortedMemTable::truncate()
 
     // the table is empty, nothing to do
     if (upper_bound == -1) {
-        return;
+        return true;
     }
 
     // reset the tail index
@@ -113,17 +121,21 @@ void UnsortedMemTable::truncate()
     this->tombstones = 0;
 
     this->tombstone_cache.truncate();
+
+    return true;
 }
 
 
 std::unique_ptr<sampling::SampleRange> UnsortedMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
-    return std::make_unique<sampling::UnsortedMemTableSampleRange>(this->table.begin(), this->table.begin() + this->get_record_count(), lower_key, upper_key, this->state);
+    this->thread_pin();
+    return std::make_unique<sampling::UnsortedMemTableSampleRange>(this->table.begin(), this->table.begin() + this->get_record_count(), lower_key, upper_key, this->state, this);
 }
 
 
 std::unique_ptr<iter::GenericIterator<io::Record>> UnsortedMemTable::start_sorted_scan()
 {
+    this->thread_pin();
     return std::make_unique<UnsortedRecordIterator>(this, this->state);
 }
 
@@ -170,13 +182,16 @@ ssize_t UnsortedMemTable::get_index()
 }
 
 
-UnsortedRecordIterator::UnsortedRecordIterator(const UnsortedMemTable *table, global::g_state *state)
+UnsortedRecordIterator::UnsortedRecordIterator(UnsortedMemTable *table, global::g_state *state)
 {
     this->cmp.rec_cmp = state->record_schema->get_record_cmp();
     
     // Copy the records into the iterator and sort them
     this->sorted_records = table->table;
     std::sort(sorted_records.begin(), sorted_records.end(), this->cmp);
+
+    this->table = table;
+    this->unpinned = false;
 
     this->current_index = -1;
 }
@@ -200,8 +215,15 @@ io::Record UnsortedRecordIterator::get_item()
 
 void UnsortedRecordIterator::end_scan()
 {
-    return;
+    this->table->thread_unpin();
+    this->unpinned = true;
 }
 
+UnsortedRecordIterator::~UnsortedRecordIterator()
+{
+    if (!this->unpinned) {
+        this->table->thread_unpin();
+    }
+}
 
 }}

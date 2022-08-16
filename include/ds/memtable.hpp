@@ -5,6 +5,8 @@
 #ifndef H_MEMTABLE
 #define H_MEMTABLE
 
+#include <atomic>
+
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "util/iterator.hpp"
@@ -27,15 +29,24 @@ public:
     virtual size_t get_capacity() = 0;
     virtual bool is_full() = 0;
 
-    virtual void truncate() = 0;
+    virtual bool truncate() = 0;
 
     virtual std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) = 0;
     virtual std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() = 0;
 
+    virtual void thread_pin() {
+        this->thread_pins.fetch_add(1);
+    }
+
+    virtual void thread_unpin() {
+        this->thread_pins.fetch_add(-1);
+    }
+
     virtual ~MemoryTable() = default;
 
     virtual size_t tombstone_count() = 0;
-private:
+protected:
+    std::atomic<size_t> thread_pins = 0;
 };
 
 }}

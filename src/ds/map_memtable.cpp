@@ -138,8 +138,12 @@ bool MapMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time
 }
 
 
-void MapMemTable::truncate()
+bool MapMemTable::truncate()
 {
+    if (this->thread_pins > 0) {
+        return false;
+    }
+
     for (auto rec : *this->table) {
         delete[] rec.second;
     }
@@ -148,6 +152,8 @@ void MapMemTable::truncate()
     this->table.reset();
     this->table = std::make_unique<SkipList>();
     this->tombstones = 0;
+
+    return true;
 }
 
 

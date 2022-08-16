@@ -43,7 +43,7 @@ public:
     size_t get_capacity() override;
     bool is_full() override;
 
-    void truncate() override;
+    bool truncate() override;
 
     std::unique_ptr<sampling::SampleRange> get_sample_range(byte *lower_key, byte *upper_key) override;
     std::unique_ptr<iter::GenericIterator<io::Record>> start_sorted_scan() override;
@@ -74,8 +74,8 @@ private:
 
 class UnsortedRecordIterator : public iter::GenericIterator<io::Record> {
 public:
-    UnsortedRecordIterator(const UnsortedMemTable *table, global::g_state *state);
-    ~UnsortedRecordIterator() override = default;
+    UnsortedRecordIterator(UnsortedMemTable *table, global::g_state *state);
+    ~UnsortedRecordIterator() override;
     bool next() override;
     io::Record get_item() override;
     void end_scan() override;
@@ -96,6 +96,8 @@ private:
         }
     };
 
+    UnsortedMemTable *table;
+    bool unpinned;
     std::vector<io::Record> sorted_records;
     ssize_t current_index;
     global::g_state *state;

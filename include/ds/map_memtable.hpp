@@ -87,7 +87,7 @@ public:
      * Deletes all records from the memtable, and frees their associated
      * memory, leaving the memtable empty.
      */
-    void truncate() override;
+    bool truncate() override;
 
     /*
      * Create a sample range object over the memtable for use in drawing
