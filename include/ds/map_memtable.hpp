@@ -61,6 +61,13 @@ public:
     io::Record get(const byte *key, Timestamp time=0) override;
 
     /*
+     * Get record by index.
+     *
+     * Not supported by this datatype. Will always return an invalid record.
+     */
+    io::Record get(size_t /*idx*/) override { return io::Record(); }
+
+    /*
      * Attempts to retrieve a record with a given key, value, and timestamp
      * from the memtable. Returns the record on success. Returns in invalid
      * record on failure. This can fail because the desired key-timestamp pair

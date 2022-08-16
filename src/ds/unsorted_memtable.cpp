@@ -6,7 +6,7 @@
 
 namespace lsm { namespace ds {
 
-UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state) : data_array(nullptr, free)
+UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling) : data_array(nullptr, free)
 {
     this->buffer_size = capacity * state->record_schema->record_length();
     this->data_array = mem::create_aligned_buffer(buffer_size);
@@ -21,6 +21,8 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state) : da
     this->tombstone_cache = util::TombstoneCache(-1, state->record_schema.get());
 
     this->thread_pins = 0;
+
+    this->rejection_sampling = rejection_sampling;
 }
 
 
@@ -67,6 +69,16 @@ io::Record UnsortedMemTable::get(const byte *key, Timestamp time)
     auto idx = this->find_record(key, time);
 
     if (idx >= 0) {
+        return this->table[idx];
+    }
+
+    return io::Record();
+}
+
+
+io::Record UnsortedMemTable::get(size_t idx) 
+{
+    if (idx <= this->table.size()){
         return this->table[idx];
     }
 
@@ -129,6 +141,9 @@ bool UnsortedMemTable::truncate()
 std::unique_ptr<sampling::SampleRange> UnsortedMemTable::get_sample_range(byte *lower_key, byte *upper_key)
 {
     this->thread_pin();
+    if (this->rejection_sampling) {
+        return std::make_unique<sampling::UnsortedRejectionSampleRange>(this->get_record_count() - 1, lower_key, upper_key, this->state, this);
+    } 
     return std::make_unique<sampling::UnsortedMemTableSampleRange>(this->table.begin(), this->table.begin() + this->get_record_count(), lower_key, upper_key, this->state, this);
 }
 

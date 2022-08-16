@@ -14,11 +14,12 @@ std::unique_ptr<LSMTree> LSMTree::create(size_t memtable_capacity,
                                          bool bloom_filters, bool range_filters, 
                                          double max_deleted_proportion,
                                          bool unsorted_memtable,
-                                         size_t in_mem_levels) 
+                                         size_t in_mem_levels,
+                                         bool rejection_memtable) 
 {
     auto lsm = new LSMTree(memtable_capacity, scale_factor, std::move(state),
                            policy, bloom_filters, range_filters, max_deleted_proportion, 
-                           unsorted_memtable, in_mem_levels);
+                           unsorted_memtable, rejection_memtable, in_mem_levels);
 
     return std::unique_ptr<LSMTree>(lsm);
 }
@@ -29,6 +30,7 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
                  bool bloom_filters, bool range_filters, 
                  double max_deleted_proportion,
                  bool unsorted_memtable,
+                 bool rejection_memtable,
                  size_t in_mem_levels)
 {
     this->rec_count = 0;
@@ -43,7 +45,7 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
     this->range_filters = range_filters;
 
     if (unsorted_memtable) {
-        this->memtable = std::make_unique<ds::UnsortedMemTable>(memtable_capacity, this->state.get());
+        this->memtable = std::make_unique<ds::UnsortedMemTable>(memtable_capacity, this->state.get(), rejection_memtable);
     } else {
         this->memtable = std::make_unique<ds::MapMemTable>(memtable_capacity, this->state.get());
     }

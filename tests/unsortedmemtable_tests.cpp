@@ -216,7 +216,7 @@ void populate_test_vectors(size_t count, std::vector<int64_t> &keys_v, std::vect
 
 START_TEST(t_insert_threaded)
 {
-    size_t capacity = 100000;
+    size_t capacity = 1000;
     size_t count = capacity * 0.9;
 
     auto state = testing::make_state1();
@@ -227,7 +227,7 @@ START_TEST(t_insert_threaded)
 
     populate_test_vectors(count, keys_v, vals_v);
 
-    threaded_insert(&table, &keys_v, &vals_v, 25);
+    threaded_insert(&table, &keys_v, &vals_v, 4);
 
     ck_assert_int_eq(table.is_full(), 0);
     ck_assert_int_eq(table.get_record_count(), count);
@@ -414,6 +414,45 @@ START_TEST(t_sample_range)
 END_TEST
 
 
+START_TEST(t_rejection_sample_range)
+{
+    size_t capacity = 500;
+
+    auto state = testing::make_state1();
+    auto table = ds::UnsortedMemTable(capacity, state.get(), true);
+
+    int64_t test_val = 0;
+    int64_t test_key = 0;
+    for (size_t i=0; i<capacity; i++) {
+        table.insert((byte*) &test_key, (byte *) &test_val);
+        test_val++;
+        test_key++;
+    }
+
+    int64_t start_key = 51;
+    int64_t stop_key = 150;
+
+    FrameId frid;
+
+    auto range = table.get_sample_range((byte*) &start_key, (byte*) &stop_key);
+    ck_assert_ptr_nonnull(range.get());
+    ck_assert_int_eq(range->length(), capacity);
+
+    size_t sampled_records = 0;
+    while (sampled_records < 1000) {
+        auto rec = range->get(&frid);
+        if (rec.is_valid()) {
+            auto range_key = state->record_schema->get_key(rec.get_data()).Int64();
+            sampled_records++;
+            ck_assert_int_ge(range_key, start_key);
+            ck_assert_int_le(range_key, stop_key);
+            ck_assert_int_eq(frid, INVALID_FRID);
+        }
+    }
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("UnsortedMemTable Unit Testing");
@@ -448,6 +487,7 @@ Suite *unit_testing()
 
     TCase *sampling = tcase_create("lsm::sampling::UnsortedMemTable::create_sample_range Testing");
     tcase_add_test(sampling, t_sample_range);
+    tcase_add_test(sampling, t_rejection_sample_range);
 
     suite_add_tcase(unit, sampling);
 

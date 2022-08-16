@@ -40,7 +40,8 @@ public:
                                        bool bloom_filters=false, bool range_filters=false, 
                                        double max_deleted_proportion=1.0,
                                        bool unsorted_memtable=false,
-                                       size_t in_mem_levels=0);
+                                       size_t in_mem_levels=0,
+                                       bool rejection_memtable=false);
 
     /*
      * Open an already existing LSMTree index from disk and return
@@ -164,6 +165,7 @@ private:
            bool bloom_filters=false, bool range_filters=false, 
            double max_deleted_proportion=1.0,
            bool unsorted_memtable=false,
+           bool rejection_memtable=false,
            size_t in_mem_levels=0);
 
     void merge_memtable();

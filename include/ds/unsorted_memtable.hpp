@@ -12,6 +12,7 @@
 #include "util/iterator.hpp"
 #include "io/record.hpp"
 #include "sampling/unsortedmemtable_samplerange.hpp"
+#include "sampling/unsortedrejection_samplerange.hpp"
 #include "ds/memtable.hpp"
 #include "util/global.hpp"
 #include "util/tombstonecache.hpp"
@@ -23,13 +24,15 @@ class UnsortedRecordIterator;
 
 class UnsortedMemTable : public MemoryTable {
     friend class UnsortedRecordIterator;
+    friend class UnsortedRejectionSampleRange;
 
 public:
-    UnsortedMemTable(size_t capacity, global::g_state *state);
+    UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling=false);
 
     int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) override;
     int remove(byte *key, byte *value, Timestamp time=0) override;
     io::Record get(const byte *key, Timestamp time=0) override;
+    io::Record get(size_t idx) override;
 
     /*
      * Attempts to retrieve a record with a given key, value, and timestamp
@@ -63,6 +66,8 @@ private:
     global::g_state *state;
 
     catalog::KeyCmpFunc key_cmp;
+
+    bool rejection_sampling;
 
     size_t tombstones;
 
