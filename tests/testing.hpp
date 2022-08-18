@@ -124,7 +124,7 @@ io::FixedlenDataPage populated_test_page(byte *buffer)
     io::FixedlenDataPage::initialize(buffer, schema.record_length(), 256);
     auto page = io::FixedlenDataPage(buffer);
 
-    for (size_t i=0; i<100; i++) {
+    for (size_t i=0; i<50; i++) {
         size_t val = i+3;
         auto recbuf = schema.create_record((byte *) &i, (byte *) &val);
         auto rec = io::Record(recbuf.get(), schema.record_length());

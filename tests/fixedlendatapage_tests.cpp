@@ -35,7 +35,7 @@ START_TEST(t_insert)
     auto page = testing::empty_test_page(buf.get(), field_len, field_len);
     auto schema = testing::test_schema1(sizeof(int64_t));
 
-    for (size_t i=0; i<100; i++) {
+    for (size_t i=0; i<50; i++) {
         size_t val = i+3;
         auto recbuf = schema->create_record((byte*) &i, (byte*) &val);
         auto rec = io::Record(recbuf.get(), schema->record_length());
@@ -44,9 +44,9 @@ START_TEST(t_insert)
         ck_assert_int_eq(page.get_max_sid(), i+1);
     }
 
-    ck_assert_int_eq(page.get_record_count(), 100);
+    ck_assert_int_eq(page.get_record_count(), 50);
 
-    for (size_t i=0; i<100; i++) {
+    for (size_t i=0; i<50; i++) {
         PageOffset record_offset = i*schema->record_length();
         auto rec = io::Record(page.get_page_data() + record_offset, schema->record_length());
         ck_assert_int_eq(schema->get_key(rec.get_data()).Int64(), i);
@@ -64,14 +64,14 @@ START_TEST(t_get_record)
 
     auto schema = testing::test_schema1(sizeof(int16_t));
 
-    for (size_t i=0; i<100; i++) {
+    for (size_t i=0; i<50; i++) {
         PageOffset record_offset = i*schema->record_length();
         auto rec = io::Record(page.get_page_data() + record_offset, schema->record_length());
         ck_assert_int_eq(schema->get_key(rec.get_data()).Int64(), i);
         ck_assert_int_eq(schema->get_val(rec.get_data()).Int16(), i + 3);
     }
 
-    for (size_t i=1; i<=100; i++) {
+    for (size_t i=1; i<=50; i++) {
         auto rec = page.get_record(i);
         ck_assert(rec.is_valid());
         ck_assert_int_eq(schema->get_key(rec.get_data()).Int64(), i - 1);
@@ -79,7 +79,7 @@ START_TEST(t_get_record)
         ck_assert_int_eq(page.is_occupied(i), 1);
     }
 
-    for (size_t i=101; i<= page.get_record_capacity(); i++) {
+    for (size_t i=51; i<= page.get_record_capacity(); i++) {
         ck_assert_int_eq(page.is_occupied(i), 0);
     }
 

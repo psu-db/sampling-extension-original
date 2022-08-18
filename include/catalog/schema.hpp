@@ -107,7 +107,7 @@ public:
      * store a record of this schema.
      */
     PageOffset record_length() {
-        return this->header_length + MAXALIGN(this->key_length) + MAXALIGN(this->value_length);
+        return CACHELINEALIGN(this->header_length + MAXALIGN(this->key_length) + MAXALIGN(this->value_length));
     }
 
     /*
