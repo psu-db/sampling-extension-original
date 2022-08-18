@@ -85,6 +85,8 @@ private:
     alignas(64) std::atomic<size_t> tombstones;
     alignas(64) std::atomic<size_t> current_tail;
 
+    alignas(64) size_t unsafe_tail;
+
     ssize_t find_record(const byte* key, const byte* val, Timestamp time);
     ssize_t get_index();
     void finalize_insertion(size_t idx, io::Record record);
