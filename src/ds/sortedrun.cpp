@@ -6,13 +6,13 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<SortedRun> SortedRun::create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, global::g_state *state, size_t tombstone_count)
+std::unique_ptr<SortedRun> SortedRun::create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, size_t tombstone_count, global::g_state *state, double bloom_fpr)
 {
     size_t buffer_size = record_cnt * state->record_schema->record_length();
     auto buffer = mem::create_aligned_buffer(buffer_size);
 
-    auto tombstone_cache = SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, state);
-    return std::make_unique<SortedRun>(std::move(buffer), record_cnt, state, tombstone_count, std::move(tombstone_cache));
+    auto tombstone_filter = SortedRun::initialize(buffer.get(), std::move(iter), record_cnt, tombstone_count, state);
+    return std::make_unique<SortedRun>(std::move(buffer), record_cnt, state, tombstone_count, std::move(tombstone_filter));
 }
 
 
@@ -22,15 +22,19 @@ SortedRun::SortedRun(io::PagedFile* /* pfile */ , global::g_state *state)
     this->state = state;
     this->tombstones = 0;
     this->record_cnt = 0;
-    this->tombstone_cache = nullptr;
+    this->tombstone_filter = nullptr;
 }
 
 
-std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, global::g_state *state)
+std::unique_ptr<ds::BloomFilter> SortedRun::initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, size_t record_count, size_t tombstone_count, global::g_state *state, double filter_fpr)
 {
     size_t offset = 0;
     size_t idx = 0;
-    std::unique_ptr<util::TombstoneCache> tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get());
+
+    std::unique_ptr<ds::BloomFilter> tombstone_filter = nullptr;
+    if (filter_fpr < 1.0) {
+        tombstone_filter = ds::BloomFilter::create_volatile(filter_fpr, tombstone_count, state->record_schema->key_len(), 8, state);
+    } 
 
     while (idx < record_count && record_iter->next()) {
         auto rec = record_iter->get_item();
@@ -45,24 +49,26 @@ std::unique_ptr<util::TombstoneCache> SortedRun::initialize(byte *buffer, std::u
             auto val = state->record_schema->get_val(new_record.get_data()).Bytes();
             auto time = new_record.get_timestamp();
 
-            tombstone_cache->insert(key, val, time);
+            if (tombstone_filter) {
+                tombstone_filter->insert(key);
+            }
         }
 
         offset += rec.get_length();
         idx++;
     }
 
-    return tombstone_cache;
+    return tombstone_filter;
 }
 
 
-SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<util::TombstoneCache> tombstone_cache) 
+SortedRun::SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<ds::BloomFilter> tombstone_filter) 
                 : data_array(std::move(data_array))
 {
     this->record_cnt = record_count;
     this->state = state;
     this->tombstones = tombstone_count;
-    this->tombstone_cache = std::move(tombstone_cache);
+    this->tombstone_filter = std::move(tombstone_filter);
     this->buffer_size = record_cnt * state->record_schema->record_length();
 }
 
@@ -170,15 +176,11 @@ io::Record SortedRun::get(const byte *key, Timestamp time)
 
 io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    if (this->tombstones == 0) {
-        return io::Record();
-    }
-
-    if (this->tombstone_cache) {
-        if (!this->tombstone_cache->exists(key, val, time)) {
+    if (this->tombstone_filter) {
+        if (!this->tombstone_filter->lookup(key)) {
             return io::Record();
         }
-    }
+    } 
 
     auto key_cmp = this->state->record_schema->get_key_cmp();
     auto val_cmp = this->state->record_schema->get_val_cmp();
@@ -214,10 +216,13 @@ io::Record SortedRun::get_tombstone(const byte *key, const byte *val, Timestamp 
 
 size_t SortedRun::memory_utilization()
 {
-    // TODO: Proper size calculation for the tombstone cache--may require a custom
-    // map implementation (which I'll likely want to do for concurrency reasons
-    // anyway)
-    return this->buffer_size + 32 * tombstones;
+    size_t total_size = this->buffer_size;
+
+    if (this->tombstone_filter) {
+        total_size += this->tombstone_filter->memory_utilization();
+    }
+
+    return total_size;
 }
 
 

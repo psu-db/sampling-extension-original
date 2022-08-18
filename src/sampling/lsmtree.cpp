@@ -47,7 +47,11 @@ void LSMTree::process_flags(flag flags)
         this->memtable = std::make_unique<ds::MapMemTable>(this->memtable_capacity, this->state.get());
     } else {
         bool rej = flags & F_LSM_REJSAMP;
-        this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej);
+        if (bloom_filters) {
+            this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej, .5 * this->memtable_capacity);
+        } else {
+            this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej);
+        }
     }
 }
 

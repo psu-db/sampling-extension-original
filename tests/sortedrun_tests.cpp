@@ -84,7 +84,7 @@ START_TEST(t_initialize)
     const catalog::KeyCmpFunc cmp = std::bind(&compare_func_key, _1, _2);
 
     auto buffer = mem::create_aligned_buffer(rec_cnt * g_schema->record_length());
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), rec_cnt, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), rec_cnt, 0, state.get(), .01);
     
     auto run = ds::SortedRun(std::move(buffer), rec_cnt, state.get(), 0);
 
@@ -118,7 +118,7 @@ START_TEST(t_bounds_duplicates)
 
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt1 + cnt2, state.get(), 0);
 
     int64_t key = 5;
@@ -158,7 +158,7 @@ START_TEST(t_bounds_lower_out_of_range)
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt1 + cnt2, state.get(), 0);
 
     int64_t key = 7;
@@ -199,7 +199,7 @@ START_TEST(t_bounds_upper_out_of_range)
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt1 + cnt2, state.get(), 0);
 
     int64_t key = 2;
@@ -250,7 +250,7 @@ START_TEST(t_bounds_general)
     const catalog::KeyCmpFunc key_cmp = std::bind(&compare_func_key, _1, _2);
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2 + cnt3 + cnt4));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2 + cnt3 + cnt4, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2 + cnt3 + cnt4, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt1 + cnt2 + cnt3 + cnt4, state.get(), 0);
 
     int64_t l_key = 4;
@@ -303,7 +303,7 @@ START_TEST(t_iterator)
 
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt1 + cnt2 + cnt3 + cnt4));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2 + cnt3 + cnt4, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(iterator), cnt1 + cnt2 + cnt3 + cnt4, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt1 + cnt2 + cnt3 + cnt4, state.get(), 0);
 
     auto tree_iterator = run.start_scan();
@@ -338,7 +338,7 @@ START_TEST(t_get)
 
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt, state.get(), 0);
 
     auto run_iterator = run.start_scan();
@@ -370,7 +370,7 @@ START_TEST(t_general_large_keys)
 
     auto buffer = mem::create_aligned_buffer(state->record_schema->record_length() * (cnt));
 
-    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, state.get());
+    ds::SortedRun::initialize(buffer.get(), std::move(merged), cnt, 0, state.get(), .01);
     auto run = ds::SortedRun(std::move(buffer), cnt, state.get(), 0);
 
     int64_t key = 0;

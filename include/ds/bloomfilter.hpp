@@ -27,6 +27,7 @@ public:
     static std::unique_ptr<BloomFilter> create_persistent(size_t filter_size, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
     static std::unique_ptr<BloomFilter> create_persistent(double max_fpr, size_t n, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
 
+    static std::unique_ptr<BloomFilter> create_volatile(size_t filter_size, size_t key_size, size_t k, global::g_state *state);
     static std::unique_ptr<BloomFilter> create_volatile(double max_fpr, size_t n, size_t key_size, size_t k, global::g_state *state);
 
     static std::unique_ptr<BloomFilter> open(PageId meta_pid, global::g_state *state);

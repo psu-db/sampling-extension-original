@@ -13,6 +13,7 @@
 #include "util/mergeiter.hpp"
 #include "util/mem.hpp"
 #include "util/tombstonecache.hpp"
+#include "ds/bloomfilter.hpp"
 
 namespace lsm { namespace ds {
 
@@ -47,12 +48,12 @@ private:
 class SortedRun {
     friend SortedRunRecordIterator;
 public:
-    static std::unique_ptr<SortedRun> create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, global::g_state *state, size_t tombstone_count);
-    static std::unique_ptr<util::TombstoneCache> initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, 
-                                                            size_t record_count, global::g_state *state);
+    static std::unique_ptr<SortedRun> create(std::unique_ptr<iter::MergeIterator> iter, size_t record_cnt, size_t tombstone_count, global::g_state *state, double filter_fpr=1.0);
+    static std::unique_ptr<ds::BloomFilter> initialize(byte *buffer, std::unique_ptr<iter::MergeIterator> record_iter, 
+                                                            size_t record_count, size_t tombstone_count, global::g_state *state, double filter_fpr=1.0);
 
     SortedRun(io::PagedFile *pfile, global::g_state *state);
-    SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<util::TombstoneCache> tombstone_cache=nullptr);
+    SortedRun(mem::aligned_buffer data_array, size_t record_count, global::g_state *state, size_t tombstone_count, std::unique_ptr<ds::BloomFilter> tombstone_filter=nullptr);
 
     ssize_t get_lower_bound(const byte *key);
     ssize_t get_upper_bound(const byte *key);
@@ -78,8 +79,7 @@ private:
     size_t buffer_size;
 
     size_t tombstones;
-    std::unique_ptr<util::TombstoneCache> tombstone_cache;
-
+    std::unique_ptr<ds::BloomFilter> tombstone_filter;
 };
 }}
 

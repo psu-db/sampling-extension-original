@@ -19,7 +19,7 @@ std::unique_ptr<BloomFilter> BloomFilter::create_persistent(size_t filter_size, 
 
 std::unique_ptr<BloomFilter> BloomFilter::create_persistent(size_t filter_size, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state)
 {
-    if (k > BLOOMFILTER_K_MAX) {
+    if (filter_size == 0 || k > BLOOMFILTER_K_MAX) {
         return nullptr;
     }
 
@@ -57,40 +57,14 @@ std::unique_ptr<BloomFilter> BloomFilter::create_persistent(double max_fpr, size
     size_t filter_size = - (double) (k * n) / log(1.0 - pow(max_fpr, 1.0 / (double) k));
 
     return BloomFilter::create_persistent(filter_size, key_size, k, meta_pnum, pfile, state);
-
-    /*
-    auto bitmap = BitMap::create_persistent(filter_size, meta_pnum, pfile);
-
-    auto buf = mem::page_alloc();
-    pfile->read_page(meta_pnum, buf.get());
-
-    auto meta = (BloomFilterMetaHeader *) buf.get();
-    meta->hash_funcs = k;
-    meta->key_size = key_size;
-
-    for (size_t i=0; i<k; i += 2) {
-        int64_t a = gsl_rng_get(state->rng);
-        int64_t b = gsl_rng_get(state->rng);
-
-        meta->hash_data[i] = a;
-        meta->hash_data[i + 1] = b;
-    }
-
-    pfile->write_page(meta_pnum, buf.get());
-
-    auto bf = new BloomFilter(meta_pnum, pfile);
-    return std::unique_ptr<BloomFilter>(bf);
-    */
 }
 
 
-std::unique_ptr<BloomFilter> BloomFilter::create_volatile(double max_fpr, size_t n, size_t key_size, size_t k, global::g_state *state)
+std::unique_ptr<BloomFilter> BloomFilter::create_volatile(size_t filter_size, size_t key_size, size_t k, global::g_state *state)
 {
-    if (k > BLOOMFILTER_K_MAX) {
+    if (filter_size == 0 || k > BLOOMFILTER_K_MAX) {
         return nullptr;
     }
-
-    size_t filter_size = - (double) (k * n) / log(1.0 - pow(max_fpr, 1.0 / (double) k));
 
     auto bitmap = BitMap::create_volatile(filter_size);
 
@@ -108,6 +82,18 @@ std::unique_ptr<BloomFilter> BloomFilter::create_volatile(double max_fpr, size_t
     auto bf = new BloomFilter(std::move(bitmap), key_size, a_v, b_v);
 
     return std::unique_ptr<BloomFilter>(bf);
+}
+
+
+std::unique_ptr<BloomFilter> BloomFilter::create_volatile(double max_fpr, size_t n, size_t key_size, size_t k, global::g_state *state)
+{
+    if (k > BLOOMFILTER_K_MAX) {
+        return nullptr;
+    }
+
+    size_t filter_size = - (double) (k * n) / log(1.0 - pow(max_fpr, 1.0 / (double) k));
+
+    return BloomFilter::create_volatile(filter_size, key_size, k, state);
 }
 
 

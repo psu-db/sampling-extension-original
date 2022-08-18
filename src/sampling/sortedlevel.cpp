@@ -166,7 +166,7 @@ int SortedLevel::merge_with(std::unique_ptr<iter::GenericIterator<io::Record>> s
         auto merge_itr = std::make_unique<iter::MergeIterator>(iters, this->record_cmp);
         size_t total_record_count = existing_record_cnt + new_record_cnt;
 
-        auto new_run = ds::SortedRun::create(std::move(merge_itr), total_record_count, this->state, tombstones);
+        auto new_run = ds::SortedRun::create(std::move(merge_itr), total_record_count, tombstones, this->state);
 
         // abort if the creation of the new, merged, level failed for some reason.
         if (!new_run) {

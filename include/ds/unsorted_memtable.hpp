@@ -16,6 +16,7 @@
 #include "ds/memtable.hpp"
 #include "util/global.hpp"
 #include "util/tombstonecache.hpp"
+#include "ds/bloomfilter.hpp"
 #include "util/mem.hpp"
 
 namespace lsm { namespace ds {
@@ -27,7 +28,7 @@ class UnsortedMemTable : public MemoryTable {
     friend class UnsortedRejectionSampleRange;
 
 public:
-    UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling=false);
+    UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling=false, size_t filter_size=0);
 
     int insert(byte *key, byte *value, Timestamp time=0, bool tombstone=false) override;
     int remove(byte *key, byte *value, Timestamp time=0) override;
@@ -73,16 +74,18 @@ private:
     size_t record_cap;
 
     std::vector<io::Record> table;
-    std::unique_ptr<util::TombstoneCache> tombstone_cache;
+    std::unique_ptr<ds::BloomFilter> tombstone_filter;
     global::g_state *state;
 
     catalog::KeyCmpFunc key_cmp;
+    catalog::ValCmpFunc val_cmp;
     bool rejection_sampling;
 
     std::atomic<size_t> tombstones;
 
     std::atomic<size_t> current_tail;
-    ssize_t find_record(const byte* key, Timestamp time);
+
+    ssize_t find_record(const byte* key, const byte* val, Timestamp time);
     ssize_t get_index();
     void finalize_insertion(size_t idx, io::Record record);
 };

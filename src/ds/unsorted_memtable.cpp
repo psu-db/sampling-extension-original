@@ -6,7 +6,7 @@
 
 namespace lsm { namespace ds {
 
-UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling) : data_array(nullptr, free)
+UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling, size_t filter_size) : data_array(nullptr, free)
 {
     this->buffer_size = capacity * state->record_schema->record_length();
     this->data_array = mem::create_aligned_buffer(buffer_size);
@@ -20,10 +20,15 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool
     this->record_cap = capacity;
 
     this->key_cmp = this->state->record_schema->get_key_cmp();
-    this->tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get(), true);
+    this->val_cmp = this->state->record_schema->get_val_cmp();
+
+    this->tombstone_filter = nullptr;
+
+    if (filter_size > 0) {
+        tombstone_filter = ds::BloomFilter::create_volatile(filter_size, this->state->record_schema->key_len(), 8, this->state);
+    }
 
     this->thread_pins = 0;
-
     this->rejection_sampling = rejection_sampling;
 }
 
@@ -50,7 +55,9 @@ int UnsortedMemTable::insert(byte *key, byte *value, Timestamp time, bool tombst
 
     if (record.is_tombstone()) {
         tombstones.fetch_add(1);
-        tombstone_cache->insert(key, value, time);
+        if (this->tombstone_filter) {
+            tombstone_filter->insert(key);
+        }
     }
 
     this->finalize_insertion(idx, record);
@@ -67,7 +74,7 @@ int UnsortedMemTable::remove(byte * /*key*/, byte * /*value*/, Timestamp /*time*
 
 io::Record UnsortedMemTable::get(const byte *key, Timestamp time) 
 {
-    auto idx = this->find_record(key, time);
+    auto idx = this->find_record(key, nullptr, time);
 
     if (idx == -1) {
         return io::Record();
@@ -107,7 +114,15 @@ bool UnsortedMemTable::is_full()
 
 bool UnsortedMemTable::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    return this->tombstone_cache->exists(key, val, time);
+    if (this->tombstone_filter) {
+        if (!this->tombstone_filter->lookup(key)) {
+            return false;
+        }
+    }
+
+    auto idx = this->find_record(key, val, time);
+
+    return (idx == -1) ? false : this->table[idx].is_tombstone();
 }
 
 
@@ -127,7 +142,9 @@ bool UnsortedMemTable::truncate()
     this->current_tail = 0;
     this->tombstones = 0;
 
-    this->tombstone_cache->truncate();
+    if (this->tombstone_filter) {
+        this->tombstone_filter->clear();
+    }
 
     return true;
 }
@@ -150,7 +167,7 @@ std::unique_ptr<iter::GenericIterator<io::Record>> UnsortedMemTable::start_sorte
 }
 
 
-ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
+ssize_t UnsortedMemTable::find_record(const byte *key, const byte *val, Timestamp time)
 {
     ssize_t current_best_match = -1;
     Timestamp current_best_time = 0;
@@ -160,6 +177,13 @@ ssize_t UnsortedMemTable::find_record(const byte *key, Timestamp time)
         if (this->table[i].get_timestamp() <= time) {
             const byte *table_key = this->state->record_schema->get_key(this->table[i].get_data()).Bytes();
             if (this->key_cmp(key, table_key) == 0) {
+                if (val) {
+                    const byte *table_val = this->state->record_schema->get_val(this->table[i].get_data()).Bytes();
+                    if (this->val_cmp(val, table_val) != 0) {
+                        continue;
+                    }
+                }
+
                 if (this->table[i].get_timestamp() >= current_best_time) {
                     current_best_time = this->table[i].get_timestamp();
                     current_best_match = i;
