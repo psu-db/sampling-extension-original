@@ -17,6 +17,8 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool
     this->current_tail = 0;
     this->tombstones = 0;
 
+    this->record_cap = capacity;
+
     this->key_cmp = this->state->record_schema->get_key_cmp();
     this->tombstone_cache = std::make_unique<util::TombstoneCache>(-1, state->record_schema.get(), true);
 
