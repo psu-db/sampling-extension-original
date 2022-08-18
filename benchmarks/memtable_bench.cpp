@@ -182,16 +182,10 @@ int main(int argc, char **argv)
         table = std::make_unique<ds::MapMemTable>(capacity, state.get());
     }
 
-    size_t repetitions = 5;
-
     auto start_insert = std::chrono::high_resolution_clock::now();
-    for (size_t i=0; i<repetitions; i++) {
-        threaded_insert(table.get(), &key_v, &val_v, threads);
-        if (deletes && d_threads) {
-            threaded_delete(table.get(), delete_cnt, state.get(), d_threads);
-        }
-        auto res = table->truncate();
-        assert(res);
+    threaded_insert(table.get(), &key_v, &val_v, threads);
+    if (deletes && d_threads) {
+        threaded_delete(table.get(), delete_cnt, state.get(), d_threads);
     }
     auto stop_insert = std::chrono::high_resolution_clock::now();
 
