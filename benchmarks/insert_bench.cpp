@@ -173,7 +173,8 @@ int main(int argc, char **argv)
     }
 
     gsl_rng_set(state->rng, seed);
-    auto sampling_lsm = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), lsm::sampling::LEVELING, true, false, 1.0, false, memory_levels);
+    auto flags = lsm::sampling::F_LSM_BLOOM;
+    auto sampling_lsm = lsm::sampling::LSMTree::create(memtable_size, scale_factor, std::move(state), flags, lsm::sampling::LEVELING, memory_levels);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
