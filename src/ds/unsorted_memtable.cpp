@@ -11,11 +11,11 @@ UnsortedMemTable::UnsortedMemTable(size_t capacity, global::g_state *state, bool
     this->buffer_size = capacity * state->record_schema->record_length();
     this->data_array = mem::create_aligned_buffer(buffer_size);
 
-    this->table = std::vector<io::Record>(capacity, io::Record());
+    this->table = std::vector<io::CacheRecord>(capacity, {io::Record()});
 
     this->state = state;
-    this->current_tail = 0;
-    this->tombstones = 0;
+    this->current_tail.store(0);
+    this->tombstones.store(0);
 
     this->record_cap = capacity;
 
@@ -80,7 +80,7 @@ io::Record UnsortedMemTable::get(const byte *key, Timestamp time)
         return io::Record();
     }
 
-    return this->table[idx];
+    return this->table[idx].rec;
 }
 
 
@@ -90,13 +90,13 @@ io::Record UnsortedMemTable::get(size_t idx)
         return io::Record();
     }
 
-    return this->table[idx];
+    return this->table[idx].rec;
 }
 
 
 size_t UnsortedMemTable::get_record_count()
 {
-    return std::min((size_t) this->current_tail, this->table.size());
+    return std::min((size_t) this->current_tail.load(), this->table.size());
 }
 
 
@@ -122,7 +122,7 @@ bool UnsortedMemTable::has_tombstone(const byte *key, const byte *val, Timestamp
 
     auto idx = this->find_record(key, val, time);
 
-    return (idx == -1) ? false : this->table[idx].is_tombstone();
+    return (idx == -1) ? false : this->table[idx].rec.is_tombstone();
 }
 
 
@@ -137,10 +137,10 @@ bool UnsortedMemTable::truncate()
     // doesn't return an old record. This ensures that, should this occur, the
     // resulting record will be tagged as invalid and skipped until insert
     // finalization.
-    this->table = std::vector<io::Record>(this->record_cap, io::Record());
+    this->table = std::vector<io::CacheRecord>(this->record_cap, {io::Record()});
     
-    this->current_tail = 0;
-    this->tombstones = 0;
+    this->current_tail.store(0);
+    this->tombstones.store(0);
 
     if (this->tombstone_filter) {
         this->tombstone_filter->clear();
@@ -174,18 +174,18 @@ ssize_t UnsortedMemTable::find_record(const byte *key, const byte *val, Timestam
 
     ssize_t upper_bound = this->get_record_count() - 1;
     for (size_t i=0; i<=(size_t)upper_bound; i++) {
-        if (this->table[i].get_timestamp() <= time) {
-            const byte *table_key = this->state->record_schema->get_key(this->table[i].get_data()).Bytes();
+        if (this->table[i].rec.get_timestamp() <= time) {
+            const byte *table_key = this->state->record_schema->get_key(this->table[i].rec.get_data()).Bytes();
             if (this->key_cmp(key, table_key) == 0) {
                 if (val) {
-                    const byte *table_val = this->state->record_schema->get_val(this->table[i].get_data()).Bytes();
+                    const byte *table_val = this->state->record_schema->get_val(this->table[i].rec.get_data()).Bytes();
                     if (this->val_cmp(val, table_val) != 0) {
                         continue;
                     }
                 }
 
-                if (this->table[i].get_timestamp() >= current_best_time) {
-                    current_best_time = this->table[i].get_timestamp();
+                if (this->table[i].rec.get_timestamp() >= current_best_time) {
+                    current_best_time = this->table[i].rec.get_timestamp();
                     current_best_match = i;
                 }
             }
@@ -198,13 +198,16 @@ ssize_t UnsortedMemTable::find_record(const byte *key, const byte *val, Timestam
 
 size_t UnsortedMemTable::tombstone_count() 
 {
-    return this->tombstones;
+    return this->tombstones.load();
 }
 
 
 ssize_t UnsortedMemTable::get_index()
 {
-    size_t idx = this->current_tail.fetch_add(1);    
+    size_t idx = this->current_tail.load(std::memory_order_relaxed);
+
+    while (!this->current_tail.compare_exchange_weak(idx, idx + 1, std::memory_order_relaxed));
+    //size_t idx = this->current_tail.fetch_add(1);    
 
     // there is space, so return the reserved index
     if (idx < this->table.size()) {
@@ -218,7 +221,7 @@ ssize_t UnsortedMemTable::get_index()
 
 void UnsortedMemTable::finalize_insertion(size_t idx, io::Record record)
 {
-    this->table[idx] = record;
+    this->table[idx].rec = record;
 }
 
 
@@ -227,7 +230,11 @@ UnsortedRecordIterator::UnsortedRecordIterator(UnsortedMemTable *table, global::
     this->cmp.rec_cmp = state->record_schema->get_record_cmp();
     
     // Copy the records into the iterator and sort them
-    this->sorted_records = table->table;
+    this->sorted_records.resize(table->table.size());
+    for (size_t i=0; i<table->table.size(); i++) {
+        this->sorted_records[i] = table->table[i].rec;
+    }
+
     std::sort(sorted_records.begin(), sorted_records.end(), this->cmp);
 
     this->table = table;

@@ -6,14 +6,14 @@
 
 namespace lsm { namespace sampling {
 
-UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::Record>::const_iterator begin, std::vector<io::Record>::const_iterator end,
+UnsortedMemTableSampleRange::UnsortedMemTableSampleRange(std::vector<io::CacheRecord>::const_iterator begin, std::vector<io::CacheRecord>::const_iterator end,
                                                          const byte *lower_key, const byte *upper_key, global::g_state *state, ds::MemoryTable *table)
 {
     this->state = state;
     this->table = table;
     auto key_cmp = state->record_schema->get_key_cmp();
     for (auto iter=begin; iter<end; iter++) {
-        io::Record rec = *iter;
+        io::Record rec = iter->rec;
         auto key = state->record_schema->get_key(rec.get_data()).Bytes();
         if (rec.is_valid() && key_cmp(key, lower_key) >= 0 && key_cmp(key, upper_key) <= 0) {
             this->records.push_back(rec.get_data());

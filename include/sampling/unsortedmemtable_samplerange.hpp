@@ -17,12 +17,7 @@ namespace lsm { namespace sampling {
 
 class UnsortedMemTableSampleRange : public SampleRange {
 public:
-    /*
-    static std::unique_ptr<SampleRange> create(ds::UnsortedMemTable *table, byte *lower_key, 
-                                               byte *upper_key, global::g_state *state);
-     */
-
-    UnsortedMemTableSampleRange(std::vector<io::Record>::const_iterator begin, std::vector<io::Record>::const_iterator end,
+    UnsortedMemTableSampleRange(std::vector<io::CacheRecord>::const_iterator begin, std::vector<io::CacheRecord>::const_iterator end,
                                 const byte *lower_key, const byte *upper_key, global::g_state *state, ds::MemoryTable *table);
 
     UnsortedMemTableSampleRange(ds::SkipList::iterator begin, ds::SkipList::iterator end,

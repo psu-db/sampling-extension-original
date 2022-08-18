@@ -124,5 +124,9 @@ private:
     RecordId rid;
 };
 
+struct alignas(64) CacheRecord {
+    Record rec;
+};
+
 }}
 #endif

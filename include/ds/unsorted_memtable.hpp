@@ -6,7 +6,7 @@
 #define H_UNSORTEDMEMTABLE
 
 #include <atomic>
-#include <semaphore>
+#include <future>
 #include "util/base.hpp"
 #include "util/types.hpp"
 #include "util/iterator.hpp"
@@ -26,6 +26,7 @@ class UnsortedRecordIterator;
 class UnsortedMemTable : public MemoryTable {
     friend class UnsortedRecordIterator;
     friend class UnsortedRejectionSampleRange;
+
 
 public:
     UnsortedMemTable(size_t capacity, global::g_state *state, bool rejection_sampling=false, size_t filter_size=0);
@@ -73,7 +74,7 @@ private:
     size_t buffer_size;
     size_t record_cap;
 
-    std::vector<io::Record> table;
+    std::vector<io::CacheRecord> table;
     std::unique_ptr<ds::BloomFilter> tombstone_filter;
     global::g_state *state;
 
@@ -81,9 +82,8 @@ private:
     catalog::ValCmpFunc val_cmp;
     bool rejection_sampling;
 
-    std::atomic<size_t> tombstones;
-
-    std::atomic<size_t> current_tail;
+    alignas(64) std::atomic<size_t> tombstones;
+    alignas(64) std::atomic<size_t> current_tail;
 
     ssize_t find_record(const byte* key, const byte* val, Timestamp time);
     ssize_t get_index();
