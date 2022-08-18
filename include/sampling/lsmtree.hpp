@@ -19,6 +19,7 @@
 #include "ds/map_memtable.hpp"
 #include "ds/unsorted_memtable.hpp"
 #include "ds/bloomfilter.hpp"
+#include "util/flags.hpp"
 
 namespace lsm { namespace sampling {
 
@@ -26,6 +27,12 @@ enum merge_policy {
     LEVELING,
     TIERING
 };
+
+constexpr flag F_LSM_BLOOM = F_FLAG0;
+constexpr flag F_LSM_RANGE = F_FLAG1;
+constexpr flag F_LSM_SKIPLISTMEM = F_FLAG2;
+constexpr flag F_LSM_REJSAMP = F_FLAG3;
+
 
 class LSMTree {
 public:
@@ -36,12 +43,9 @@ public:
     static std::unique_ptr<LSMTree> create(size_t memtable_capacity, 
                                        size_t scale_factor,
                                        std::unique_ptr<global::g_state> state,
+                                       flag lsm_flags=F_NONE,
                                        merge_policy policy=LEVELING,
-                                       bool bloom_filters=false, bool range_filters=false, 
-                                       double max_deleted_proportion=1.0,
-                                       bool unsorted_memtable=false,
-                                       size_t in_mem_levels=0,
-                                       bool rejection_memtable=false);
+                                       size_t in_mem_levels=0);
 
     /*
      * Open an already existing LSMTree index from disk and return
@@ -160,17 +164,14 @@ private:
     bool range_filters;
 
     LSMTree(size_t memtable_capacity, size_t scale_factor,
-            std::unique_ptr<global::g_state> state,
-           merge_policy policy=LEVELING,
-           bool bloom_filters=false, bool range_filters=false, 
-           double max_deleted_proportion=1.0,
-           bool unsorted_memtable=false,
-           bool rejection_memtable=false,
-           size_t in_mem_levels=0);
+            std::unique_ptr<global::g_state> state, flag lsm_flags,
+            merge_policy policy, size_t in_mem_levels);
 
     void merge_memtable();
     size_t grow();
     bool is_deleted(io::Record rec);
+
+    void process_flags(flag flags);
 
     bool reject_sample(io::Record rec, byte *lower_key, byte *upper_key);
     void add_page_to_sample(std::vector<std::pair<PageId, io::PagedFile *>>

@@ -7,51 +7,47 @@
 namespace lsm {
 namespace sampling {
 
-std::unique_ptr<LSMTree> LSMTree::create(size_t memtable_capacity, 
-                                         size_t scale_factor,
-                                         std::unique_ptr<global::g_state> state,
-                                         merge_policy policy,
-                                         bool bloom_filters, bool range_filters, 
-                                         double max_deleted_proportion,
-                                         bool unsorted_memtable,
-                                         size_t in_mem_levels,
-                                         bool rejection_memtable) 
+std::unique_ptr<LSMTree> LSMTree::create(size_t memtable_capacity, size_t scale_factor,
+                                       std::unique_ptr<global::g_state> state, flag lsm_flags,
+                                       merge_policy policy, size_t in_mem_levels) 
 {
-    auto lsm = new LSMTree(memtable_capacity, scale_factor, std::move(state),
-                           policy, bloom_filters, range_filters, max_deleted_proportion, 
-                           unsorted_memtable, rejection_memtable, in_mem_levels);
+    auto lsm = new LSMTree(memtable_capacity, scale_factor, std::move(state), lsm_flags,
+                           policy, in_mem_levels);
 
     return std::unique_ptr<LSMTree>(lsm);
 }
 
 
 LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
-                 std::unique_ptr<global::g_state> state, merge_policy policy,
-                 bool bloom_filters, bool range_filters, 
-                 double max_deleted_proportion,
-                 bool unsorted_memtable,
-                 bool rejection_memtable,
-                 size_t in_mem_levels)
+                 std::unique_ptr<global::g_state> state, flag lsm_flags,
+                 merge_policy policy, size_t in_mem_levels)
 {
     this->rec_count = 0;
     this->memtable_capacity = memtable_capacity;
     this->scale_factor = scale_factor;
     this->policy = policy;
-    this->max_deleted_proportion = max_deleted_proportion;
     this->state = std::move(state);
     this->memory_levels = in_mem_levels;
 
-    this->bloom_filters = bloom_filters;
-    this->range_filters = range_filters;
+    this->process_flags(lsm_flags);
+}
 
-    if (unsorted_memtable) {
-        this->memtable = std::make_unique<ds::UnsortedMemTable>(memtable_capacity, this->state.get(), rejection_memtable);
-    } else {
-        this->memtable = std::make_unique<ds::MapMemTable>(memtable_capacity, this->state.get());
+
+void LSMTree::process_flags(flag flags)
+{
+    if (flags & F_LSM_BLOOM) {
+        this->bloom_filters = true;
     }
 
-    if (range_filters) {
-        // TODO: Implement range filtering
+    if (flags & F_LSM_RANGE) {
+        // TODO
+    }
+
+    if (flags & F_LSM_SKIPLISTMEM) {
+        this->memtable = std::make_unique<ds::MapMemTable>(this->memtable_capacity, this->state.get());
+    } else {
+        bool rej = flags & F_LSM_REJSAMP;
+        this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej);
     }
 }
 

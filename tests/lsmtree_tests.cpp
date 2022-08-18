@@ -50,7 +50,7 @@ START_TEST(t_insert_memlevels)
 {
     auto state = testing::make_state1();
 
-    auto lsm = sampling::LSMTree::create(1000, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, false, 2);
+    auto lsm = sampling::LSMTree::create(1000, 2, std::move(state), F_NONE, lsm::sampling::LEVELING, 2);
 
     int64_t key = 150;
     int64_t value = 10;
@@ -123,7 +123,7 @@ END_TEST
 START_TEST(t_range_sample_memlevels)
 {
     auto state = testing::make_state1();
-    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, false, 4);
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), F_NONE, lsm::sampling::LEVELING, 4);
 
     int64_t key = 550;
     int64_t value = 10;
@@ -188,7 +188,7 @@ END_TEST
 START_TEST(t_unsorted_sample_with_rejection)
 {
     auto state = testing::make_state1();
-    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, true, 0, true);
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::F_LSM_REJSAMP);
 
     int64_t key = 550;
     int64_t value = 10;
@@ -279,7 +279,7 @@ END_TEST
 START_TEST(t_erase_memlevels)
 {
     auto state = testing::make_state1();
-    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING, false, false, 1.0, false, 3);
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), F_NONE, lsm::sampling::LEVELING, 3);
 
     int64_t key = 550;
     int64_t value = 10;
@@ -435,8 +435,7 @@ END_TEST
 START_TEST(t_unsorted_sample_with_erase)
 {
     auto state = testing::make_state1();
-    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING,
-                                         false, false, 1.0, true);
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state));
 
     int64_t key = 550;
     int64_t value = 10;
@@ -490,8 +489,7 @@ END_TEST
 START_TEST(t_unsorted_sample_with_erase_and_bloom)
 {
     auto state = testing::make_state1();
-    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::LEVELING,
-                                         true, false, 1.0, true);
+    auto lsm = sampling::LSMTree::create(100, 2, std::move(state), lsm::sampling::F_LSM_BLOOM);
 
     int64_t key = 550;
     int64_t value = 10;
