@@ -3,7 +3,7 @@
  */
 
 #include <check.h>
-#include "ds/persistent_bloom.hpp"
+#include "ds/bloomfilter.hpp"
 #include "testing.hpp"
 
 using namespace lsm;
@@ -17,7 +17,7 @@ START_TEST(t_create)
     auto meta_pid = pfile->allocate_page();
     size_t size = 1000;
 
-    auto bf = ds::PersistentBloomFilter::create(size, 8, 3, meta_pid, state.get());
+    auto bf = ds::BloomFilter::create_persistent(size, 8, 3, meta_pid, state.get());
 
     ck_assert_ptr_nonnull(bf.get());
     ck_assert_int_eq(pfile->get_page_count(), 2);
@@ -41,6 +41,34 @@ START_TEST(t_create)
 END_TEST
 
 
+START_TEST(t_create_volatile)
+{
+    auto state = testing::make_state1();
+
+    size_t size = 1000;
+
+    auto bf = ds::BloomFilter::create_volatile(0.1, size, 8, 3, state.get());
+
+    ck_assert_ptr_nonnull(bf.get());
+
+    int64_t val = 6;
+    for (size_t i=0; i<100; i++) {
+        byte *key_ptr = (byte *) &val;
+        ck_assert_int_eq(bf->insert(key_ptr), 1);
+        val += 2;
+    }
+
+    val = 6;
+    for (size_t i=0; i<100; i++) {
+        byte *key_ptr = (byte *) &val;
+        ck_assert_int_eq(bf->lookup(key_ptr), 1);
+        val += 2;
+    }
+
+}
+END_TEST
+
+
 START_TEST(t_open)
 {
     auto state = testing::make_state1();
@@ -49,7 +77,7 @@ START_TEST(t_open)
     auto meta_pid = pfile->allocate_page();
     size_t size = 100 * parm::PAGE_SIZE;
 
-    auto bf = ds::PersistentBloomFilter::create(size, 8, 3, meta_pid, state.get());
+    auto bf = ds::BloomFilter::create_persistent(size, 8, 3, meta_pid, state.get());
 
     ck_assert_ptr_nonnull(bf.get());
     ck_assert_int_eq(pfile->get_page_count(), 102);
@@ -64,7 +92,7 @@ START_TEST(t_open)
     bf->flush();
     bf.reset();
 
-    bf = ds::PersistentBloomFilter::open(meta_pid, state.get());
+    bf = ds::BloomFilter::open(meta_pid, state.get());
     ck_assert_ptr_nonnull(bf.get());
 
     val = 6;
@@ -82,13 +110,20 @@ END_TEST
 
 Suite *unit_testing()
 {
-    Suite *unit = suite_create("PersistentBloomFilter Unit Testing");
-    TCase *create = tcase_create("lsm::ds::PersistentBloomFilter::create Testing");
+    Suite *unit = suite_create("BloomFilter Unit Testing");
+    TCase *create = tcase_create("lsm::ds::BloomFilter::create_persistent Testing");
     tcase_add_test(create, t_create);
 
     suite_add_tcase(unit, create);
 
-    TCase *open = tcase_create("lsm::ds::PersistentBloomFilter::open Testing");
+
+    TCase *volt = tcase_create("lsm::ds::BloomFilter::create_volatile Testing");
+    tcase_add_test(volt, t_create_volatile);
+
+    suite_add_tcase(unit, volt);
+
+
+    TCase *open = tcase_create("lsm::ds::BloomFilter::open Testing");
     tcase_add_test(open, t_open);
 
     suite_add_tcase(unit, open);

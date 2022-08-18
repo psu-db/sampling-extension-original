@@ -1,4 +1,4 @@
-#include "ds/persistent_bloom.hpp"
+#include "ds/bloomfilter.hpp"
 #include "util/benchutil.hpp"
 
 using namespace lsm::ds;
@@ -18,7 +18,7 @@ int main(int argc, char **argv)
 
     auto first_page = pfile->allocate_page();
 
-    auto filter = PersistentBloomFilter::create(size, sizeof(int64_t), k, first_page, state.get());
+    auto filter = BloomFilter::create_persistent(size, sizeof(int64_t), k, first_page, state.get());
 
     int64_t key = 8;
 

@@ -34,10 +34,10 @@ void ISAMTree::initialize(io::IndexPagedFile *pfile, std::unique_ptr<iter::Merge
         return;
     }
 
-    std::unique_ptr<PersistentBloomFilter> tomb_filter = nullptr;
+    std::unique_ptr<BloomFilter> tomb_filter = nullptr;
 
     if (bloom_filters) {
-        tomb_filter = PersistentBloomFilter::open(tombstone_filter_meta, state);
+        tomb_filter = BloomFilter::open(tombstone_filter_meta, state);
     }
 
     io::FixedlenDataPage leaf_page = io::FixedlenDataPage(leaf_output_buffer.get());
@@ -151,7 +151,7 @@ int ISAMTree::initial_page_allocation(io::PagedFile *pfile, PageNum page_cnt, si
     if (filters) {
         *filter_meta = INVALID_PID;
         *tombstone_filter_meta = pfile->allocate_page();
-        PersistentBloomFilter::create(.5, tombstone_count, key_len, 7, tombstone_filter_meta->page_number, pfile, state);
+        BloomFilter::create_persistent(.5, tombstone_count, key_len, 7, tombstone_filter_meta->page_number, pfile, state);
     } else {
         *filter_meta = INVALID_PID;
         *tombstone_filter_meta = INVALID_PID;
@@ -287,7 +287,7 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, catalog::FixedKVSchema *record_sch
     this->tombstone_cnt = meta->tombstone_count;
 
     if (meta->first_tombstone_bloom_page) {
-        this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
+        this->tombstone_bloom_filter = BloomFilter::open(meta->first_tombstone_bloom_page, pfile);
     }
 
     this->cache->unpin(frame_id);
@@ -319,7 +319,7 @@ ISAMTree::ISAMTree(io::IndexPagedFile *pfile, global::g_state *state)
     this->tombstone_cnt = meta->tombstone_count;
 
     if (meta->first_tombstone_bloom_page) {
-        this->tombstone_bloom_filter = PersistentBloomFilter::open(meta->first_tombstone_bloom_page, pfile);
+        this->tombstone_bloom_filter = BloomFilter::open(meta->first_tombstone_bloom_page, pfile);
     }
 
     this->cache->unpin(frame_id);

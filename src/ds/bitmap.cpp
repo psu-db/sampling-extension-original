@@ -2,18 +2,18 @@
 
 namespace lsm { namespace ds {
 
-std::unique_ptr<BitMap> BitMap::create(size_t size, PageId meta_pid, global::g_state *state, bool default_value)
+std::unique_ptr<BitMap> BitMap::create_persistent(size_t size, PageId meta_pid, global::g_state *state, bool default_value)
 {
     auto pfile = state->file_manager->get_pfile(meta_pid.file_id);    
     if (pfile) {
-        return BitMap::create(size, meta_pid.page_number, pfile, default_value);
+        return BitMap::create_persistent(size, meta_pid.page_number, pfile, default_value);
     }
 
     return nullptr;
 }
 
 
-std::unique_ptr<BitMap> BitMap::create(size_t size, PageNum meta_pnum, io::PagedFile *pfile, bool default_value)
+std::unique_ptr<BitMap> BitMap::create_persistent(size_t size, PageNum meta_pnum, io::PagedFile *pfile, bool default_value)
 {
     auto page_buf = mem::page_alloc();
          PageNum first_pnum;
@@ -46,6 +46,13 @@ std::unique_ptr<BitMap> BitMap::create(size_t size, PageNum meta_pnum, io::Paged
 }
 
 
+std::unique_ptr<BitMap> BitMap::create_volatile(size_t size, bool default_value)
+{
+    auto bm = new BitMap(size, default_value);
+    return std::unique_ptr<BitMap>(bm);
+}
+
+
 std::unique_ptr<BitMap> BitMap::open(PageId meta_pid, global::g_state *state)
 {
     auto pfile = state->file_manager->get_pfile(meta_pid.file_id);
@@ -63,6 +70,7 @@ std::unique_ptr<BitMap> BitMap::open(PageNum meta_pnum, io::PagedFile *pfile)
 BitMap::BitMap(PageNum meta_pnum, io::PagedFile *pfile)
 {
     this->pfile = pfile;
+    this->persistent = true;
 
     auto buf = mem::page_alloc();
     this->pfile->read_page(meta_pnum, buf.get());
@@ -70,19 +78,34 @@ BitMap::BitMap(PageNum meta_pnum, io::PagedFile *pfile)
         auto meta = (BitMapMetaHeader *) buf.get();
         this->first_pnum = meta->first_page;
         this->last_pnum = meta->last_page;
-        this->physical_size = meta->physical_size;
-        this->logical_size = meta->logical_size;
+        this->phys_size = meta->physical_size;
+        this->log_size = meta->logical_size;
     }
 
-    this->bits = std::make_unique<byte[]>(this->physical_size);
+    this->bits = std::make_unique<byte[]>(this->phys_size);
     
     size_t total_bytes_copied = 0;
     for (PageNum pnum=this->first_pnum; pnum<=this->last_pnum; pnum++) {
         this->pfile->read_page(pnum, buf.get());
-        size_t to_copy = std::min(parm::PAGE_SIZE, this->physical_size - total_bytes_copied);
+        size_t to_copy = std::min(parm::PAGE_SIZE, this->phys_size - total_bytes_copied);
         memcpy(this->bits.get() + total_bytes_copied, buf.get(), to_copy);
         total_bytes_copied += to_copy;
     }
+}
+
+
+BitMap::BitMap(size_t size, bool default_value)
+{
+    this->log_size = size;
+    this->phys_size = size + (size % 8) / 8;
+    this->persistent = false;
+
+    this->first_pnum = INVALID_PNUM;
+    this->last_pnum = INVALID_PNUM;
+    this->pfile = nullptr;
+
+    this->bits = std::make_unique<byte[]>(this->phys_size);
+    memset(bits.get(), default_value, this->phys_size);
 }
 
 
@@ -102,7 +125,7 @@ bit_masking_data BitMap::calculate_mask(size_t bit)
 
 bool BitMap::is_set(size_t bit) 
 {
-    if (bit >= this->logical_size) {
+    if (bit >= this->log_size) {
         return false;
     }
 
@@ -114,7 +137,7 @@ bool BitMap::is_set(size_t bit)
 
 int BitMap::set(size_t bit) 
 {
-    if (bit >= this->logical_size) {
+    if (bit >= this->log_size) {
         return 0;
     }
 
@@ -128,7 +151,7 @@ int BitMap::set(size_t bit)
 
 int BitMap::unset(size_t bit) 
 {
-    if (bit >= this->logical_size) {
+    if (bit >= this->log_size) {
         return 0;
     }
 
@@ -142,23 +165,35 @@ int BitMap::unset(size_t bit)
 
 void BitMap::unset_all() 
 {
-   for (size_t i=0; i<this->physical_size; i++) {
-        this->bits[i] = (std::byte) 0x0;
-    } 
+    memset(this->bits.get(), 0, this->phys_size);
 }
 
 
 void BitMap::flush()
 {
-    auto buf = mem::page_alloc();
+    if (this->persistent) {
+        auto buf = mem::page_alloc();
 
-    size_t total_bytes_copied = 0;
-    for (PageNum pnum=this->first_pnum; pnum<=this->last_pnum; pnum++) {
-        size_t to_copy = std::min(parm::PAGE_SIZE, this->physical_size - total_bytes_copied);
-        memcpy(buf.get(), this->bits.get() + total_bytes_copied, to_copy);
-        this->pfile->write_page(pnum, buf.get());
-        total_bytes_copied += to_copy;
+        size_t total_bytes_copied = 0;
+        for (PageNum pnum=this->first_pnum; pnum<=this->last_pnum; pnum++) {
+            size_t to_copy = std::min(parm::PAGE_SIZE, this->phys_size - total_bytes_copied);
+            memcpy(buf.get(), this->bits.get() + total_bytes_copied, to_copy);
+            this->pfile->write_page(pnum, buf.get());
+            total_bytes_copied += to_copy;
+        }
     }
+}
+
+
+size_t BitMap::physical_size()
+{
+    return this->phys_size;
+}
+
+
+size_t BitMap::logical_size()
+{
+    return this->log_size;
 }
 
 }}

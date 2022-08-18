@@ -4,96 +4,66 @@
 #ifndef H_BLOOMFILTER
 #define H_BLOOMFILTER
 
-#include <cmath>
 #include <cstdlib>
+#include "ds/bitmap.hpp"
+
 #include <cstdio>
-
-#include "ds/bitarray.hpp"
-
+#include <cmath>
 
 namespace lsm { namespace ds {
-template <typename T>
+
+const size_t BLOOMFILTER_K_MAX = 64;
+
+struct BloomFilterMetaHeader {
+    BitMapMetaHeader bitmap_header;
+    size_t key_size;
+    size_t hash_funcs;
+    int64_t hash_data[2*BLOOMFILTER_K_MAX];
+};
+
 class BloomFilter {
-private:
-    bitarray::BitArray data;
-    size_t size;
-    size_t hash_funcs; // k
-
-    std::hash<T> hash;
-    /*
-     * A more general solution would allow user-specified hashing schemes
-     */
-    size_t calculate_hash(T element, size_t hash_version)
-    {
-        size_t hash_val = this->hash(element);
-        for (size_t i=0; i<hash_version; i++) {
-            hash_val += this->hash(hash_val);
-        }
-
-        return hash_val % this->size;
-    }
-
 public:
-    BloomFilter(size_t size, size_t k=3) 
-    {
-        this->data = bitarray::BitArray(size);
-        this->size = size;
-        this->hash_funcs = k;
-    }
+    static std::unique_ptr<BloomFilter> create_persistent(size_t filter_size, size_t key_size, size_t k, PageId meta_pid, global::g_state *state);
+    static std::unique_ptr<BloomFilter> create_persistent(size_t filter_size, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
+    static std::unique_ptr<BloomFilter> create_persistent(double max_fpr, size_t n, size_t key_size, size_t k, PageNum meta_pnum, io::PagedFile *pfile, global::g_state *state);
 
+    static std::unique_ptr<BloomFilter> create_volatile(double max_fpr, size_t n, size_t key_size, size_t k, global::g_state *state);
 
-    BloomFilter(double max_fpr, size_t n, size_t k=3)
-    {
-        size_t filter_size = - (double) (k * n) / log(1.0 - pow(max_fpr, 1.0 / (double) k));
+    static std::unique_ptr<BloomFilter> open(PageId meta_pid, global::g_state *state);
+    static std::unique_ptr<BloomFilter> open(PageNum meta_pnum, io::PagedFile *pfile);
 
-        /*
-        size_t lower_val = pow(2, floor(log(filter_size)/log(2)));
-        size_t upper_val = pow(2, ceil(log(filter_size)/log(2)));
+    int insert(const byte *element);
+    bool lookup(const byte *element);
+    void clear();
+    void flush();
 
-        size_t diff_l = abs((int64_t) filter_size - (int64_t) lower_val);
-        size_t diff_u = abs((int64_t) filter_size - (int64_t) upper_val);
+    size_t memory_utilization();
 
-        size_t size = (diff_l > diff_u) ? upper_val : lower_val;
-        */
+    bool is_persistent();
 
-        this->data = bitarray::BitArray(size);
-        this->size = filter_size;
-        this->hash_funcs = k;
-    }
+private:
+    std::unique_ptr<BitMap> bitmap;
+    size_t key_size;
 
-    BloomFilter() {};
+    size_t filter_size;
+    size_t physical_size;
 
+    size_t hash_funcs; // k
+    
+    size_t key_chunk_size;
+    size_t key_chunks;
 
-    int insert(T element)
-    {
-        for (size_t i=0; i<=this->hash_funcs; i++) {
-            this->data.set(calculate_hash(element, i));
-        }
+    bool persistent;
+    
+    std::vector<int64_t> a;
+    std::vector<int64_t> b;
 
-        return 1;
-    }
+    std::vector<int64_t> coeffs;
 
+    size_t hash(const byte *key, size_t hash_func);
 
-    bool lookup(T element)
-    {
-        size_t hits = 0;
-        for (size_t i=0; i<this->hash_funcs; i++) {
-            hits += this->data.is_set(calculate_hash(element, i));
-        }
-
-        return hits == this->hash_funcs;
-    }
-
-
-    void clear()
-    {
-        this->data.unset_all();
-    }
-
-    size_t memory_utilization()
-    {
-        return this->size;
-    }
+    BloomFilter(PageNum meta_pnum, io::PagedFile *pfile);
+    BloomFilter(std::unique_ptr<BitMap> bitmap, size_t key_size, std::vector<int64_t> a, std::vector<int64_t> b);
 };
 }}
 #endif

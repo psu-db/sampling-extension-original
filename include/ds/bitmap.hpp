@@ -41,7 +41,7 @@ public:
      * initialized to default_value. Any additional bits within the pages
      * not used by the bitmap will have undefined values.
      */
-    static std::unique_ptr<BitMap> create(size_t size, PageId meta_pid, global::g_state *state, bool default_value=0);
+    static std::unique_ptr<BitMap> create_persistent(size_t size, PageId meta_pid, global::g_state *state, bool default_value=0);
 
 
     /* 
@@ -54,7 +54,14 @@ public:
      * initialized to default_value. Any additional bits within the pages
      * not used by the bitmap will have undefined values.
      */
-    static std::unique_ptr<BitMap> create(size_t size, PageNum meta_pnum, io::PagedFile *pfile, bool default_value=0);
+    static std::unique_ptr<BitMap> create_persistent(size_t size, PageNum meta_pnum, io::PagedFile *pfile, bool default_value=0);
+
+    /*
+     * Create a strictly memory-resident (non-persistent BitMap object).
+     *
+     * All bits within the bitmap will be initialized to default_value.
+     */
+    static std::unique_ptr<BitMap> create_volatile(size_t size, bool default_value=0);
 
 
     /*
@@ -104,16 +111,37 @@ public:
      * Write the buffered contents of the bitmap back to the underlying file.
      */
     void flush();
+
+    /*
+     * Returns the logical size (number of elements) of this bitmap 
+     */
+    size_t logical_size();
+
+    /*
+     * Returns the physical size (number of allocated bits) of this bitmap
+     */
+    size_t physical_size();
+
+    /*
+     * Returns true if the bitmap object is persistent (backed by a file),
+     * and false if it is volatile (in-memory only). A persistent bitmap
+     * is saved to its backing file on destruction and can be rebuild,
+     * a volatile one cannot be rebuilt after destruction.
+     */
+    bool is_persistent();
+
 private:
     std::unique_ptr<byte[]> bits; // the backing array storing the bits
-    size_t logical_size; // the requested number of bits
-    size_t physical_size; // the amount of space allocated
+    size_t log_size; // the requested number of bits
+    size_t phys_size; // the amount of space allocated
+    bool persistent;
     
     PageNum first_pnum; // the first page within the file containing bitmap data
     PageNum last_pnum; // the final page within the file containing bitmap data
     io::PagedFile *pfile; // the file containing the bitmap
 
     BitMap(PageNum meta_pnum, io::PagedFile *pfile);
+    BitMap(size_t size, bool default_value);
 
     bit_masking_data calculate_mask(size_t bit);
 };
