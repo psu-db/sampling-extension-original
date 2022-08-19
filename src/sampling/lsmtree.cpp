@@ -22,12 +22,18 @@ LSMTree::LSMTree(size_t memtable_capacity, size_t scale_factor,
                  std::unique_ptr<global::g_state> state, flag lsm_flags,
                  merge_policy policy, size_t in_mem_levels)
 {
+    size_t memtable_cnt = 2;
+
     this->rec_count = 0;
     this->memtable_capacity = memtable_capacity;
     this->scale_factor = scale_factor;
     this->policy = policy;
     this->state = std::move(state);
     this->memory_levels = in_mem_levels;
+
+    this->memtable_vec.resize(memtable_cnt);
+    this->memtable_stat = std::vector<memtable_status>(memtable_cnt, TBL_EMPTY); 
+    this->active_memtbl = 0;
 
     this->process_flags(lsm_flags);
 }
@@ -44,16 +50,23 @@ void LSMTree::process_flags(flag flags)
     }
 
     if (flags & F_LSM_SKIPLISTMEM) {
-        this->memtable = std::make_unique<ds::MapMemTable>(this->memtable_capacity, this->state.get());
+        for (size_t i=0; i<this->memtable_vec.size(); i++) {
+            this->memtable_vec[i] = std::make_unique<ds::MapMemTable>(this->memtable_capacity, this->state.get());
+        }
     } else {
         bool rej = flags & F_LSM_REJSAMP;
         if (bloom_filters) {
-            this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej, .5 * this->memtable_capacity);
+            for (size_t i=0; i< this->memtable_vec.size(); i++) {
+                this->memtable_vec[i] = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej, .5 * this->memtable_capacity);
+            }
         } else {
-            this->memtable = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej);
+            for (size_t i=0; i< this->memtable_vec.size(); i++) {
+                this->memtable_vec[i] = std::make_unique<ds::UnsortedMemTable>(this->memtable_capacity, this->state.get(), rej);
+            }
         }
     }
 }
+
 
 size_t LSMTree::grow()
 {
@@ -62,11 +75,11 @@ size_t LSMTree::grow()
     size_t new_run_capacity;
 
     if (lowest_level == -1) {
-        new_record_capacity = this->memtable->get_capacity() * scale_factor;
+        new_record_capacity = this->memtable_capacity * scale_factor;
         new_run_capacity = 1;
 
         if (this->policy == TIERING)  {
-            new_record_capacity = this->memtable->get_capacity();
+            new_record_capacity = this->memtable_capacity;
             new_run_capacity = this->scale_factor;
         }
     } else {
@@ -96,14 +109,39 @@ size_t LSMTree::grow()
 }
 
 
-void LSMTree::merge_memtable()
+void LSMTree::merge_memtable(size_t idx)
 {
-    auto iter = this->memtable->start_sorted_scan();
+    // quick safety check for now--this should be handled elsewhere
+    if (this->memtable_stat[idx] != TBL_ACTIVE) {
+        return;
+    }
+
+    // Update the memtable meta information. Note that this data is
+    // only adjusted here, and this function call itself should be
+    // protected by a lock, so no further synchronization should be
+    // necessary.
+    this->memtable_stat[idx] = TBL_MERGING;
+    this->active_memtbl = -1;
+
+    // For now, we'll just spin here until a new viable alternative opens up.
+    // Otherwise, we'll need to relocate this spin to several different places.
+    ssize_t new_active = -1;
+    while (new_active == -1) {
+        for (size_t i=0; i<this->memtable_stat.size(); i++) {
+            if (this->memtable_stat[i] == TBL_EMPTY) {
+                new_active = i;
+            }
+        }
+    }
+
+    this->active_memtbl = new_active;
+
+    auto iter = this->memtable_vec[idx]->start_sorted_scan();
 
     // run down the tree to find the first level capable of accommodating a
     // merge with the level above it.
     ssize_t merge_level_idx = -1;
-    size_t incoming_record_count = this->memtable->get_capacity();
+    size_t incoming_record_count = this->memtable_capacity;
     for (size_t i=0; i<this->levels.size(); i++) {
         if (this->levels[i]->can_merge_with(incoming_record_count)) {
             merge_level_idx = i;
@@ -126,23 +164,28 @@ void LSMTree::merge_memtable()
     }
 
     // merge the sorted buffer into the first level
-    this->levels[0]->merge_with(std::move(iter), this->memtable->tombstone_count());
-    
-    // truncate the memtable
-    this->memtable->truncate();
+    this->levels[0]->merge_with(std::move(iter), this->active_memtable()->tombstone_count());
+
+    this->memtable_stat[idx] = TBL_RETAINED;
+
+    if (this->memtable_vec[idx]->truncate()) {
+        this->memtable_stat[idx] = TBL_EMPTY;
+    } else {
+       auto trunc_thread = std::thread(background_truncate, this, idx);
+        trunc_thread.detach();
+    }
 }
 
 
 int LSMTree::insert(byte *key, byte *value, Timestamp time)
 {
-    if (this->memtable->is_full()) {
-        this->merge_memtable();
-    }
+    this->prepare_insert();
 
-    auto res = this->memtable->insert(key, value, time);
+    while (!this->active_memtable()->insert(key, value, time))
+        ;
 
-    this->rec_count += res;
-    return res;
+    this->rec_count.fetch_add(1);
+    return 1;
 }
 
 
@@ -152,14 +195,15 @@ int LSMTree::remove(byte *key, byte *value, Timestamp time)
     // with a matching key and value exists prior to inserting, or if other
     // tombstones already exist. If an identical tombstone already exists
     // within the memtable, it will fail to insert.
-    if (this->memtable->is_full()) {
-        this->merge_memtable();
-    }
+    
+    this->prepare_insert();
 
-    auto res = this->memtable->insert(key, value, time, true);
+    while (!this->active_memtable()->insert(key, value, time, true))
+        ;
 
-    this->rec_count += res;
-    return res;
+    this->rec_count.fetch_add(1);
+
+    return 1;
 }
 
 
@@ -171,7 +215,7 @@ int LSMTree::update(byte *key, byte *old_value, byte *new_value, Timestamp time)
 
 io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time)
 {
-    io::Record record = this->memtable->get(key, time);
+    io::Record record = this->active_memtable()->get(key, time);
     if (record.is_valid()) {
         if (record.is_tombstone()) {
             *frid = INVALID_FRID;
@@ -210,7 +254,7 @@ io::Record LSMTree::get(const byte *key, FrameId *frid, Timestamp time)
 
 bool LSMTree::has_tombstone(const byte *key, const byte *val, Timestamp time)
 {
-    if (this->memtable->has_tombstone(key, val, time)) {
+    if (this->active_memtable()->has_tombstone(key, val, time)) {
         return true;
     }
 
@@ -245,7 +289,7 @@ std::unique_ptr<Sample> LSMTree::range_sample(byte *start_key, byte *stop_key, s
     size_t atmpts = 0;
 
     std::map<size_t, size_t> memory_ranges;
-    auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
+    auto memtable_range = this->active_memtable()->get_sample_range(start_key, stop_key);
     if (memtable_range) {
         total_elements += memtable_range->length();
         memory_ranges.insert({0, 0});
@@ -356,7 +400,7 @@ std::unique_ptr<Sample> LSMTree::range_sample_bench(byte *start_key, byte *stop_
     std::map<size_t, size_t> memory_ranges;
     
     auto buffer_proc_start = std::chrono::high_resolution_clock::now();
-    auto memtable_range = this->memtable->get_sample_range(start_key, stop_key);
+    auto memtable_range = this->active_memtable()->get_sample_range(start_key, stop_key);
     if (memtable_range) {
         total_elements += memtable_range->length();
         memory_ranges.insert({0, 0});
@@ -569,6 +613,50 @@ bool LSMTree::is_deleted(io::Record record)
     auto time = record.get_timestamp();
 
     return this->has_tombstone(key, val, time);
+}
+
+
+bool LSMTree::prepare_insert()
+{
+    if (this->active_memtable()->is_full()) {
+        std::thread merge_thread(background_merge, this, this->active_memtbl);
+        merge_thread.detach();
+    }
+
+    return true;
+}
+
+
+void LSMTree::background_truncate(LSMTree *tree, size_t idx) {
+    // Spin on the memtable truncation call, sleeping between
+    // invocations. 
+    while (!tree->memtable_vec[idx]->truncate()) {
+        sleep(1);
+    }
+
+    // Mark the truncated table as empty
+    tree->memtable_stat[idx] = TBL_EMPTY;
+}
+
+
+void LSMTree::background_merge(LSMTree *tree, size_t idx) {
+    // Try for the lock, on each failure double checking to
+    // ensure that some other thread isn't actively merging
+    // the same table we want to merge in this one
+    while (!tree->memtable_merge_lock.try_lock()) {
+        if (tree->memtable_stat[idx] != TBL_ACTIVE) {
+            return;
+        }
+    }
+
+    // If the table in question hasn't been merged yet,
+    // then merge it.
+    if (tree->memtable_stat[idx] == TBL_ACTIVE) {
+        tree->merge_memtable(idx);
+    }
+    
+    // Release the lock
+    tree->memtable_merge_lock.unlock();
 }
 
 

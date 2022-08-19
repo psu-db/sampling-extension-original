@@ -33,6 +33,13 @@ constexpr flag F_LSM_RANGE = F_FLAG1;
 constexpr flag F_LSM_SKIPLISTMEM = F_FLAG2;
 constexpr flag F_LSM_REJSAMP = F_FLAG3;
 
+enum memtable_status {
+    TBL_ACTIVE, // the memtable is actively processing inserts
+    TBL_MERGING, // the memtable is being merged by another thread
+    TBL_EMPTY,   // the memtable is currently unused and has been truncated
+    TBL_RETAINED // the memtable is an old version, retained due to active pins
+};
+
 
 class LSMTree {
 public:
@@ -150,9 +157,15 @@ public:
 private:
     std::unique_ptr<global::g_state> state;
     std::vector<std::unique_ptr<LSMTreeLevel>> levels;
-    std::unique_ptr<ds::MemoryTable> memtable;
 
-    size_t rec_count;
+    std::vector<std::unique_ptr<ds::MemoryTable>> memtable_vec;
+    std::vector<memtable_status> memtable_stat;
+
+    std::mutex memtable_merge_lock;
+
+    size_t active_memtbl;
+
+    std::atomic<size_t> rec_count;
     size_t memtable_capacity;
 
     size_t scale_factor;
@@ -167,7 +180,7 @@ private:
             std::unique_ptr<global::g_state> state, flag lsm_flags,
             merge_policy policy, size_t in_mem_levels);
 
-    void merge_memtable();
+    void merge_memtable(size_t tbl_idx);
     size_t grow();
     bool is_deleted(io::Record rec);
 
@@ -180,6 +193,12 @@ private:
                             std::vector<std::unique_ptr<SampleRange>> &ranges,
                             long *sample_time = nullptr);
     io::Record sample_from(FrameId frid);
+
+    ds::MemoryTable *active_memtable();
+    bool prepare_insert();
+
+    static void background_truncate(LSMTree *tree, size_t idx);
+    static void background_merge(LSMTree *tree, size_t idx);
 };
 
 }}
