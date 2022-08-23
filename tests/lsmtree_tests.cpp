@@ -659,6 +659,10 @@ Suite *unit_testing()
     tcase_add_test(remove, t_bulk_erase);
     tcase_add_test(remove, t_erase_duplicate_keys);
 
+    tcase_set_timeout(remove, 100);
+
+
+
     suite_add_tcase(unit, remove);
 
     return unit;
