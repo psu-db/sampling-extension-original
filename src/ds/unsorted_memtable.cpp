@@ -209,11 +209,9 @@ size_t UnsortedMemTable::tombstone_count()
 ssize_t UnsortedMemTable::get_index()
 {
     //size_t idx = this->current_tail.load(std::memory_order_relaxed);
-
     //while (!this->current_tail.compare_exchange_weak(idx, idx + 1, std::memory_order_relaxed));
-    //size_t idx = this->current_tail.fetch_add(1);    
-
-    size_t idx = unsafe_tail++;
+    
+    size_t idx = this->current_tail.fetch_add(1);    
 
     // there is space, so return the reserved index
     if (idx < this->table.size()) {
