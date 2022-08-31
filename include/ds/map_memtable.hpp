@@ -27,7 +27,7 @@ class MapMemTable : public MemoryTable {
 
 public:
 
-    MapMemTable(size_t capacity, global::g_state *state);
+    MapMemTable(size_t capacity, size_t filter_bits, global::g_state *state);
 
     ~MapMemTable() override;
 

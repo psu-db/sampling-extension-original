@@ -181,7 +181,7 @@ int LSMTree::insert(byte *key, byte *value, Timestamp time)
 {
     this->prepare_insert();
 
-    while (!this->active_memtable()->insert(key, value, time))
+    while (this->active_memtable() && !this->active_memtable()->insert(key, value, time))
         ;
 
     this->rec_count.fetch_add(1);
@@ -618,7 +618,7 @@ bool LSMTree::is_deleted(io::Record record)
 
 bool LSMTree::prepare_insert()
 {
-    if (this->active_memtable()->is_full()) {
+    if (this->active_memtable() && this->active_memtable()->is_full()) {
         std::thread merge_thread(background_merge, this, this->active_memtbl);
         merge_thread.detach();
     }
@@ -657,6 +657,17 @@ void LSMTree::background_merge(LSMTree *tree, size_t idx) {
     
     // Release the lock
     tree->memtable_merge_lock.unlock();
+}
+
+
+ds::MemoryTable *LSMTree::active_memtable()
+{
+    ssize_t idx = this->active_memtbl;
+    if (this->active_memtbl < 0) {
+        return nullptr;
+    }
+
+    return this->memtable_vec[idx].get();
 }
 
 

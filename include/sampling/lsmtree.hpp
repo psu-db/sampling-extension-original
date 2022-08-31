@@ -33,14 +33,6 @@ constexpr flag F_LSM_RANGE = F_FLAG1;
 constexpr flag F_LSM_SKIPLISTMEM = F_FLAG2;
 constexpr flag F_LSM_REJSAMP = F_FLAG3;
 
-enum memtable_status {
-    TBL_ACTIVE, // the memtable is actively processing inserts
-    TBL_MERGING, // the memtable is being merged by another thread
-    TBL_EMPTY,   // the memtable is currently unused and has been truncated
-    TBL_RETAINED // the memtable is an old version, retained due to active pins
-};
-
-
 class LSMTree {
 public:
     /*
@@ -159,11 +151,10 @@ private:
     std::vector<std::unique_ptr<LSMTreeLevel>> levels;
 
     std::vector<std::unique_ptr<ds::MemoryTable>> memtable_vec;
-    std::vector<memtable_status> memtable_stat;
 
     std::mutex memtable_merge_lock;
 
-    size_t active_memtbl;
+    ssize_t active_memtbl;
 
     std::atomic<size_t> rec_count;
     size_t memtable_capacity;
