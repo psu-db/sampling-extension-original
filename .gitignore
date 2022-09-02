@@ -10,3 +10,5 @@ benchmarks/*
 !benchmarks/*.{cpp,sh}
 
 utilities/*
+
+.vscode
