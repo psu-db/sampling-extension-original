@@ -53,48 +53,68 @@ public:
      * The header of the record will be initialized with a timestamp of
      * time and a tombstone status of tombstone.
      */
-    Record(byte *data, size_t len, Timestamp time, bool tombstone);
+    Record(byte *data, size_t len, Timestamp time, bool tombstone) {
+        this->data_ref = data;
+        this->length = len;
+
+        this->get_header()->time = time;
+        this->get_header()->is_tombstone = tombstone;
+    }
 
     /*
      * Returns a reference to the ID of the record
      */
-    RecordId &get_id();
+    inline RecordId &get_id() {
+        return this->rid;
+    }
 
     /*
      * Returns a reference to the length of this record.
      */
-    PageOffset &get_length();
+    inline PageOffset &get_length() {
+        return this->length;
+    }
 
     /*
      * Returns a reference to the data pointer of this record. This pointer
      * points to the start of the buffer, and so includes the header.
      */
-    byte *&get_data();
+    inline byte *&get_data() {
+        return this->data_ref;
+    }
 
     /*
      * Returns a pointer to the header of this record. The attributes of this
      * header may be updated if necessary.
      */
-    RecordHeader *get_header();
+    inline RecordHeader *get_header() {
+        return (RecordHeader *) this->data_ref;
+    }
 
 
     /*
      * Returns the timestamp associated with this record, as stored in its
      * header.
      */
-    Timestamp get_timestamp();
+    inline Timestamp get_timestamp() {
+        return this->get_header()->time;
+    }
 
     /*
      * Returns whether this record is a deletion tombstone, as stored in 
      * its header.
      */
-    bool is_tombstone();
+    inline bool is_tombstone() {
+        return this->get_header()->is_tombstone;
+    }
 
     /*
      * Returns true if the data pointer and length of this record are non-zero, and
      * false if the pointer is nullptr or the length is 0.
      */
-    bool is_valid();
+    inline bool is_valid() {
+        return !(this->length == 0 || this->data_ref == nullptr);
+    }
 
     /*
      * Frees the memory referred to by the data_ref of this record. May be
@@ -104,14 +124,26 @@ public:
      * referring to memory managed by some other structure, such as if the
      * record was retrieved from a Page object or an iterator.
      */
-    void free_data();
+    inline void free_data() {
+        if (this->data_ref) {
+            delete[] this->get_data();
+        }
+
+        this->data_ref = nullptr;
+        this->length = 0;
+    }
 
     /*
      * Create a deep copy of this record. The resulting record will own its own
      * memory, and so free_data() should be used on it prior to calling its
      * destructor.
      */
-    Record deep_copy();
+    inline Record deep_copy() {
+        byte *new_buf = new byte[this->length]();
+        memcpy(new_buf, this->data_ref, this->length);
+
+        return Record(new_buf, this->length);
+    }
 
     /*
      * Generally a Record does not own its own memory, and so a default
