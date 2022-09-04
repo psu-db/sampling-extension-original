@@ -14,9 +14,14 @@
 #include <vector>
 #include <algorithm>
 
-#include "util/types.hpp"
-#include "util/base.hpp"
-#include "io/directfile.hpp"
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <fcntl.h>
+
+#include "util/types.h"
+#include "util/base.h"
 
 namespace lsm { namespace io {
 

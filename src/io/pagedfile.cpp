@@ -54,7 +54,7 @@ PagedFile::PagedFile(int fd, std::string fname, off_t size, mode_t mode)
 PageNum PagedFile::allocate_pages(PageNum count)
 {
     PageNum new_first = this->get_page_count() + 1;
-    size_t alloc_size = count * parm::PAGE_SIZE;
+    size_t alloc_size = count * PAGE_SIZE;
 
     if (this->raw_allocate(alloc_size)) {
         return new_first;
@@ -67,7 +67,7 @@ PageNum PagedFile::allocate_pages(PageNum count)
 int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
-        return this->raw_read(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
+        return this->raw_read(buffer_ptr, PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
     }
 
     return 0;
@@ -97,7 +97,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
             buffers.push_back(pages[i].second);
             prev_pnum = pages[i].first;
         } else {
-            if (!this->raw_readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start))) {
+            if (!this->raw_readv(buffers, PAGE_SIZE, PagedFile::pnum_to_offset(range_start))) {
                 return 0;
             }
 
@@ -109,14 +109,14 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
         }
     }
 
-    return this->raw_readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+    return this->raw_readv(buffers, PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
 }
 
 
 int PagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
-        return this->raw_write(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
+        return this->raw_write(buffer_ptr, PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
     }
 
     return 0;
@@ -137,7 +137,7 @@ int PagedFile::remove_file()
 
 PageNum PagedFile::get_page_count()
 {
-    return this->size / parm::PAGE_SIZE;
+    return this->size / PAGE_SIZE;
 }
 
 
@@ -151,13 +151,13 @@ PagedFile::~PagedFile()
 
 bool PagedFile::check_pnum(PageNum pnum)
 {
-    return pnum != INVALID_PNUM && pnum <= (this->size / parm::PAGE_SIZE);
+    return pnum != INVALID_PNUM && pnum <= (this->size / PAGE_SIZE);
 }
 
 
 off_t PagedFile::pnum_to_offset(PageNum pnum) 
 {
-    return pnum * parm::PAGE_SIZE;
+    return pnum * PAGE_SIZE;
 }
 
 
@@ -214,7 +214,7 @@ int PagedFile::raw_write(const byte *buffer, off_t amount, off_t offset)
 
 int PagedFile::raw_allocate(size_t amount)
 {
-    if (!this->file_open || (amount % parm::SECTOR_SIZE != 0)) {
+    if (!this->file_open || (amount % SECTOR_SIZE != 0)) {
         return 0;
     }
 
@@ -237,11 +237,11 @@ bool PagedFile::verify_io_parms(off_t amount, off_t offset)
         return false;
     }
 
-    if (amount % parm::SECTOR_SIZE != 0) {
+    if (amount % SECTOR_SIZE != 0) {
         return false;
     }
 
-    if (offset % parm::SECTOR_SIZE != 0) {
+    if (offset % SECTOR_SIZE != 0) {
         return false;
     }
 

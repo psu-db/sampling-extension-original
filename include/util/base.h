@@ -8,9 +8,6 @@
 
 namespace lsm {
 
-// Namespace for various numerical constants used throughout the
-// codebase.
-namespace parm {
 // The correct quantity for use in alignment of buffers to be
 // compatible with O_DIRECT
 const size_t SECTOR_SIZE = 512;
@@ -33,15 +30,14 @@ const size_t MAX_FILE_COUNT = UINT32_MAX;
 // The largest representable FrameId. No buffer can be defined with
 // more frames than this.
 const size_t MAX_FRAME_COUNT = UINT32_MAX;
-}
 
 // The number of bytes of zeroes available in ZEROBUF. Will be
 // a multiple of the parm::PAGE_SIZE.
-constexpr size_t ZEROBUF_SIZE = 8 * parm::PAGE_SIZE;
+constexpr size_t ZEROBUF_SIZE = 8 * PAGE_SIZE;
 
 // A large, preallocated, buffer of zeroes used for pre-allocation
 // of pages in a file.
-alignas(parm::SECTOR_SIZE) const char ZEROBUF[ZEROBUF_SIZE] = {0};
+alignas(SECTOR_SIZE) const char ZEROBUF[ZEROBUF_SIZE] = {0};
 
 
 // alignment code taken from TacoDB (file: tdb_base.h)

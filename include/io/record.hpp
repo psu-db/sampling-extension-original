@@ -12,8 +12,8 @@
 #include <cstring>
 #include <memory>
 
-#include "util/types.hpp"
-#include "util/base.hpp"
+#include "util/types.h"
+#include "util/base.h"
 
 namespace lsm { namespace io {
 
@@ -59,13 +59,6 @@ public:
 
         this->get_header()->time = time;
         this->get_header()->is_tombstone = tombstone;
-    }
-
-    /*
-     * Returns a reference to the ID of the record
-     */
-    inline RecordId &get_id() {
-        return this->rid;
     }
 
     /*
@@ -153,7 +146,6 @@ public:
 private:
     byte *data_ref;
     PageOffset length;
-    RecordId rid;
 };
 
 struct alignas(64) CacheRecord {

@@ -5,6 +5,7 @@
 
 #include "util/BitArray.h"
 #include "util/hash.h"
+#include "util/base.h"
 
 namespace lsm {
 
