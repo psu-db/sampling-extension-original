@@ -9,12 +9,54 @@
 
 namespace lsm { namespace io {
 
+std::unique_ptr<PagedFile> PagedFile::create(const std::string fname, bool new_file)
+{
+    auto flags = O_RDWR | O_DIRECT;
+    mode_t mode = 0640;
+    off_t size = 0;
+
+    if (new_file) {
+        flags |= O_CREAT | O_TRUNC;
+    } 
+
+    int fd = open(fname.c_str(), flags, mode);
+    if (fd == -1) {
+        return nullptr;
+    }
+    
+    if (!new_file) {
+        struct stat buf;
+        if (fstat(fd, &buf) == -1) {
+            return nullptr;
+        }
+
+        size = buf.st_size;
+    }
+
+    if (fd) {
+        return std::make_unique<PagedFile>(fd, fname, size, mode);
+    }
+
+    return nullptr;
+}
+
+PagedFile::PagedFile(int fd, std::string fname, off_t size, mode_t mode)
+{
+    this->file_open = true;
+    this->fd = fd;
+    this->fname = fname;
+    this->size = size;
+    this->mode = mode;
+    this->flags = O_RDWR | O_DIRECT;
+}
+
+
 PageNum PagedFile::allocate_pages(PageNum count)
 {
     PageNum new_first = this->get_page_count() + 1;
     size_t alloc_size = count * parm::PAGE_SIZE;
 
-    if (this->dfile->allocate(alloc_size)) {
+    if (this->raw_allocate(alloc_size)) {
         return new_first;
     }
 
@@ -25,7 +67,7 @@ PageNum PagedFile::allocate_pages(PageNum count)
 int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
-        return this->dfile->read(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
+        return this->raw_read(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
     }
 
     return 0;
@@ -55,7 +97,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
             buffers.push_back(pages[i].second);
             prev_pnum = pages[i].first;
         } else {
-            if (!this->dfile->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start))) {
+            if (!this->raw_readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start))) {
                 return 0;
             }
 
@@ -67,14 +109,14 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
         }
     }
 
-    return this->dfile->readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
+    return this->raw_readv(buffers, parm::PAGE_SIZE, PagedFile::pnum_to_offset(range_start));
 }
 
 
 int PagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
-        return this->dfile->write(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
+        return this->raw_write(buffer_ptr, parm::PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
     }
 
     return 0;
@@ -83,25 +125,33 @@ int PagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
 
 int PagedFile::remove_file()
 {
-    return this->dfile->remove();
+    if (unlink(this->fname.c_str())) {
+        return 0;
+    }
+
+    this->file_open = false;
+
+    return 1;
 }
 
 
 PageNum PagedFile::get_page_count()
 {
-    return this->dfile->get_size() / parm::PAGE_SIZE;
+    return this->size / parm::PAGE_SIZE;
 }
 
 
 PagedFile::~PagedFile()
 {
-    this->dfile->close_file();
+    if (this->file_open) {
+        close(this->fd);
+    }
 }
 
 
 bool PagedFile::check_pnum(PageNum pnum)
 {
-    return pnum != INVALID_PNUM && pnum <= (this->dfile->get_size() / parm::PAGE_SIZE);
+    return pnum != INVALID_PNUM && pnum <= (this->size / parm::PAGE_SIZE);
 }
 
 
@@ -110,5 +160,92 @@ off_t PagedFile::pnum_to_offset(PageNum pnum)
     return pnum * parm::PAGE_SIZE;
 }
 
+
+int PagedFile::raw_read(byte *buffer, off_t amount, off_t offset)
+{
+    if (!this->verify_io_parms(amount, offset)) {
+        return 0;
+    }
+
+    if (pread(this->fd, buffer, amount, offset) != amount) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+int PagedFile::raw_readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset)
+{
+    size_t buffer_cnt = buffers.size();
+
+    off_t amount = buffer_size * buffer_cnt;
+    if (!this->verify_io_parms(amount, initial_offset)) {
+        return 0;
+    }
+
+    auto iov = new iovec[buffer_cnt];
+    for (size_t i=0; i<buffer_cnt; i++) {
+        iov[i].iov_base = buffers[i];
+        iov[i].iov_len = buffer_size;
+    }
+
+    if (preadv(this->fd, iov, buffer_cnt, initial_offset) != amount) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+int PagedFile::raw_write(const byte *buffer, off_t amount, off_t offset)
+{
+    if (!this->verify_io_parms(amount, offset)) {
+        return 0;
+    }
+
+    if (pwrite(this->fd, buffer, amount, offset) != amount) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+int PagedFile::raw_allocate(size_t amount)
+{
+    if (!this->file_open || (amount % parm::SECTOR_SIZE != 0)) {
+        return 0;
+    }
+
+    size_t iterations = amount / ZEROBUF_SIZE + 1;
+    for (size_t i=0; i<iterations; i++) {
+        size_t itr_amount = std::min(ZEROBUF_SIZE, amount);
+        if (pwrite(this->fd, ZEROBUF, itr_amount, this->size) == -1) {
+            return 0;
+        }
+        amount -= itr_amount;
+        this->size += itr_amount;
+    }
+
+    return 1;
+}
+
+bool PagedFile::verify_io_parms(off_t amount, off_t offset) 
+{
+    if (!this->file_open || amount + offset > this->size) {
+        return false;
+    }
+
+    if (amount % parm::SECTOR_SIZE != 0) {
+        return false;
+    }
+
+    if (offset % parm::SECTOR_SIZE != 0) {
+        return false;
+    }
+
+    return true;
+}
 
 }}

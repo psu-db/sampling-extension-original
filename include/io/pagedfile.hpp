@@ -22,7 +22,8 @@ namespace lsm { namespace io {
 
 class PagedFile {
 public:
-    PagedFile(DirectFile *dfile);
+
+    std::unique_ptr<PagedFile> create(const std::string fname, bool new_file);
 
     /*
      * Add new_page_count new pages to the file in bulk, and returns the
@@ -78,13 +79,28 @@ public:
      */
     int remove_file();
 
+    std::string get_fname();
+
     ~PagedFile();
 
-protected:
+private:
+    PagedFile(int fd, std::string fname, off_t size, mode_t mode);
     static off_t pnum_to_offset(PageNum pnum);
     bool check_pnum(PageNum pnum);
 
-    DirectFile *dfile;
+    int raw_read(byte *buffer, off_t amount, off_t offset);
+    int raw_readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset);
+    int raw_write(const byte *buffer, off_t amount, off_t offset);
+    int raw_allocate(size_t amount);
+
+    bool verify_io_parms(off_t amount, off_t offset); 
+
+    int fd;
+    bool file_open;
+    off_t size;
+    mode_t mode;
+    std::string fname;
+    int flags;
 };
 
 }}
