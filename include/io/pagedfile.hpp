@@ -1,0 +1,91 @@
+/*
+ * pagedfile.hpp 
+ * Douglas Rumbaugh
+ *
+ * A generic interface for accessing a DirectFile object via page numbers.
+ *
+ */
+
+#ifndef PAGEDFILE_H
+#define PAGEDFILE_H
+#include <string>
+#include <memory>
+#include <cassert>
+#include <vector>
+#include <algorithm>
+
+#include "util/types.hpp"
+#include "util/base.hpp"
+#include "io/directfile.hpp"
+
+namespace lsm { namespace io {
+
+class PagedFile {
+public:
+    PagedFile(DirectFile *dfile);
+
+    /*
+     * Add new_page_count new pages to the file in bulk, and returns the
+     * PageId of the first page in the new range. 
+     *
+     * If the allocation fails, returns INVALID_PID. Also returns INVALID_PID
+     * if bulk allocation is not supported by the implementation. This can be
+     * checked via the supports_allocation method.
+     */
+    PageNum allocate_pages(PageNum count=0);
+
+    /*
+     * Reads data from the specified page into a buffer pointed to by
+     * buffer_ptr. It is necessary for buffer_ptr to be parm::SECTOR_SIZE
+     * aligned, and also for it to be large enough to accommodate
+     * parm::PAGE_SIZE bytes. If the read succeeds, returns 1. Otherwise
+     * returns 0. The contents of the input buffer are undefined in the case of
+     * an error.
+     */
+    int read_page(PageNum pnum, byte *buffer_ptr);
+
+    /*
+     * Reads several pages into associated buffers. It is necessary for the
+     * buffer referred to by each pointer to be parm::SECTOR_SIZE aligned and
+     * large enough to accommodate parm::PAGE_SIZE bytes. If possible,
+     * vectorized IO may be used to read adjacent pages. If the reads succeed,
+     * returns 1. If a read fails, returns 0. The contents of all the buffers
+     * are undefined in the case of an error.
+     */
+    int read_pages(std::vector<std::pair<PageNum, byte*>> pages);
+
+    /*
+     * Writes data from the provided buffer into the specified page within the
+     * file. It is necessary for buffer_ptr to be parm::SECTOR_SIZE aligned,
+     * and also for it to be at least parm::PAGE_SIZE bytes large. If it is
+     * larger, only the first parm::PAGE_SIZE bytes will be written. If it is
+     * smaller, the result is undefined.
+     *
+     * If the write succeeds, returns 1. Otherwise returns 0. The contents of
+     * the specified page within the file are undefined in the case of an error.
+     */
+    int write_page(PageNum pnum, const byte *buffer_ptr);
+
+    /*
+     * Returns the number of allocated paged in the file.
+     */
+    PageNum get_page_count();
+
+    /*
+     * Delete this file from the underlying filesystem. Once this has been called,
+     * this object will be closed, and all operations other than destructing it are
+     * undefined. Returns 1 on successful removal of the file, and 0 on failure.
+     */
+    int remove_file();
+
+    ~PagedFile();
+
+protected:
+    static off_t pnum_to_offset(PageNum pnum);
+    bool check_pnum(PageNum pnum);
+
+    DirectFile *dfile;
+};
+
+}}
+#endif
