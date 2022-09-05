@@ -6,8 +6,8 @@
  *
  */
 
-#ifndef PAGEDFILE_H
-#define PAGEDFILE_H
+#pragma once
+
 #include <string>
 #include <memory>
 #include <cassert>
@@ -23,7 +23,7 @@
 #include "util/types.h"
 #include "util/base.h"
 
-namespace lsm { namespace io {
+namespace lsm {
 
 class PagedFile {
 public:
@@ -108,5 +108,4 @@ private:
     int flags;
 };
 
-}}
-#endif
+}

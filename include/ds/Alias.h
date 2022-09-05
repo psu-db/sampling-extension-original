@@ -7,7 +7,7 @@
 namespace lsm {
 
 /*
- * XXX: This alias structure assumes input states are already normalized!!
+ * XXX: This alias structure assumes input weights are already normalized!!
  */
 
 class Alias {
