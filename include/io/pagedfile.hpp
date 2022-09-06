@@ -25,6 +25,14 @@
 
 namespace lsm {
 
+class PagedFile;
+
+class PagedFileIterator {
+public:
+    bool next();
+    byte *get_item();
+};
+
 class PagedFile {
 public:
 
@@ -36,6 +44,7 @@ public:
      *
      * If the allocation fails, returns INVALID_PID. Also returns INVALID_PID
      * if bulk allocation is not supported by the implementation. This can be
+    iter1.
      * checked via the supports_allocation method.
      */
     PageNum allocate_pages(PageNum count=0);
@@ -61,6 +70,13 @@ public:
     int read_pages(std::vector<std::pair<PageNum, byte*>> pages);
 
     /*
+     * Reads several pages stored contiguously into a single buffer. It is 
+     * necessary that buffer_ptr be SECTOR_SIZE aligned and also
+     * at least page_cnt * PAGE_SIZE bytes large.
+     */
+    int read_pages(PageNum first_page, size_t page_cnt, byte *buffer_ptr);
+
+    /*
      * Writes data from the provided buffer into the specified page within the
      * file. It is necessary for buffer_ptr to be parm::SECTOR_SIZE aligned,
      * and also for it to be at least parm::PAGE_SIZE bytes large. If it is
@@ -73,6 +89,18 @@ public:
     int write_page(PageNum pnum, const byte *buffer_ptr);
 
     /*
+     * Writes multiple pages stored sequentially in the provided buffer into
+     * a contiguous region of the file, starting at first_page. If the write
+     * would overrun the allocated space in the file, no data is written.
+     *
+     * It is necessary for buffer_ptr to be SECTOR_SIZE aligned, and at 
+     * least PAGE_SIZE * page_cnt bytes large.
+     *
+     * Returns the number of complete pages successfully written.
+     */
+    int write_pages(PageNum first_page, size_t page_cnt, const byte *buffer_ptr);
+
+    /*
      * Returns the number of allocated paged in the file.
      */
     PageNum get_page_count();
@@ -83,6 +111,8 @@ public:
      * undefined. Returns 1 on successful removal of the file, and 0 on failure.
      */
     int remove_file();
+
+    PagedFileIterator *start_scan(PageNum start_page, PageNum end_page);
 
     std::string get_fname();
 
