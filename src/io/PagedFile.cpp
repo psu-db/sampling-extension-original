@@ -5,7 +5,7 @@
  * PagedFile implementation
  */
 
-#include "io/pagedfile.hpp"
+#include "io/PagedFile.h"
 
 namespace lsm {
 
@@ -218,18 +218,15 @@ int PagedFile::raw_allocate(size_t amount)
         return 0;
     }
 
-    size_t iterations = amount / ZEROBUF_SIZE + 1;
-    for (size_t i=0; i<iterations; i++) {
-        size_t itr_amount = std::min(ZEROBUF_SIZE, amount);
-        if (pwrite(this->fd, ZEROBUF, itr_amount, this->size) == -1) {
-            return 0;
-        }
-        amount -= itr_amount;
-        this->size += itr_amount;
+    int alloc_mode = 0;
+    if (fallocate(this->fd, alloc_mode, this->size, amount*PAGE_SIZE)) {
+        return 0;
     }
 
+    this->size += amount * PAGE_SIZE;
     return 1;
 }
+
 
 bool PagedFile::verify_io_parms(off_t amount, off_t offset) 
 {

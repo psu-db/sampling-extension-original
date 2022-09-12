@@ -7,6 +7,7 @@
  */
 
 #pragma once
+#define __GNU_SOURCE
 
 #include <string>
 #include <memory>
@@ -25,13 +26,8 @@
 
 namespace lsm {
 
-class PagedFile;
+class PagedFileIterator;
 
-class PagedFileIterator {
-public:
-    bool next();
-    char *get_item();
-};
 
 class PagedFile {
 public:
@@ -137,4 +133,41 @@ private:
     int flags;
 };
 
+
+class PagedFileIterator {
+public:
+    PagedFileIterator(PagedFile *pfile, PageNum start_page=0, PageNum stop_page = 0) :
+    pfile(pfile), current_pnum((start_page == INVALID_PNUM) ? 0 : start_page - 1), start_pnum(start_page), stop_pnum(stop_page),
+    buffer((char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE)) {}
+
+    bool next() {
+        while (this->current_pnum < this->stop_pnum) {
+            if (this->pfile->read_page(++this->current_pnum, this->buffer)) {
+                return true;
+            }
+
+            // IO error of some kind
+            return false;
+        }
+
+        // no more pages to read
+        return false;
+    }
+
+    char *get_item() {
+        return this->buffer;
+    }
+
+    ~PagedFileIterator() {
+        free(this->buffer);
+    }
+
+private:
+    PagedFile *pfile;
+    PageNum current_pnum;
+    PageNum start_pnum;
+    PageNum stop_pnum;
+
+    char *buffer;
+};
 }
