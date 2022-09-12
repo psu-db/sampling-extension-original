@@ -7,7 +7,7 @@
 
 #include "io/pagedfile.hpp"
 
-namespace lsm { namespace io {
+namespace lsm {
 
 std::unique_ptr<PagedFile> PagedFile::create(const std::string fname, bool new_file)
 {
@@ -64,7 +64,7 @@ PageNum PagedFile::allocate_pages(PageNum count)
 }
 
 
-int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
+int PagedFile::read_page(PageNum pnum, char *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
         return this->raw_read(buffer_ptr, PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
@@ -74,7 +74,7 @@ int PagedFile::read_page(PageNum pnum, byte *buffer_ptr)
 }
 
 
-int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
+int PagedFile::read_pages(std::vector<std::pair<PageNum, char*>> pages)
 {
     if (pages.size() == 0) {
         return 0;
@@ -89,7 +89,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
     PageNum range_start = pages[0].first;
     PageNum prev_pnum = range_start;
 
-    std::vector<byte *> buffers;
+    std::vector<char *> buffers;
     buffers.push_back(pages[0].second);
 
     for (size_t i=1; i<pages.size(); i++) {
@@ -113,7 +113,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, byte*>> pages)
 }
 
 
-int PagedFile::write_page(PageNum pnum, const byte *buffer_ptr)
+int PagedFile::write_page(PageNum pnum, const char *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
         return this->raw_write(buffer_ptr, PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
@@ -161,7 +161,7 @@ off_t PagedFile::pnum_to_offset(PageNum pnum)
 }
 
 
-int PagedFile::raw_read(byte *buffer, off_t amount, off_t offset)
+int PagedFile::raw_read(char *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -175,7 +175,7 @@ int PagedFile::raw_read(byte *buffer, off_t amount, off_t offset)
 }
 
 
-int PagedFile::raw_readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset)
+int PagedFile::raw_readv(std::vector<char *> buffers, off_t buffer_size, off_t initial_offset)
 {
     size_t buffer_cnt = buffers.size();
 
@@ -198,7 +198,7 @@ int PagedFile::raw_readv(std::vector<byte *> buffers, off_t buffer_size, off_t i
 }
 
 
-int PagedFile::raw_write(const byte *buffer, off_t amount, off_t offset)
+int PagedFile::raw_write(const char *buffer, off_t amount, off_t offset)
 {
     if (!this->verify_io_parms(amount, offset)) {
         return 0;
@@ -248,4 +248,4 @@ bool PagedFile::verify_io_parms(off_t amount, off_t offset)
     return true;
 }
 
-}}
+}

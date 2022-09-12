@@ -30,12 +30,11 @@ class PagedFile;
 class PagedFileIterator {
 public:
     bool next();
-    byte *get_item();
+    char *get_item();
 };
 
 class PagedFile {
 public:
-
     std::unique_ptr<PagedFile> create(const std::string fname, bool new_file);
 
     /*
@@ -53,40 +52,40 @@ public:
      * Reads data from the specified page into a buffer pointed to by
      * buffer_ptr. It is necessary for buffer_ptr to be parm::SECTOR_SIZE
      * aligned, and also for it to be large enough to accommodate
-     * parm::PAGE_SIZE bytes. If the read succeeds, returns 1. Otherwise
+     * parm::PAGE_SIZE chars. If the read succeeds, returns 1. Otherwise
      * returns 0. The contents of the input buffer are undefined in the case of
      * an error.
      */
-    int read_page(PageNum pnum, byte *buffer_ptr);
+    int read_page(PageNum pnum, char *buffer_ptr);
 
     /*
      * Reads several pages into associated buffers. It is necessary for the
      * buffer referred to by each pointer to be parm::SECTOR_SIZE aligned and
-     * large enough to accommodate parm::PAGE_SIZE bytes. If possible,
+     * large enough to accommodate parm::PAGE_SIZE chars. If possible,
      * vectorized IO may be used to read adjacent pages. If the reads succeed,
      * returns 1. If a read fails, returns 0. The contents of all the buffers
      * are undefined in the case of an error.
      */
-    int read_pages(std::vector<std::pair<PageNum, byte*>> pages);
+    int read_pages(std::vector<std::pair<PageNum, char*>> pages);
 
     /*
      * Reads several pages stored contiguously into a single buffer. It is 
      * necessary that buffer_ptr be SECTOR_SIZE aligned and also
-     * at least page_cnt * PAGE_SIZE bytes large.
+     * at least page_cnt * PAGE_SIZE chars large.
      */
-    int read_pages(PageNum first_page, size_t page_cnt, byte *buffer_ptr);
+    int read_pages(PageNum first_page, size_t page_cnt, char *buffer_ptr);
 
     /*
      * Writes data from the provided buffer into the specified page within the
      * file. It is necessary for buffer_ptr to be parm::SECTOR_SIZE aligned,
-     * and also for it to be at least parm::PAGE_SIZE bytes large. If it is
-     * larger, only the first parm::PAGE_SIZE bytes will be written. If it is
+     * and also for it to be at least parm::PAGE_SIZE chars large. If it is
+     * larger, only the first parm::PAGE_SIZE chars will be written. If it is
      * smaller, the result is undefined.
      *
      * If the write succeeds, returns 1. Otherwise returns 0. The contents of
      * the specified page within the file are undefined in the case of an error.
      */
-    int write_page(PageNum pnum, const byte *buffer_ptr);
+    int write_page(PageNum pnum, const char *buffer_ptr);
 
     /*
      * Writes multiple pages stored sequentially in the provided buffer into
@@ -94,11 +93,11 @@ public:
      * would overrun the allocated space in the file, no data is written.
      *
      * It is necessary for buffer_ptr to be SECTOR_SIZE aligned, and at 
-     * least PAGE_SIZE * page_cnt bytes large.
+     * least PAGE_SIZE * page_cnt chars large.
      *
      * Returns the number of complete pages successfully written.
      */
-    int write_pages(PageNum first_page, size_t page_cnt, const byte *buffer_ptr);
+    int write_pages(PageNum first_page, size_t page_cnt, const char *buffer_ptr);
 
     /*
      * Returns the number of allocated paged in the file.
@@ -123,9 +122,9 @@ private:
     static off_t pnum_to_offset(PageNum pnum);
     bool check_pnum(PageNum pnum);
 
-    int raw_read(byte *buffer, off_t amount, off_t offset);
-    int raw_readv(std::vector<byte *> buffers, off_t buffer_size, off_t initial_offset);
-    int raw_write(const byte *buffer, off_t amount, off_t offset);
+    int raw_read(char *buffer, off_t amount, off_t offset);
+    int raw_readv(std::vector<char *> buffers, off_t buffer_size, off_t initial_offset);
+    int raw_write(const char *buffer, off_t amount, off_t offset);
     int raw_allocate(size_t amount);
 
     bool verify_io_parms(off_t amount, off_t offset); 
