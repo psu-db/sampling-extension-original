@@ -46,7 +46,7 @@ int record_match(const char* rec, const char* key, const char* value, bool tombs
 }
 
 
-int key_cmp(const char *a, const char *b) {
+int key_cmp(const void *a, const void *b) {
     if (*((key_type*) a) > *((key_type*) b)) {
         return 1;
     } else if (*((key_type*) a) < *((key_type*) b)) {
@@ -66,12 +66,12 @@ int val_cmp(const char *a, const char *b) {
     return 0;
 }
 
-int record_cmp(const char *a, const char *b) {
-    int cmp = key_cmp(get_key(a), get_key(b));
+int record_cmp(const void *a, const void *b) {
+    int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
     if (cmp == 0) {
-        bool tomb_a = is_tombstone(a);
-        bool tomb_b = is_tombstone(b);
+        bool tomb_a = is_tombstone((char*) a);
+        bool tomb_b = is_tombstone((char*) b);
         if (tomb_a && tomb_b) {
             return 0;
         }

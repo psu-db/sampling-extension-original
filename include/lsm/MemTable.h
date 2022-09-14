@@ -6,7 +6,7 @@
 
 #include "util/base.h"
 #include "ds/BloomFilter.h"
-#include "io/record.h"
+#include "util/record.h"
 
 namespace lsm {
 

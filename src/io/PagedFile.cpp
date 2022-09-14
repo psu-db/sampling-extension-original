@@ -9,7 +9,7 @@
 
 namespace lsm {
 
-std::unique_ptr<PagedFile> PagedFile::create(const std::string fname, bool new_file)
+PagedFile *PagedFile::create(const std::string fname, bool new_file)
 {
     auto flags = O_RDWR | O_DIRECT;
     mode_t mode = 0640;
@@ -34,7 +34,7 @@ std::unique_ptr<PagedFile> PagedFile::create(const std::string fname, bool new_f
     }
 
     if (fd) {
-        return std::make_unique<PagedFile>(fd, fname, size, mode);
+        return new PagedFile(fd, fname, size, mode);
     }
 
     return nullptr;
@@ -243,6 +243,12 @@ bool PagedFile::verify_io_parms(off_t amount, off_t offset)
     }
 
     return true;
+}
+
+
+std::string PagedFile::get_fname()
+{
+    return this->fname;
 }
 
 }

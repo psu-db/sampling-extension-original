@@ -31,7 +31,7 @@ class PagedFileIterator;
 
 class PagedFile {
 public:
-    std::unique_ptr<PagedFile> create(const std::string fname, bool new_file);
+    static PagedFile *create(const std::string fname, bool new_file=true);
 
     /*
      * Add new_page_count new pages to the file in bulk, and returns the
