@@ -355,6 +355,72 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
 }
 
 
+BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, size_t tombstone_count, gsl_rng *rng)
+{
+    size_t record_count = run1_rec_cnt;
+
+    auto buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE);
+
+    // Allocate initial pages for data and for metadata
+    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
+
+    PageNum meta = pfile->allocate_pages(); // Should be page 0
+    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
+
+    if (meta == INVALID_PNUM || first_leaf == INVALID_PNUM) {
+        free(buffer);
+        return nullptr;
+    }
+
+    BloomFilter *tomb_filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
+
+    PageNum cur_leaf_pnum = first_leaf;
+
+    size_t run1_rec_idx = 0;
+    size_t output_idx = 0;
+
+    while (run1_rec_idx < run1_rec_cnt) {
+        char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
+        run1_rec_idx++;
+        
+        memcpy(buffer + (output_idx++ * record_size), rec1, record_size);
+
+        if (is_tombstone(rec1)) {
+            tomb_filter->insert((char *) get_key(rec1), key_size);            
+        }
+
+        if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
+            pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer);
+            output_idx = 0;
+            cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+        }
+    }
+
+    // Write the excess leaf data to the file
+    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
+    size_t excess_records = (output_idx - 1) % PAGE_SIZE;
+
+    pfile->write_pages(cur_leaf_pnum, full_leaf_pages + ((excess_records == 0) ? 0 : 1), buffer);
+    cur_leaf_pnum += (full_leaf_pages) + ((excess_records == 0) ? 0 : 1);
+    
+    /*
+    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_leaf, excess_records, buffer, ISAM_INIT_BUFFER_SIZE);
+
+    pfile->read_page(meta, buffer);
+    auto metadata = (ISAMTreeMetaHeader *) buffer;
+    metadata->root_node = root_pnum;
+    metadata->first_data_page = first_leaf;
+    metadata->last_data_page = cur_leaf_pnum;
+    metadata->tombstone_count = tombstone_count;
+    metadata->record_count = record_count;
+    pfile->write_page(meta, buffer);
+    */
+
+    free(buffer);
+    return tomb_filter;
+}
+
+
 PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, PageNum first_leaf_page, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz)
 {
     size_t leaf_recs_per_page = PAGE_SIZE / record_size;

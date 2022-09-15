@@ -40,6 +40,7 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 class ISAMTree {
 public:
+    static ISAMTree *create(PagedFile *pfile, MemTable *mtable, gsl_rng *rng);
     static ISAMTree *create(PagedFile *pfile, ISAMTree *tree1, ISAMTree *tree2, gsl_rng *rng);
     static ISAMTree *create(PagedFile *pfile, MemTable *mtable, ISAMTree *tree2, gsl_rng *rng);
     static ISAMTree *create(PagedFile *pfile, MemTable *mtable, MemISAMTree *tree, gsl_rng *rng);
@@ -172,6 +173,7 @@ private:
     static BloomFilter *initialize(PagedFile *pfile, PagedFileIterator *iter1, size_t iter1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng);
     static BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, char *sorted_run2, size_t run2_rec_cnt, size_t tombstone_count, gsl_rng *rng);
     static BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng);
+    static BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, size_t tombstone_count, gsl_rng *rng);
 
     static constexpr size_t internal_record_size = key_size + MAXALIGN(sizeof(PageNum));
 
