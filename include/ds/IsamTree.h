@@ -2,8 +2,7 @@
  *
  */
 
-#ifndef H_ISAMTREE
-#define H_ISAMTREE
+#pragma once
 
 #include "util/base.h"
 #include "util/types.h"
@@ -14,7 +13,7 @@
 #include "lsm/MemTable.h"
 #include "ds/MemoryIsamTree.h"
 
-namespace lsm { namespace ds {
+namespace lsm { 
 
 struct ISAMTreeMetaHeader {
     PageNum root_node;
@@ -33,7 +32,8 @@ struct ISAMTreeInternalNodeHeader {
 
 constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISAMTreeInternalNodeHeader));
 
-const PageNum BTREE_META_PNUM = 0;
+const PageNum BTREE_META_PNUM = 1;
+const PageNum BTREE_FIRST_LEAF_PNUM = 2;
 
 const size_t ISAM_INIT_BUFFER_SIZE = 1; // measured in pages
 const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
@@ -121,7 +121,7 @@ public:
      * Returns the number of leaf pages within this tree
      */
     inline PageNum get_leaf_page_count() {
-        return this->last_data_page - this->first_data_page + 1;
+        return this->last_data_page - this->first_data_page;
     }
 
     /*
@@ -166,7 +166,7 @@ private:
     char *search_leaf_page(PageNum pnum, const char *key, char *buffer, size_t *idx=nullptr);
 
     static int initial_page_allocation(PagedFile *pfile, PageNum page_cnt, size_t tombstone_count, PageNum *first_leaf, PageNum *first_internal, PageNum *meta);
-    static PageNum generate_internal_levels(PagedFile *pfile, PageNum first_leaf_page, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz);
+    static PageNum generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz);
 
     static void generate_leaf_pages(PagedFile *pfile, PagedFileIterator *iter1, PagedFileIterator *iter2);
 
@@ -175,6 +175,9 @@ private:
     static BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng);
     static BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, size_t tombstone_count, gsl_rng *rng);
 
+    static PageNum pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, BloomFilter **filter, char **buffer);
+    static PageNum write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer);
+    static bool post_init(size_t record_count, size_t tombstone_count, PageNum last_leaf, PageNum root_pnum, char* buffer, PagedFile *pfile);
     static constexpr size_t internal_record_size = key_size + MAXALIGN(sizeof(PageNum));
 
     static inline void build_internal_record(char *buffer, const char *key, PageNum target_page) {
@@ -206,6 +209,4 @@ private:
     }
 };
 
-}}
-
-#endif
+}

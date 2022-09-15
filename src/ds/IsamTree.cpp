@@ -4,7 +4,7 @@
 
 #include "ds/IsamTree.h"
 
-namespace lsm { namespace ds {
+namespace lsm {
 
 ISAMTree *ISAMTree::create(PagedFile *pfile, ISAMTree *tree1, ISAMTree *tree2, gsl_rng *rng)
 {
@@ -70,358 +70,432 @@ ISAMTree *ISAMTree::create(PagedFile *pfile, MemISAMTree *tree1, MemISAMTree *tr
 }
 
 
-BloomFilter *ISAMTree::initialize(PagedFile *pfile, PagedFileIterator *iter1, size_t iter1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng)
+ISAMTree *ISAMTree::create(PagedFile *pfile, MemTable *mtable, gsl_rng *rng)
 {
-    size_t record_count = iter1_rec_cnt + iter2_rec_cnt;
+    auto sortedrun1 = mtable->sorted_output();
 
-    auto buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE);
+    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), mtable->tombstone_count(), rng);
 
-    // Allocate initial pages for data and for metadata
-    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
-
-    PageNum meta = pfile->allocate_pages(); // Should be page 0
-    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
-
-    if (meta == INVALID_PNUM || first_leaf == INVALID_PNUM) {
-        free(buffer);
+    if (!filter) {
         return nullptr;
     }
 
-    BloomFilter *tomb_filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
-
-    PageNum cur_leaf_pnum = first_leaf;
-
-    char *iter1_page = nullptr;
-    char *iter2_page = nullptr;
-
-    size_t iter1_rec_idx = 0;
-    size_t iter2_rec_idx = 0;
-    size_t output_idx = 0;
-
-    size_t iter1_records = 0;
-    size_t iter2_records = 0;
+    return new ISAMTree(pfile, filter);
+}
 
 
-    bool iter1_page_done = true;
-    bool iter2_page_done = true;
+BloomFilter *ISAMTree::initialize(PagedFile *pfile, PagedFileIterator *iter1, size_t iter1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng)
+{
+    BloomFilter *tomb_filter = nullptr;
+    char *buffer = nullptr;
+    PageNum last_leaf = INVALID_PNUM;
+    PageNum root_pnum = INVALID_PNUM;
+    size_t last_leaf_record_cnt = 0;
+    size_t record_count = iter1_rec_cnt + iter2_rec_cnt;
 
-    if (iter1->next()) {
-        iter1_page = iter1->get_item();
-        iter1_page_done = false;
+    PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
+    if (leaf_page_cnt == 0) {
+        goto error;
     }
 
-    if (iter2->next()) {
-        iter2_page = iter2->get_item();
-        iter2_page_done = false;
-    }
+    {
+        PageNum cur_leaf_pnum = BTREE_FIRST_LEAF_PNUM;
 
-    // if neither iterator contains any items, then there is no merging work to
-    // be done.
-    while (!iter1_page_done || !iter2_page_done) {
-        char *rec1 = (!iter1_page_done) ? iter1_page + (record_size * iter1_rec_idx) : nullptr;
-        char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
+        char *iter1_page = nullptr;
+        char *iter2_page = nullptr;
 
-        char *to_copy;
-        if (iter1_page_done || (!iter2_page_done && record_cmp(rec1, rec2) == 1)) {
-            to_copy = rec2;
-            iter2_rec_idx++;
-            iter2_rec_cnt++;
-            iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
+        size_t iter1_rec_idx = 0;
+        size_t iter2_rec_idx = 0;
+        size_t output_idx = 0;
 
-            if (iter2_page_done) {
-                iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
-                iter2_rec_idx = 0;
-                if (iter2_page) {
-                    iter2_page_done = false;
+        size_t iter1_records = 0;
+        size_t iter2_records = 0;
+
+
+        bool iter1_page_done = true;
+        bool iter2_page_done = true;
+
+        if (iter1->next()) {
+            iter1_page = iter1->get_item();
+            iter1_page_done = false;
+        }
+
+        if (iter2->next()) {
+            iter2_page = iter2->get_item();
+            iter2_page_done = false;
+        }
+
+        // if neither iterator contains any items, then there is no merging work to
+        // be done.
+        while (!iter1_page_done || !iter2_page_done) {
+            char *rec1 = (!iter1_page_done) ? iter1_page + (record_size * iter1_rec_idx) : nullptr;
+            char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
+
+            char *to_copy;
+            if (iter1_page_done || (!iter2_page_done && record_cmp(rec1, rec2) == 1)) {
+                to_copy = rec2;
+                iter2_rec_idx++;
+                iter2_rec_cnt++;
+                iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
+
+                if (iter2_page_done) {
+                    iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
+                    iter2_rec_idx = 0;
+                    if (iter2_page) {
+                        iter2_page_done = false;
+                    }
                 }
+            } else {
+                to_copy = rec1;
+                iter1_rec_idx++;
+                iter1_rec_cnt++;
+                iter1_page_done = iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt;
+
+                if (iter1_page_done) {
+                    iter1_page = (iter1->next()) ? iter1->get_item() : nullptr;
+                    iter1_rec_idx = 0;
+                    if (iter1_page) {
+                        iter1_page_done = false;
+                    }
+                } 
             }
-        } else {
-            to_copy = rec1;
-            iter1_rec_idx++;
-            iter1_rec_cnt++;
-            iter1_page_done = iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt;
 
-            if (iter1_page_done) {
-                iter1_page = (iter1->next()) ? iter1->get_item() : nullptr;
-                iter1_rec_idx = 0;
-                if (iter1_page) {
-                    iter1_page_done = false;
+            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+
+            if (is_tombstone(to_copy)) {
+                tomb_filter->insert((char *) get_key(to_copy), key_size);            
+            }
+
+            if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
+                if (!pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer)) {
+                    goto error_filter;
                 }
-            } 
+                output_idx = 0;
+                cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+            }
         }
 
-        memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
-
-        if (is_tombstone(to_copy)) {
-            tomb_filter->insert((char *) get_key(to_copy), key_size);            
-        }
-
-        if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
-            pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer);
-            output_idx = 0;
-            cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+        // Write the excess leaf data to the file
+        last_leaf = ISAMTree::write_final_buffer(output_idx, cur_leaf_pnum, &last_leaf_record_cnt, pfile, buffer);
+        if (last_leaf == INVALID_PNUM) {
+            goto error_filter;
         }
     }
-
-    // Write the excess leaf data to the file
-    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
-    size_t excess_records = (output_idx - 1) % PAGE_SIZE;
-
-    pfile->write_pages(cur_leaf_pnum, full_leaf_pages + ((excess_records == 0) ? 0 : 1), buffer);
-    cur_leaf_pnum += (full_leaf_pages) + ((excess_records == 0) ? 0 : 1);
     
-    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_leaf, excess_records, buffer, ISAM_INIT_BUFFER_SIZE);
+    root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
-    pfile->read_page(meta, buffer);
-    auto metadata = (ISAMTreeMetaHeader *) buffer;
-    metadata->root_node = root_pnum;
-    metadata->first_data_page = first_leaf;
-    metadata->last_data_page = cur_leaf_pnum;
-    metadata->tombstone_count = tombstone_count;
-    metadata->record_count = record_count;
-    pfile->write_page(meta, buffer);
+    if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
+        goto error_filter;
+    }
 
     free(buffer);
     return tomb_filter;
+
+error_filter:
+    delete tomb_filter;
+error_buffer:
+    free(buffer);
+error:
+    return nullptr;
 }
 
 
 BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, char *sorted_run2, size_t run2_rec_cnt, size_t tombstone_count, gsl_rng *rng)
 {
+    BloomFilter *tomb_filter = nullptr;
+    char *buffer = nullptr;
+    PageNum last_leaf = INVALID_PNUM;
+    PageNum root_pnum = INVALID_PNUM;
+    size_t last_leaf_record_cnt = 0;
     size_t record_count = run1_rec_cnt + run2_rec_cnt;
 
-    auto buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE);
-
-    // Allocate initial pages for data and for metadata
-    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
-
-    PageNum meta = pfile->allocate_pages(); // Should be page 0
-    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
-
-    if (meta == INVALID_PNUM || first_leaf == INVALID_PNUM) {
-        free(buffer);
-        return nullptr;
+    PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
+    if (leaf_page_cnt == 0) {
+        goto error;
     }
 
-    BloomFilter *tomb_filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
+    {
+        PageNum cur_leaf_pnum = BTREE_FIRST_LEAF_PNUM;
 
-    PageNum cur_leaf_pnum = first_leaf;
+        size_t run1_rec_idx = 0;
+        size_t run2_rec_idx = 0;
+        size_t output_idx = 0;
 
-    size_t run1_rec_idx = 0;
-    size_t run2_rec_idx = 0;
-    size_t output_idx = 0;
+        while (run1_rec_idx < run1_rec_cnt || run2_rec_idx < run2_rec_cnt) {
+            char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
+            char *rec2 = (run2_rec_idx < run2_rec_cnt) ? sorted_run2 + (record_size * run2_rec_idx) : nullptr;
+            
+            char *to_copy;
+            if (!rec1 || (rec2 && record_cmp(rec1, rec2) == 1)) {
+                to_copy = rec2;
+                run2_rec_idx++;
+            } else {
+                to_copy = rec1;
+                run1_rec_idx++;
+            }
 
-    while (run1_rec_idx < run1_rec_cnt || run2_rec_idx < run2_rec_cnt) {
-        char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
-        char *rec2 = (run2_rec_idx < run2_rec_cnt) ? sorted_run2 + (record_size * run2_rec_idx) : nullptr;
-        
-        char *to_copy;
-        if (!rec1 || (rec2 && record_cmp(rec1, rec2) == 1)) {
-            to_copy = rec2;
-            run2_rec_idx++;
-        } else {
-            to_copy = rec1;
-            run1_rec_idx++;
+            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+
+            if (is_tombstone(to_copy)) {
+                tomb_filter->insert((char *) get_key(to_copy), key_size);            
+            }
+
+            if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
+                if (!pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer)) {
+                    goto error_filter;
+                }
+                output_idx = 0;
+                cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+            }
         }
 
-        memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
-
-        if (is_tombstone(to_copy)) {
-            tomb_filter->insert((char *) get_key(to_copy), key_size);            
-        }
-
-        if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
-            pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer);
-            output_idx = 0;
-            cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+        // Write the excess leaf data to the file
+        last_leaf = ISAMTree::write_final_buffer(output_idx, cur_leaf_pnum, &last_leaf_record_cnt, pfile, buffer);
+        if (last_leaf == INVALID_PNUM) {
+            goto error_filter;
         }
     }
-
-    // Write the excess leaf data to the file
-    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
-    size_t excess_records = (output_idx - 1) % PAGE_SIZE;
-
-    pfile->write_pages(cur_leaf_pnum, full_leaf_pages + ((excess_records == 0) ? 0 : 1), buffer);
-    cur_leaf_pnum += (full_leaf_pages) + ((excess_records == 0) ? 0 : 1);
     
-    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_leaf, excess_records, buffer, ISAM_INIT_BUFFER_SIZE);
+    root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
-    pfile->read_page(meta, buffer);
-    auto metadata = (ISAMTreeMetaHeader *) buffer;
-    metadata->root_node = root_pnum;
-    metadata->first_data_page = first_leaf;
-    metadata->last_data_page = cur_leaf_pnum;
-    metadata->tombstone_count = tombstone_count;
-    metadata->record_count = record_count;
-    pfile->write_page(meta, buffer);
+    if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
+        goto error_filter;
+    }
 
     free(buffer);
     return tomb_filter;
+
+error_filter:
+    delete tomb_filter;
+error_buffer:
+    free(buffer);
+error:
+    return nullptr;
 }
 
 
 BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, PagedFileIterator *iter2, size_t iter2_rec_cnt, size_t tombstone_count, gsl_rng *rng)
 {
+    BloomFilter *tomb_filter = nullptr;
+    char *buffer = nullptr;
+    PageNum last_leaf = INVALID_PNUM;
+    PageNum root_pnum = INVALID_PNUM;
+    size_t last_leaf_record_cnt = 0;
     size_t record_count = run1_rec_cnt + iter2_rec_cnt;
 
-    auto buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE);
-
-    // Allocate initial pages for data and for metadata
-    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
-
-    PageNum meta = pfile->allocate_pages(); // Should be page 0
-    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
-
-    if (meta == INVALID_PNUM || first_leaf == INVALID_PNUM) {
-        free(buffer);
-        return nullptr;
+    PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
+    if (leaf_page_cnt == 0) {
+        goto error;
     }
 
-    BloomFilter *tomb_filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
+    {
+        PageNum cur_leaf_pnum = BTREE_FIRST_LEAF_PNUM;
+        size_t run1_rec_idx = 0;
 
-    PageNum cur_leaf_pnum = first_leaf;
+        char *iter2_page = nullptr;
+        size_t iter2_rec_idx = 0;
+        size_t iter2_records = 0;
+        bool iter2_page_done = true;
 
-    size_t run1_rec_idx = 0;
+        size_t output_idx = 0;
 
-    char *iter2_page = nullptr;
-    size_t iter2_rec_idx = 0;
-    size_t iter2_records = 0;
-    bool iter2_page_done = true;
+        if (iter2->next()) {
+            iter2_page = iter2->get_item();
+            iter2_page_done = false;
+        }
 
-    size_t output_idx = 0;
+        while (run1_rec_idx < run1_rec_cnt || !iter2_page_done) {
+            char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
+            char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
+            
+            char *to_copy;
+            if (!rec1 || (rec2 && record_cmp(rec1, rec2) == 1)) {
+                to_copy = rec2;
+                iter2_rec_idx++;
+                iter2_records++;
 
-    if (iter2->next()) {
-        iter2_page = iter2->get_item();
-        iter2_page_done = false;
-    }
+                iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
 
-    while (run1_rec_idx < run1_rec_cnt || !iter2_page_done) {
-        char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
-        char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
-        
-        char *to_copy;
-        if (!rec1 || (rec2 && record_cmp(rec1, rec2) == 1)) {
-            to_copy = rec2;
-            iter2_rec_idx++;
-            iter2_rec_cnt++;
-
-            iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
-
-            if (iter2_page_done) {
-                iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
-                iter2_rec_idx = 0;
-                if (iter2_page) {
-                    iter2_page_done = false;
+                if (iter2_page_done) {
+                    iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
+                    iter2_rec_idx = 0;
+                    if (iter2_page) {
+                        iter2_page_done = false;
+                    }
                 }
+            } else {
+                to_copy = rec1;
+                run1_rec_idx++;
             }
-        } else {
-            to_copy = rec1;
-            run1_rec_idx++;
+
+            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+
+            if (is_tombstone(to_copy)) {
+                tomb_filter->insert((char *) get_key(to_copy), key_size);            
+            }
+
+            if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
+                if (!pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer)) {
+                    goto error_filter;
+                }
+                output_idx = 0;
+                cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+            }
         }
 
-        memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
-
-        if (is_tombstone(to_copy)) {
-            tomb_filter->insert((char *) get_key(to_copy), key_size);            
-        }
-
-        if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
-            pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer);
-            output_idx = 0;
-            cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+        // Write the excess leaf data to the file
+        last_leaf = ISAMTree::write_final_buffer(output_idx, cur_leaf_pnum, &last_leaf_record_cnt, pfile, buffer);
+        if (last_leaf == INVALID_PNUM) {
+            goto error_filter;
         }
     }
-
-    // Write the excess leaf data to the file
-    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
-    size_t excess_records = (output_idx - 1) % PAGE_SIZE;
-
-    pfile->write_pages(cur_leaf_pnum, full_leaf_pages + ((excess_records == 0) ? 0 : 1), buffer);
-    cur_leaf_pnum += (full_leaf_pages) + ((excess_records == 0) ? 0 : 1);
     
-    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_leaf, excess_records, buffer, ISAM_INIT_BUFFER_SIZE);
+    root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
-    pfile->read_page(meta, buffer);
-    auto metadata = (ISAMTreeMetaHeader *) buffer;
-    metadata->root_node = root_pnum;
-    metadata->first_data_page = first_leaf;
-    metadata->last_data_page = cur_leaf_pnum;
-    metadata->tombstone_count = tombstone_count;
-    metadata->record_count = record_count;
-    pfile->write_page(meta, buffer);
+    if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
+        goto error_filter;
+    }
 
     free(buffer);
     return tomb_filter;
+
+error_filter:
+    delete tomb_filter;
+error_buffer:
+    free(buffer);
+error:
+    return nullptr;
 }
 
 
-BloomFilter *initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, size_t tombstone_count, gsl_rng *rng)
+BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t run1_rec_cnt, size_t tombstone_count, gsl_rng *rng)
 {
+    BloomFilter *tomb_filter = nullptr;
+    char *buffer = nullptr;
+    PageNum last_leaf = INVALID_PNUM;
+    PageNum root_pnum = INVALID_PNUM;
+    size_t last_leaf_record_cnt = 0;
     size_t record_count = run1_rec_cnt;
 
-    auto buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE);
-
-    // Allocate initial pages for data and for metadata
-    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
-
-    PageNum meta = pfile->allocate_pages(); // Should be page 0
-    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
-
-    if (meta == INVALID_PNUM || first_leaf == INVALID_PNUM) {
-        free(buffer);
-        return nullptr;
+    PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
+    if (leaf_page_cnt == 0) {
+        goto error;
     }
 
-    BloomFilter *tomb_filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
+    {
+        PageNum cur_leaf_pnum = BTREE_FIRST_LEAF_PNUM;
 
-    PageNum cur_leaf_pnum = first_leaf;
+        size_t run1_rec_idx = 0;
+        size_t output_idx = 0;
 
-    size_t run1_rec_idx = 0;
-    size_t output_idx = 0;
+        while (run1_rec_idx < run1_rec_cnt) {
+            char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
+            run1_rec_idx++;
+            
+            memcpy(buffer + (output_idx++ * record_size), rec1, record_size);
 
-    while (run1_rec_idx < run1_rec_cnt) {
-        char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
-        run1_rec_idx++;
-        
-        memcpy(buffer + (output_idx++ * record_size), rec1, record_size);
+            if (is_tombstone(rec1)) {
+                tomb_filter->insert((char *) get_key(rec1), key_size);            
+            }
 
-        if (is_tombstone(rec1)) {
-            tomb_filter->insert((char *) get_key(rec1), key_size);            
+            if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
+                if (!pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer)) {
+                    goto error_filter;
+                }
+                output_idx = 0;
+                cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+            }
         }
 
-        if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
-            pfile->write_pages(cur_leaf_pnum, ISAM_INIT_BUFFER_SIZE, buffer);
-            output_idx = 0;
-            cur_leaf_pnum += ISAM_INIT_BUFFER_SIZE;
+        // Write the excess leaf data to the file
+        last_leaf = ISAMTree::write_final_buffer(output_idx, cur_leaf_pnum, &last_leaf_record_cnt, pfile, buffer);
+        if (last_leaf == INVALID_PNUM) {
+            goto error_filter;
         }
     }
-
-    // Write the excess leaf data to the file
-    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
-    size_t excess_records = (output_idx - 1) % PAGE_SIZE;
-
-    pfile->write_pages(cur_leaf_pnum, full_leaf_pages + ((excess_records == 0) ? 0 : 1), buffer);
-    cur_leaf_pnum += (full_leaf_pages) + ((excess_records == 0) ? 0 : 1);
     
-    /*
-    auto root_pnum = ISAMTree::generate_internal_levels(pfile, first_leaf, excess_records, buffer, ISAM_INIT_BUFFER_SIZE);
+    root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
-    pfile->read_page(meta, buffer);
-    auto metadata = (ISAMTreeMetaHeader *) buffer;
-    metadata->root_node = root_pnum;
-    metadata->first_data_page = first_leaf;
-    metadata->last_data_page = cur_leaf_pnum;
-    metadata->tombstone_count = tombstone_count;
-    metadata->record_count = record_count;
-    pfile->write_page(meta, buffer);
-    */
+    if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
+        goto error_filter;
+    }
 
     free(buffer);
     return tomb_filter;
+
+error_filter:
+    delete tomb_filter;
+error_buffer:
+    free(buffer);
+error:
+    return nullptr;
 }
 
 
-PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, PageNum first_leaf_page, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz)
+PageNum ISAMTree::pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, BloomFilter **filter, char **buffer)
+{
+    // Allocate initial pages for data and for metadata
+    size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + (record_count % ISAM_RECORDS_PER_LEAF != 0);
+
+    PageNum meta = pfile->allocate_pages(1); // Should be page 0
+    PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
+
+    if(!(*buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE))) {
+        goto error;
+    }
+
+    if (meta != BTREE_META_PNUM || first_leaf != BTREE_FIRST_LEAF_PNUM) {
+        goto error_buffer;
+    }
+
+    *filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
+
+    return leaf_page_cnt;
+
+error_buffer:
+    free(buffer);
+error:
+    return 0;
+}
+
+
+PageNum ISAMTree::write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer)
+{
+    size_t full_leaf_pages = (output_idx - 1) / PAGE_SIZE;
+    *last_leaf_rec_cnt = (output_idx - 1) % PAGE_SIZE;
+
+    if (full_leaf_pages == 0 && *last_leaf_rec_cnt == 0) {
+        return cur_pnum - 1;
+    }
+
+    if (pfile->write_pages(cur_pnum, full_leaf_pages + ((*last_leaf_rec_cnt == 0) ? 0 : 1), buffer)) {
+        if (full_leaf_pages == 0) {
+            return cur_pnum;
+        }
+
+        return cur_pnum + full_leaf_pages - (last_leaf_rec_cnt == 0);
+    }
+
+    return INVALID_PNUM;
+}
+
+
+bool ISAMTree::post_init(size_t record_count, size_t tombstone_count, PageNum last_leaf, PageNum root_pnum, char* buffer, PagedFile *pfile)
+{
+    memset(buffer, 0, PAGE_SIZE);
+
+    auto metadata = (ISAMTreeMetaHeader *) buffer;
+    metadata->root_node = root_pnum;
+    metadata->first_data_page = BTREE_FIRST_LEAF_PNUM;
+    metadata->last_data_page = last_leaf;
+    metadata->tombstone_count = tombstone_count;
+    metadata->record_count = record_count;
+
+    return pfile->write_page(BTREE_META_PNUM, buffer);
+}
+
+
+PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz)
 {
     size_t leaf_recs_per_page = PAGE_SIZE / record_size;
     size_t int_recs_per_page = (PAGE_SIZE - ISAMTreeInternalNodeHeaderSize) / internal_record_size;
@@ -435,7 +509,7 @@ PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, PageNum first_leaf_
     // different data format than subsequent internal levels, so we'll do it
     // separately.
     PageNum cur_output_pnum = pfile->allocate_pages(buffer_sz);
-    PageNum cur_input_pnum = first_leaf_page;
+    PageNum cur_input_pnum = BTREE_FIRST_LEAF_PNUM;
     PageNum last_leaf_page = cur_output_pnum - 1;
 
     size_t cur_int_page_idx = 0;
@@ -748,4 +822,4 @@ char *ISAMTree::get_tombstone(const char *key, const char *val, char *buffer)
 
     return nullptr;
 }
-}}
+}

@@ -141,7 +141,7 @@ int PagedFile::write_page(PageNum pnum, const char *buffer_ptr)
 int PagedFile::write_pages(PageNum first_page, size_t page_cnt, const char *buffer_ptr)
 {
 
-    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt)) {
+    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt - 1)) {
        return this->raw_write(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
     }
 
