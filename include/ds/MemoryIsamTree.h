@@ -2,8 +2,7 @@
  *
  */
 
-#ifndef H_MEMISAMTREE
-#define H_MEMISAMTREE
+#pragma once
 
 #include "util/base.h"
 #include "util/types.h"
@@ -12,7 +11,7 @@
 #include "ds/BloomFilter.h"
 #include "lsm/MemTable.h"
 
-namespace lsm { namespace ds {
+namespace lsm {
 
 constexpr size_t MemISAMTreeInternalNodeSize = 64;
 
@@ -141,7 +140,4 @@ private:
         return copy;
     }
 };
-
-}}
-
-#endif
+}
