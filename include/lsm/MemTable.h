@@ -24,8 +24,8 @@ public:
     }
 
     int append(const char* key, const char* value, bool is_tombstone = false) {
-        size_t pos = 0;
-        if (!(pos = try_advance_tail())) return 0;
+        ssize_t pos = 0;
+        if ((pos = try_advance_tail()) == -1) return 0;
 
         layout_record(m_data + pos, key, value, is_tombstone);
         if (is_tombstone) {
@@ -60,7 +60,7 @@ public:
     }
 
     bool is_full() {
-        return m_reccnt -= m_cap;
+        return m_reccnt == m_cap;
     }
 
     size_t tombstone_count() {
@@ -79,11 +79,11 @@ public:
     }
 
 private:
-    size_t try_advance_tail() {
+    ssize_t try_advance_tail() {
         size_t new_tail = m_current_tail.fetch_add(record_size);
 
         if (new_tail < m_buffersize) return new_tail;
-        else return 0;
+        else return -1;
     }
 
     size_t m_cap;

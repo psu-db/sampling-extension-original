@@ -20,7 +20,7 @@ inline void layout_record(char* buffer, const char* key, const char* value, bool
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
-    *(uint64_t*)(buffer + MAXALIGN(key_size) + MAXALIGN(value_size)) |= 1;
+    *(uint64_t*)(buffer + MAXALIGN(key_size) + MAXALIGN(value_size)) |= tombstone;
 }
 
 inline const char *get_key(const char *buffer) {
