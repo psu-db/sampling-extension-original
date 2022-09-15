@@ -24,14 +24,20 @@ PagedFile *PagedFile::create(const std::string fname, bool new_file)
         return nullptr;
     }
     
-    if (!new_file) {
+    if (new_file) {
+        if(fallocate(fd, 0, 0, PAGE_SIZE)) {
+            return nullptr;
+        }
+
+        size = PAGE_SIZE;
+    } else {
         struct stat buf;
         if (fstat(fd, &buf) == -1) {
             return nullptr;
         }
 
         size = buf.st_size;
-    }
+    } 
 
     if (fd) {
         return new PagedFile(fd, fname, size, mode);
@@ -113,10 +119,30 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, char*>> pages)
 }
 
 
+int PagedFile::read_pages(PageNum first_page, size_t page_cnt, char *buffer_ptr)
+{
+    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt)) {
+       return this->raw_read(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
+    }
+
+    return 0;
+}
+
+
 int PagedFile::write_page(PageNum pnum, const char *buffer_ptr)
 {
     if (this->check_pnum(pnum)) {
         return this->raw_write(buffer_ptr, PAGE_SIZE, PagedFile::pnum_to_offset(pnum));
+    }
+
+    return 0;
+}
+
+int PagedFile::write_pages(PageNum first_page, size_t page_cnt, const char *buffer_ptr)
+{
+
+    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt)) {
+       return this->raw_write(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
     }
 
     return 0;
@@ -137,7 +163,7 @@ int PagedFile::remove_file()
 
 PageNum PagedFile::get_page_count()
 {
-    return this->size / PAGE_SIZE;
+    return this->size / PAGE_SIZE - 1;
 }
 
 
@@ -151,7 +177,7 @@ PagedFile::~PagedFile()
 
 bool PagedFile::check_pnum(PageNum pnum)
 {
-    return pnum != INVALID_PNUM && pnum <= (this->size / PAGE_SIZE);
+    return pnum != INVALID_PNUM && pnum < (this->size / PAGE_SIZE);
 }
 
 
@@ -219,11 +245,11 @@ int PagedFile::raw_allocate(size_t amount)
     }
 
     int alloc_mode = 0;
-    if (fallocate(this->fd, alloc_mode, this->size, amount*PAGE_SIZE)) {
+    if (fallocate(this->fd, alloc_mode, this->size, amount)) {
         return 0;
     }
 
-    this->size += amount * PAGE_SIZE;
+    this->size += amount;
     return 1;
 }
 
@@ -249,6 +275,26 @@ bool PagedFile::verify_io_parms(off_t amount, off_t offset)
 std::string PagedFile::get_fname()
 {
     return this->fname;
+}
+
+
+off_t PagedFile::get_file_size()
+{
+    return this->size;
+}
+
+
+PagedFileIterator *PagedFile::start_scan(PageNum start_page, PageNum end_page)
+{
+    if (end_page == INVALID_PNUM) {
+        end_page = this->get_page_count();
+    }
+
+    if (this->check_pnum(start_page) && this->check_pnum(end_page)) {
+        return new PagedFileIterator(this, start_page, end_page);
+    }
+
+    return nullptr;
 }
 
 }

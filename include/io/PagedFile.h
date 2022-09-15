@@ -42,7 +42,7 @@ public:
     iter1.
      * checked via the supports_allocation method.
      */
-    PageNum allocate_pages(PageNum count=0);
+    PageNum allocate_pages(PageNum count=1);
 
     /*
      * Reads data from the specified page into a buffer pointed to by
@@ -107,7 +107,13 @@ public:
      */
     int remove_file();
 
-    PagedFileIterator *start_scan(PageNum start_page, PageNum end_page);
+
+    /*
+     * Returns the raw number of bytes allocated in the backing file.
+     */
+    off_t get_file_size();
+
+    PagedFileIterator *start_scan(PageNum start_page=1, PageNum end_page=0);
 
     std::string get_fname();
 
