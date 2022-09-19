@@ -121,7 +121,7 @@ public:
      * Returns the number of leaf pages within this tree
      */
     inline PageNum get_leaf_page_count() {
-        return this->last_data_page - this->first_data_page;
+        return this->last_data_page - this->first_data_page + 1;
     }
 
     /*
@@ -167,6 +167,7 @@ private:
 
     static int initial_page_allocation(PagedFile *pfile, PageNum page_cnt, size_t tombstone_count, PageNum *first_leaf, PageNum *first_internal, PageNum *meta);
     static PageNum generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz);
+    static PageNum generate_first_internal_level(PagedFile *pfile, size_t final_leaf_rec_cnt, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz);
 
     static void generate_leaf_pages(PagedFile *pfile, PagedFileIterator *iter1, PagedFileIterator *iter2);
 
