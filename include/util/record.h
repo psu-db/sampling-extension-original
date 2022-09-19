@@ -31,6 +31,10 @@ inline static const char *get_val(const char *buffer) {
     return buffer + MAXALIGN(key_size);
 }
 
+inline static const char *get_record(const char *buffer, size_t idx) {
+    return buffer + record_size*idx;
+}
+
 inline static const char* get_hdr(const char *buffer) {
     return buffer + MAXALIGN(key_size) + MAXALIGN(value_size);
 }

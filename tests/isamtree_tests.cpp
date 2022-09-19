@@ -147,51 +147,65 @@ START_TEST(t_verify_page_structure)
     while (pg_iter->next()) {
         char *leaf_page = pg_iter->get_item();
 
-            for (size_t i=0; i<records_per_leaf; i++) {
-                if (total_records >= cnt) {
-                    break;
-                }
-
-                key_type key = *(key_type*)get_key(leaf_page + i*record_size);
-
-                ck_assert_int_eq(key, total_records);
-                total_records++;
+        for (size_t i=0; i<records_per_leaf; i++) {
+            if (total_records >= cnt) {
+                break;
             }
+
+            key_type key = *(key_type*)get_key(leaf_page + i*record_size);
+
+            ck_assert_int_eq(key, total_records);
+            total_records++;
         }
+    }
 
-        ck_assert_int_eq(total_records, cnt);
+    ck_assert_int_eq(total_records, cnt);
 
-        // check on the first internal level
-        auto l1_iter = pfile->start_scan(isam->get_leaf_page_count() + 2);
-        PageNum current_pnum = BTREE_FIRST_LEAF_PNUM;
+    // check on the first internal level
+    auto l1_iter = pfile->start_scan(isam->get_leaf_page_count() + 2);
+    PageNum current_pnum = BTREE_FIRST_LEAF_PNUM;
 
-        bool done = false;
-        PageNum val;
-        size_t rec_cnt = 0;
-        while (l1_iter->next() && !done) {
-            char *l1_page = l1_iter->get_item();
-            rec_cnt += ((ISAMTreeInternalNodeHeader*) l1_page)->leaf_rec_cnt;
-            for (size_t i=0; i<internal_records_per_page; i++) {
-                if (current_pnum > 1 + isam->get_leaf_page_count()) {
-                    done = true;
-                    break;
-                }
-
-                auto rec = get_internal_record(l1_page, i);
-                auto key = *(int64_t*) get_internal_key(rec);
-                val = get_internal_value(rec);
-
-                ck_assert_int_eq(current_pnum, val);
-                current_pnum++;
+    bool done = false;
+    PageNum val;
+    size_t rec_cnt = 0;
+    while (l1_iter->next() && !done) {
+        char *l1_page = l1_iter->get_item();
+        rec_cnt += ((ISAMTreeInternalNodeHeader*) l1_page)->leaf_rec_cnt;
+        for (size_t i=0; i<internal_records_per_page; i++) {
+            if (current_pnum > 1 + isam->get_leaf_page_count()) {
+                done = true;
+                break;
             }
+
+            auto rec = get_internal_record(l1_page, i);
+            auto key = *(int64_t*) get_internal_key(rec);
+            val = get_internal_value(rec);
+
+            ck_assert_int_eq(current_pnum, val);
+            current_pnum++;
         }
+    }
 
-        ck_assert_int_eq(val, isam->get_leaf_page_count() + 1);
-        ck_assert_int_eq(rec_cnt, cnt);
+    ck_assert_int_eq(val, isam->get_leaf_page_count() + 1);
+    ck_assert_int_eq(rec_cnt, cnt);
 
-        delete mtable;
-        delete pfile;
-        delete isam;
+    // check the root page
+    auto root_pg = l1_iter->get_item();
+    current_pnum = isam->get_leaf_page_count() + 2;
+    for (size_t i=0; i<24; i++) {
+        auto rec = get_internal_record(root_pg, i);
+        auto key = *(int64_t*) get_internal_key(rec);
+        val = get_internal_value(rec);
+
+        ck_assert_int_eq(current_pnum, val);
+        current_pnum++;
+    }
+
+    ck_assert_int_eq(((ISAMTreeInternalNodeHeader *) root_pg)->leaf_rec_cnt, cnt);
+
+    delete mtable;
+    delete pfile;
+    delete isam;
 }
 END_TEST
 
@@ -200,9 +214,11 @@ Suite *unit_testing()
 {
     Suite *unit = suite_create("IsamTree Unit Testing");
     TCase *create = tcase_create("lsm::ISAMTree::create Testing");
-    tcase_add_test(create, t_create_from_memtable);
-    tcase_add_test(create, t_create_from_memtable_isam);
+//    tcase_add_test(create, t_create_from_memtable);
+ //   tcase_add_test(create, t_create_from_memtable_isam);
     tcase_add_test(create, t_verify_page_structure);
+
+    tcase_set_timeout(create, 100);
 
     suite_add_tcase(unit, create);
 

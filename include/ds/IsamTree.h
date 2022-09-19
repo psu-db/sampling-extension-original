@@ -167,7 +167,7 @@ private:
 
     static int initial_page_allocation(PagedFile *pfile, PageNum page_cnt, size_t tombstone_count, PageNum *first_leaf, PageNum *first_internal, PageNum *meta);
     static PageNum generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz);
-    static PageNum generate_first_internal_level(PagedFile *pfile, size_t final_leaf_rec_cnt, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz);
+    static PageNum generate_next_internal_level(PagedFile *pfile, size_t *pl_final_pg_rec_cnt, PageNum *pl_first_pg, bool first_level, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz);
 
     static void generate_leaf_pages(PagedFile *pfile, PagedFileIterator *iter1, PagedFileIterator *iter2);
 
@@ -186,7 +186,7 @@ private:
         memcpy(buffer + key_size, &target_page, sizeof(PageNum));
     }
 
-    static inline const char *get_internal_record(const char *internal_page_buffer, size_t idx) {
+    static inline char *get_internal_record(char *internal_page_buffer, size_t idx) {
         return internal_page_buffer + ISAMTreeInternalNodeHeaderSize + internal_record_size * idx;
     }
 
@@ -198,6 +198,14 @@ private:
         return *((PageNum *) buffer + key_size);
     }
 
+    static inline char *get_page(char *buffer, size_t idx) {
+        return buffer + (idx * PAGE_SIZE);
+    }
+
+
+    static inline ISAMTreeInternalNodeHeader *get_header(char *buffer, size_t idx=0) {
+        return (ISAMTreeInternalNodeHeader *) get_page(buffer, idx);
+    }
 
     inline size_t max_leaf_record_idx(PageNum pnum) {
         return (pnum == this->last_data_page) ? rec_cnt % PAGE_SIZE : (PAGE_SIZE / record_size);

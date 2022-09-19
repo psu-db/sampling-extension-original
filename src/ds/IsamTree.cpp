@@ -184,6 +184,10 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, PagedFileIterator *iter1, si
     
     root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
+    if (root_pnum == INVALID_PNUM) {
+        goto error_filter;
+    }
+
     if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
         goto error_filter;
     }
@@ -257,6 +261,10 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
     }
     
     root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
+
+    if (root_pnum == INVALID_PNUM) {
+        goto error_filter;
+    }
 
     if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
         goto error_filter;
@@ -352,6 +360,10 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
     
     root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
 
+    if (root_pnum == INVALID_PNUM) {
+        goto error_filter;
+    }
+
     if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
         goto error_filter;
     }
@@ -415,6 +427,10 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
     }
     
     root_pnum = ISAMTree::generate_internal_levels(pfile, last_leaf_record_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
+
+    if (root_pnum == INVALID_PNUM) {
+        goto error_filter;
+    }
 
     if (!ISAMTree::post_init(record_count, tombstone_count, last_leaf, root_pnum, buffer, pfile)) {
         goto error_filter;
@@ -495,132 +511,173 @@ bool ISAMTree::post_init(size_t record_count, size_t tombstone_count, PageNum la
 }
 
 
-PageNum ISAMTree::generate_first_internal_level(PagedFile *pfile, size_t final_leaf_rec_cnt, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz)
+PageNum ISAMTree::generate_next_internal_level(PagedFile *pfile, size_t *pl_final_pg_rec_cnt, PageNum *pl_first_pg, bool first_level, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz)
 {    
-    size_t leaf_recs_per_page = PAGE_SIZE / record_size;
-    size_t int_recs_per_page = (PAGE_SIZE - ISAMTreeInternalNodeHeaderSize) / internal_record_size;
+    // These variables names were getting very unwieldy. Here's a little glossary
+    //      nl - new level (the level being created by this function)
+    //      pl - previous level (the level from which the new level is being created)
+    //      in - input -- refers to the buffers, etc. for the previous level that are read
+    //      out - output -- refers to buffers, etc. for the new level that are written
 
-    // First, we generate the initial internal level. This processes a slightly
-    // different data format than subsequent internal levels, so we'll do it
-    // separately.
+    size_t int_recs_per_pg = (PAGE_SIZE - ISAMTreeInternalNodeHeaderSize) / internal_record_size;
 
-    PageNum cur_input_pnum = BTREE_FIRST_LEAF_PNUM;
-    PageNum last_leaf_page = pfile->get_page_count();
-    PageNum first_int_page = last_leaf_page + 1;
-    PageNum cur_output_pnum = first_int_page;
+    size_t pl_recs_per_pg = (first_level) ? PAGE_SIZE / record_size : int_recs_per_pg;
 
-    size_t leaf_pages_remaining = last_leaf_page - 1;
+    PageNum in_pnum = *pl_first_pg;
+    PageNum pl_last_pg = pfile->get_page_count();
+    PageNum nl_first_pg = pl_last_pg + 1;
+    PageNum out_pnum = nl_first_pg;
 
-    size_t cur_int_page_idx = 0;
-    size_t cur_int_rec_idx = 0;
+    size_t pl_pgs_remaining = pl_last_pg - *pl_first_pg + 1;
 
-    size_t internal_node_child_rec_cnt = 0;
+    size_t out_pg_idx = 0;
+    size_t out_rec_idx = 0;
 
     // The first internal node has no previous prev_sibling
-    ((ISAMTreeInternalNodeHeader *) (out_buffer))->prev_sibling = INVALID_PNUM;
-            ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_page_idx * PAGE_SIZE)))->leaf_rec_cnt = 0;
+    get_header(out_buffer)->prev_sibling = INVALID_PNUM;
+    get_header(out_buffer)->leaf_rec_cnt = 0;
 
     do {
-        size_t read_pages = std::min(in_buffer_sz, leaf_pages_remaining);
-        if (pfile->read_pages(cur_input_pnum, read_pages, in_buffer) == 0) {
+        // Read as many input pages from the previous level as the buffer
+        // will allow, or as many pages as remain, whichever is smaller.
+        size_t in_pgs = std::min(in_buffer_sz, pl_pgs_remaining);
+        if (pfile->read_pages(in_pnum, in_pgs, in_buffer) == 0) {
             goto error;
         }
 
-        leaf_pages_remaining -= read_pages;
+        // Track the number of pages that remain to be read, necessary
+        // for the above check to ensure we don't read past the end of
+        // the level.
+        pl_pgs_remaining -= in_pgs;
 
-        for (size_t i=0; i<read_pages; i++) { 
+        for (size_t in_pg_idx = 0; in_pg_idx < in_pgs; in_pg_idx++) {
             // Get the key of the last record in this leaf page
-            size_t last_record_offset = (cur_input_pnum < last_leaf_page) ?  record_size*(leaf_recs_per_page-1) : record_size * (final_leaf_rec_cnt-1);
-            const char *key = get_key(in_buffer + (PAGE_SIZE * (i)) + last_record_offset);
+            size_t last_record = (in_pnum < pl_last_pg) ? pl_recs_per_pg - 1 : (*pl_final_pg_rec_cnt) - 1;
 
-            char *internal_buff = out_buffer + (cur_int_page_idx * PAGE_SIZE) + (cur_int_rec_idx++ * internal_record_size) + ISAMTreeInternalNodeHeaderSize;
-            ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_page_idx * PAGE_SIZE)))->leaf_rec_cnt += leaf_recs_per_page;
+            const char *key;
+            if (first_level) {
+                key = get_key(get_record(get_page(in_buffer, in_pg_idx), last_record));
+            } else {
+                key = get_internal_key(get_internal_record(get_page(in_buffer, in_pg_idx), last_record));
+            }
 
-            build_internal_record(internal_buff, key, cur_input_pnum);
-            cur_input_pnum++;
+            // Increment the total number of children of this internal page
+            get_header(out_buffer, out_pg_idx)->leaf_rec_cnt += (first_level) ? pl_recs_per_pg : get_header(in_buffer, in_pg_idx)->leaf_rec_cnt;
 
-            if (cur_int_rec_idx >= int_recs_per_page) {
-                cur_int_rec_idx = 0;
-                cur_int_page_idx++;
+            // Get the address in the buffer for the new internal record
+            char *internal_buff = get_internal_record(get_page(out_buffer, out_pg_idx), out_rec_idx++);
 
-                ((ISAMTreeInternalNodeHeader *) (out_buffer + ((cur_int_page_idx - 1) * PAGE_SIZE)))->next_sibling = cur_output_pnum + cur_int_page_idx;
+            // Create the new internal record at the address from above
+            build_internal_record(internal_buff, key, in_pnum);
 
-                if (cur_int_page_idx >= out_buffer_sz) {
+            // Advance to the next input page
+            in_pnum++;
+
+            // We've filled up an output page with records, so we initialize
+            // the next output page
+            if (out_rec_idx >= int_recs_per_pg) {
+                // Advance the index variables to the first record of the next
+                // page
+                out_rec_idx = 0;
+                out_pg_idx++;
+
+                // Update the full page's header to point to the next one.
+                get_header(out_buffer, out_pg_idx - 1)->next_sibling = out_pnum + out_pg_idx;
+
+                // If we've filled up the whole buffer, we need to write it
+                if (out_pg_idx >= out_buffer_sz) {
                     if (!pfile->allocate_pages(out_buffer_sz)) {
                         goto error;
                     }
 
-                    if (!pfile->write_pages(cur_output_pnum, out_buffer_sz, out_buffer)) {
+                    if (!pfile->write_pages(out_pnum, out_buffer_sz, out_buffer)) {
                         goto error;
                     }
 
-                    cur_output_pnum += out_buffer_sz;
-                    cur_int_page_idx = 0;
-                }
+                    out_pnum += out_buffer_sz;
+                    out_pg_idx = 0;
+              }
 
-                // Set up the page pointers in the header. Technically, we
-                // don't *really* need these as the pages are laid out
-                // sequentially anyway. But they are a convenient way still to
-                // identify the first and last page on a given level.
-                ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_rec_idx * PAGE_SIZE)))->prev_sibling = cur_output_pnum + cur_int_page_idx - 1;
-                ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_rec_idx * PAGE_SIZE)))->next_sibling = INVALID_PNUM;
-                ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_page_idx * PAGE_SIZE)))->leaf_rec_cnt = 0;
+              // Set up the pg pointers in the header. Technically, we
+              // don't *really* need these as the pgs are laid out
+              // sequentially anyway. But they are a convenient way still to
+              // identify the first and last pg on a given level.
+              get_header(out_buffer, out_pg_idx)->prev_sibling = out_pnum + out_pg_idx - 1;
+              get_header(out_buffer, out_pg_idx)->next_sibling = INVALID_PNUM;
+              get_header(out_buffer, out_pg_idx)->leaf_rec_cnt = 0;
             }
         }
-    } while (cur_input_pnum <= last_leaf_page);
+    } while (in_pnum <= pl_last_pg);
 
+    
     // If this is the case, it means we wrote the buffer on the last iteration
     // of the loop and didn't add any records to the current buffer, so we need
-    // to roll-back the updates to the output page and index.
-    if (cur_int_page_idx == 0 && cur_int_rec_idx == 0) {
-        cur_int_page_idx = out_buffer_sz;
-        cur_output_pnum -= out_buffer_sz;
-    } 
-    
-    // Rather than account for it within the loop, it's probably better just to 
-    // account for the last leaf's record count after the loop, avoiding a branch
-    ((ISAMTreeInternalNodeHeader *) (out_buffer + (cur_int_page_idx * PAGE_SIZE)))->leaf_rec_cnt -= (leaf_recs_per_page - final_leaf_rec_cnt);
+    // to roll-back the updates to the output pg and index.
+    if (out_pg_idx == 0 && out_rec_idx == 0) {
+        out_pg_idx = out_buffer_sz;
+        out_pnum -= out_buffer_sz;
+    }
+
+    // If we are creating the first level, the last leaf page may not have been
+    // full, in which case we need to subtract the difference from the last
+    // internal page's record count in its header.
+    get_header(out_buffer, out_pg_idx)->leaf_rec_cnt -= ((pl_recs_per_pg - (*pl_final_pg_rec_cnt)) * first_level);
 
     // Write any remaining data from the buffer.
-    if (!pfile->allocate_pages(cur_int_page_idx+1)) {
+    if (!pfile->allocate_pages(out_pg_idx+1)) {
         goto error;
     }
 
-    if (!pfile->write_pages(cur_output_pnum, cur_int_page_idx+1, out_buffer)) {
+    if (!pfile->write_pages(out_pnum, out_pg_idx+1, out_buffer)) {
         goto error;
     }
 
-    // return the number of pages on Level1
-    return (cur_output_pnum + cur_int_page_idx) - first_int_page;
+    *pl_first_pg = nl_first_pg;
+    *pl_final_pg_rec_cnt = (out_rec_idx) ? out_rec_idx - 1 : 0;
+
+    // return the number of pages on the newly created leve.
+    return (out_pnum + out_pg_idx) - nl_first_pg + 1;
 
 error:
     return INVALID_PNUM;
 }
 
 
-PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *buffer, size_t buffer_sz)
+PageNum ISAMTree::generate_internal_levels(PagedFile *pfile, size_t final_leaf_rec_cnt, char *out_buffer, size_t out_buffer_sz)
 {
     // FIXME: There're some funky edge cases here if the input_buffer_sz is larger
     // than the number of leaf pages
-    size_t input_buffer_sz = 1;
-    auto input_buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * input_buffer_sz);
+    size_t in_buffer_sz = 1;
+    auto in_buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * in_buffer_sz);
 
-    PageNum prev_level_first_pnum = pfile->get_page_count() + 1;
-    PageNum prev_level_pg_cnt = ISAMTree::generate_first_internal_level(pfile, final_leaf_rec_cnt, buffer, buffer_sz, input_buffer, input_buffer_sz);
-    PageNum cur_out_pnum = pfile->get_page_count() + 1;
+    // First, generate the first internal level
+    PageNum pl_first_pg = BTREE_FIRST_LEAF_PNUM;
+    size_t pl_final_rec_cnt = final_leaf_rec_cnt;
+    PageNum pl_pg_cnt = ISAMTree::generate_next_internal_level(pfile, &pl_final_rec_cnt, &pl_first_pg, true, out_buffer, out_buffer_sz, in_buffer, in_buffer_sz);
 
-    if (prev_level_pg_cnt == INVALID_PNUM) {
+    if (pl_pg_cnt == INVALID_PNUM) {
         goto error_buffer;
     }
 
+    // If there was only 1 page in the first internal level, then that will be our root.
+    if (pl_pg_cnt == 1) {
+        return pl_first_pg;
+    }
 
-    free(input_buffer);
-    // The last pnum processed will belong to the page in the level with only 1 node,
-    // i.e., the root node.
-    return cur_out_pnum;
+    // Otherwise, we need to repeatedly create new levels until the page count returned
+    // is 1.
+    while ((pl_pg_cnt = ISAMTree::generate_next_internal_level(pfile, &pl_final_rec_cnt, &pl_first_pg, false, out_buffer, out_buffer_sz, in_buffer, in_buffer_sz)) != 1) {
+        if (pl_pg_cnt == INVALID_PNUM) {
+            goto error_buffer;
+        }
+    }
+
+    // The last page allocated is the tree root.
+    free(in_buffer);
+    return pl_first_pg + pl_pg_cnt;
 
 error_buffer:
-    free(input_buffer);
+    free(in_buffer);
 
 error:
     return INVALID_PNUM;

@@ -121,7 +121,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, char*>> pages)
 
 int PagedFile::read_pages(PageNum first_page, size_t page_cnt, char *buffer_ptr)
 {
-    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt)) {
+    if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt - 1)) {
        return this->raw_read(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
     }
 
