@@ -112,55 +112,42 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, PagedFileIterator *iter1, si
         size_t iter2_records = 0;
 
 
-        bool iter1_page_done = true;
-        bool iter2_page_done = true;
-
         if (iter1->next()) {
             iter1_page = iter1->get_item();
-            iter1_page_done = false;
         }
 
         if (iter2->next()) {
             iter2_page = iter2->get_item();
-            iter2_page_done = false;
         }
 
         // if neither iterator contains any items, then there is no merging work to
         // be done.
-        while (!iter1_page_done || !iter2_page_done) {
-            char *rec1 = (!iter1_page_done) ? iter1_page + (record_size * iter1_rec_idx) : nullptr;
-            char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
+        while (!(iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt) || !(iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) {
+            char *rec1 = (!(iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt)) ? iter1_page + (record_size * iter1_rec_idx) : nullptr;
+            char *rec2 = (!(iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
 
             char *to_copy;
-            if (iter1_page_done || (!iter2_page_done && record_cmp(rec1, rec2) == 1)) {
+            if ((iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt) || (!(iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt) && record_cmp(rec1, rec2) == 1)) {
                 to_copy = rec2;
                 iter2_rec_idx++;
                 iter2_rec_cnt++;
-                iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
 
-                if (iter2_page_done) {
+                if ((iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) {
                     iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
                     iter2_rec_idx = 0;
-                    if (iter2_page) {
-                        iter2_page_done = false;
-                    }
                 }
             } else {
                 to_copy = rec1;
                 iter1_rec_idx++;
                 iter1_rec_cnt++;
-                iter1_page_done = iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt;
 
-                if (iter1_page_done) {
+                if ((iter1_rec_idx >= ISAM_RECORDS_PER_LEAF || iter1_records >= iter1_rec_cnt)) {
                     iter1_page = (iter1->next()) ? iter1->get_item() : nullptr;
                     iter1_rec_idx = 0;
-                    if (iter1_page) {
-                        iter1_page_done = false;
-                    }
                 } 
             }
 
-            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+            memcpy((void *) get_record(buffer, output_idx++), rec1, record_size);
 
             if (is_tombstone(to_copy)) {
                 tomb_filter->insert((char *) get_key(to_copy), key_size);            
@@ -238,7 +225,8 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
                 run1_rec_idx++;
             }
 
-            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+
+            memcpy((void *) get_record(buffer, output_idx++), rec1, record_size);
 
             if (is_tombstone(to_copy)) {
                 tomb_filter->insert((char *) get_key(to_copy), key_size);            
@@ -303,18 +291,16 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
         char *iter2_page = nullptr;
         size_t iter2_rec_idx = 0;
         size_t iter2_records = 0;
-        bool iter2_page_done = true;
 
         size_t output_idx = 0;
 
         if (iter2->next()) {
             iter2_page = iter2->get_item();
-            iter2_page_done = false;
         }
 
-        while (run1_rec_idx < run1_rec_cnt || !iter2_page_done) {
+        while (run1_rec_idx < run1_rec_cnt || !(iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) {
             char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
-            char *rec2 = (!iter2_page_done) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
+            char *rec2 = (!(iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) ? iter2_page + (record_size * iter2_rec_idx) : nullptr;
             
             char *to_copy;
             if (!rec1 || (rec2 && record_cmp(rec1, rec2) == 1)) {
@@ -322,21 +308,16 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
                 iter2_rec_idx++;
                 iter2_records++;
 
-                iter2_page_done = iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt;
-
-                if (iter2_page_done) {
+                if ((iter2_rec_idx >= ISAM_RECORDS_PER_LEAF || iter2_records >= iter2_rec_cnt)) {
                     iter2_page = (iter2->next()) ? iter2->get_item() : nullptr;
                     iter2_rec_idx = 0;
-                    if (iter2_page) {
-                        iter2_page_done = false;
-                    }
                 }
             } else {
                 to_copy = rec1;
                 run1_rec_idx++;
             }
 
-            memcpy(buffer + (output_idx++ * record_size), to_copy, record_size);
+            memcpy((void *) get_record(buffer, output_idx++), rec1, record_size);
 
             if (is_tombstone(to_copy)) {
                 tomb_filter->insert((char *) get_key(to_copy), key_size);            
@@ -404,7 +385,7 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
             char *rec1 = (run1_rec_idx < run1_rec_cnt) ? sorted_run1 + (record_size * run1_rec_idx) : nullptr;
             run1_rec_idx++;
             
-            memcpy(buffer + (output_idx++ * record_size), rec1, record_size);
+            memcpy((void *) get_record(buffer, output_idx++), rec1, record_size);
 
             if (is_tombstone(rec1)) {
                 tomb_filter->insert((char *) get_key(rec1), key_size);            
