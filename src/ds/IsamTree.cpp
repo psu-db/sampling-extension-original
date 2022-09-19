@@ -95,7 +95,7 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, PagedFileIterator *iter1, si
 
     PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
     if (leaf_page_cnt == 0) {
-        goto error;
+        goto error_buffer;
     }
 
     {
@@ -202,7 +202,7 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
 
     PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
     if (leaf_page_cnt == 0) {
-        goto error;
+        goto error_buffer;
     }
 
     {
@@ -281,7 +281,7 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
 
     PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
     if (leaf_page_cnt == 0) {
-        goto error;
+        goto error_buffer;
     }
 
     {
@@ -372,7 +372,7 @@ BloomFilter *ISAMTree::initialize(PagedFile *pfile, char *sorted_run1, size_t ru
 
     PageNum leaf_page_cnt = ISAMTree::pre_init(record_count, tombstone_count, rng, pfile, &tomb_filter, &buffer);
     if (leaf_page_cnt == 0) {
-        goto error;
+        goto error_buffer;
     }
 
     {
