@@ -13,7 +13,7 @@ namespace lsm {
 class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t filter_size, const gsl_rng* rng)
-    : m_cap(capacity), m_buffersize(capacity * record_size), m_reccnt(0)
+    : m_cap(capacity), m_buffersize(capacity * record_size), m_reccnt(0), m_sorted(false)
     , m_tombstonecnt(0), m_current_tail(0) {
         m_data = (char*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize);
         m_tombstone_filter = nullptr;
@@ -47,7 +47,11 @@ public:
     }
 
     char* sorted_output() {
-        qsort(m_data, m_reccnt.load(), record_size, record_cmp);
+        if (!m_sorted) {
+            m_sorted = true;
+            qsort(m_data, m_reccnt.load(), record_size, record_cmp);
+        }
+        
         return m_data;
     }
     
@@ -91,6 +95,7 @@ private:
     
     char* m_data;
     BloomFilter* m_tombstone_filter;
+    bool m_sorted;
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
     alignas(64) std::atomic<size_t> m_current_tail;
