@@ -2,7 +2,7 @@
  *
  */
 
-#include "ds/IsamTree.h"
+#include "lsm/IsamTree.h"
 
 namespace lsm {
 
@@ -724,6 +724,23 @@ PageNum ISAMTree::get_upper_bound(const char *key, char *buffer)
         
 
     return current_page;
+}
+
+std::pair<PageNum, PageNum> ISAMTree::get_bounds(const char *lower_key, const char *upper_key, char *buffer1, char *buffer2) 
+{
+    assert(buffer1);
+    assert(buffer2);
+    assert(lower_key);
+    assert(upper_key);
+    assert(key_cmp(lower_key, upper_key) <= 0);
+
+    PageNum current_page_lb = this->root_page;
+    PageNum current_page_up = this->root_page;
+
+    size_t min_lb = 0;
+    size_t min_ub = 0;
+
+    return {0,0};
 }
 
 

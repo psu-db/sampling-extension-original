@@ -76,8 +76,34 @@ public:
     PageNum get_upper_bound(const char *key, char *buffer);
 
     /*
-     * Returns the newest record within this tree with the specified key, and a
-     * timestamp no greater than time.
+     * Returns the first leaf page pnum within the tree that contains a key
+     * greater than or equal to the specified lower key boundary, and the last
+     * page page pnum that contains a key less than or equal to upper key.
+     *
+     * buffer1 and buffer2 are thread-local buffers to be used for IO. They must
+     * be SECTOR_SIZE aligned and at least PAGE_SIZE in length. Their contents
+     * will vary over the function call and are not defined at any point in time,
+     * and any data within them prior to this call will be lost.
+     *
+     * Two buffers are required here because at some points during function
+     * execution, two different pages must be kept in memory at once.
+     */
+    std::pair<PageNum, PageNum> get_bounds(const char *lower_key, const char *upper_key, 
+                                           char *buffer1, char *buffer2);
+
+    /*
+     * Reads a random record from within the specified page range and returns a
+     * pointer to it. Note that the record in question will be stored within
+     * buffer, and so must be copied out or used prior to using the buffer for
+     * anything else. If upper_pnum is the last leaf page of the tree, it is
+     * possible for this function to sample a record that doesn't exist, in
+     * which case it will return nullptr.
+     */
+    const char *sample_record(PageNum lower_pnum, PageNum upper_pnum, 
+                              char *buffer, gsl_rng *rng);
+
+    /*
+     * Returns the newest record within this tree with the specified key.
      *
      * buffer is a thread-local buffer to be used for IO, to avoid any
      * inter-thread contention on internal buffering state. This must be
