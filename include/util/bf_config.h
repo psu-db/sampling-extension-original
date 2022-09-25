@@ -4,7 +4,7 @@
 
 namespace lsm {
 
-static double BF_FPR = .01;
-static size_t BF_HASH_FUNCS = 9;
+static constexpr double BF_FPR = .01;
+static constexpr size_t BF_HASH_FUNCS = 9;
 
 }
