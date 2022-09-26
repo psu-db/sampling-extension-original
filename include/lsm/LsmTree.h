@@ -53,8 +53,8 @@ public:
         size_t sample_idx = 0;
 
         // Obtain the sampling ranges for each level
-        std::vector<std::pair<const char *, const char *>> memory_ranges;
-        std::vector<std::pair<PageNum, PageNum>> disk_ranges;
+        std::vector<std::pair<RunId, std::pair<const char *, const char *>>> memory_ranges;
+        std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> disk_ranges;
         std::vector<size_t> record_counts;
 
         MemTable *memtable = nullptr;
@@ -70,7 +70,7 @@ public:
                 auto ranges = level->sample_ranges(lower_key, upper_key);
                 for (auto range : ranges) {
                     memory_ranges.push_back(range);
-                    record_counts.push_back((range.second - range.first) / record_size);
+                    record_counts.push_back((range.second.second - range.second.first) / record_size);
                 }
             }
         }
@@ -80,7 +80,7 @@ public:
                 auto ranges = level->sample_ranges(lower_key, upper_key, buffer);
                 for (auto range : ranges) {
                     disk_ranges.push_back(range);
-                    record_counts.push_back((range.second - range.first) * (PAGE_SIZE / record_size));
+                    record_counts.push_back((range.second.second - range.second.first) * (PAGE_SIZE / record_size));
                 }
             }
         }
@@ -107,7 +107,12 @@ public:
         size_t rejections = sample_sz;
         sampling_attempts = 0;
         sampling_rejections = 0;
-        
+
+        // FIXME: it would probably do to rearrange this so that the
+        // memory allocation for the to_sample vector only occurs once. Just
+        // need to track the end pointer for use with std::sort. Or we could
+        // use a c-array with quicksort instead, though tracking the end there
+        // might be a bit trickier.
         do {
             // pre-calculate the random numbers. If a sample rejects,
             // we'll track that and redo the rejections in bulk, until
@@ -128,6 +133,9 @@ public:
 
             size_t level_idx = 0;
             size_t records_so_far = 0;
+            RunId rid = INVALID_RID;
+            PageNum buff_pnum = INVALID_PNUM;
+
             for (size_t i=0; i<to_sample.size(); i++) {
                 // Check to see if we need to advance the level index
                 // for the current record to be sampled. If so, advance
@@ -142,18 +150,26 @@ public:
                 // get the record
                 const char *sample_record;
                 if (level_idx == 0) {
+                    // sample from memtable
+                    rid = INVALID_RID;
                     sample_record = memtable->get_record(record_idx);
                 } else if (level_idx < memory_levels.size()) {
-                    // sample from the memory level
+                    // sample from memory
+                    rid = memory_ranges[level_idx - 1].first;
+                    const char *start = memory_ranges[level_idx - 1].second.first;
+                    sample_record = this->memory_levels[rid.level_idx]->get_run(rid.run_idx)->sample_record(start, record_idx);
                 } else {
                     // sample from the disk
+                    rid = disk_ranges[level_idx - memory_ranges.size() - 1].first;
+                    PageNum start = disk_ranges[level_idx - memory_ranges.size() - 1].second.first;
+                    sample_record = this->disk_levels[rid_to_disk(rid)]->get_run(rid.run_idx)->sample_record(start, record_idx, buffer, buff_pnum);
                 }
                 
                 // check for rejection, either the record is nullptr, meaning that the
                 // run itself returned with a rejection (out of range on the last page of
                 // an ondisk ISAMTree), or the record is a tombstone, outside of the key
                 // range, or has been deleted.
-                if (!sample_record || rejection(sample_record, level_idx, lower_key, upper_key, utility_buffer)) {
+                if (!sample_record || rejection(sample_record, rid, lower_key, upper_key, utility_buffer)) {
                     sampling_rejections++;
                     rejections++; 
                     continue; 
@@ -168,9 +184,11 @@ public:
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
-    // the provided record in any level *above* the record_level, which
-    // should correspond to the level containing the record in question
-    bool is_deleted(const char *record, size_t record_level, char *buffer);
+    // the provided record in any run *above* the rid, which
+    // should correspond to the run containing the record in question
+    // 
+    // Passing INVALID_RID indicates that the record exists within the MemTable
+    bool is_deleted(const char *record, RunId rid, char *buffer);
 
 private:
     MemTable *memtable_1;
@@ -192,8 +210,12 @@ private:
         return (active_memtable) ? memtable_2 : memtable_1;
     }
 
-    inline bool rejection(const char *record, size_t level, const char *lower_bound, const char *upper_bound, char *buffer) {
-        return is_tombstone(record) || key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0 || this->is_deleted(record, level, buffer);
+    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer) {
+        return is_tombstone(record) || key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0 || this->is_deleted(record, rid, buffer);
+    }
+
+    inline size_t rid_to_disk(RunId rid) {
+        return rid.level_idx - this->memory_levels.size();
     }
 
 };

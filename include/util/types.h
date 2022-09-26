@@ -44,5 +44,19 @@ const Timestamp TIMESTAMP_MAX = UINT32_MAX;
 const PageNum INVALID_PNUM = 0;
 const FrameId INVALID_FRID = -1;
 
+// An ID for a given run within the tree. The level_idx is the index
+// in the memory_levels and disk_levels vectors corresponding to the
+// run, and the run_idx is the index with the level (always 0 in the
+// case of leveling) Note that the two vectors of levels are treated
+// as a continguous index space, so index 0-memory_levels.size() corresponds
+// to a memory level, and memory_levels.size()-memory_levels.size() +
+// disk_levels.size() corresponds to a disk level
+struct RunId {
+    ssize_t level_idx;
+    ssize_t run_idx;
+};
+
+const RunId INVALID_RID = {-1, -1};
+
 }
 #endif

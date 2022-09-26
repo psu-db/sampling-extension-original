@@ -9,15 +9,15 @@ namespace lsm {
 
 class DiskLevel {
 public:
-    DiskLevel(size_t run_capacity) 
-    : runs(std::vector<ISAMTree*>(run_capacity)), run_tail_ptr(0)
+    DiskLevel(size_t run_capacity, size_t level_index) 
+    : runs(std::vector<ISAMTree*>(run_capacity)), run_tail_ptr(0), level_idx(level_index)
     {}
 
     ~DiskLevel() {
         this->truncate();
     }
 
-    std::vector<std::pair<PageNum, PageNum>> sample_ranges(const char *lower_bound, const char *upper_bound, char *buffer) {
+    std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> sample_ranges(const char *lower_bound, const char *upper_bound, char *buffer) {
         // arguments cannot be null
         assert(lower_bound);
         assert(upper_bound);
@@ -26,10 +26,11 @@ public:
         // lower bound must be less than or equal to the upper bound
         assert(key_cmp(lower_bound, upper_bound) <= 0);
 
-        std::vector<std::pair<PageNum, PageNum>> ranges(this->run_tail_ptr);
+        std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> ranges(this->run_tail_ptr);
 
-        for (size_t i=0, j=0; i<this->run_tail_ptr; i++) {
-            ranges[i] = this->runs[i]->get_bounds(lower_bound, upper_bound, buffer);
+        for (size_t i=0; i<this->run_tail_ptr; i++) {
+            auto bounds = this->runs[i]->get_bounds(lower_bound, upper_bound, buffer);
+            ranges[i] = {{this->level_idx, i}, bounds};
         }
 
         return ranges;
@@ -71,6 +72,12 @@ public:
         ISAMTree *run = this->runs[idx];
         this->runs[idx] = nullptr;
         return run;
+    }
+
+
+    ISAMTree *get_run(size_t idx) {
+        assert(idx < this->runs.size());
+        return this->runs[idx];
     }
 
 
@@ -153,6 +160,7 @@ public:
   private:
     std::vector<ISAMTree *> runs;
     size_t run_tail_ptr;
+    size_t level_idx;
     
 };
 }
