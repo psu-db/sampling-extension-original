@@ -89,7 +89,7 @@ public:
 
         // NOTE: With the full pre-calculation with record offset only,
         // we don't actually need an alias structure anymore for the
-        // none-weighted case, I don't think.
+        // non-weighted case, I don't think.
 
         /*
         std::vector<double> weights(record_counts.size());
@@ -102,7 +102,7 @@ public:
 
         // For implementation convenience, we'll treat the very
         // first sampling pass as though it were a sampling
-        // place following one in which every single sample
+        // pass following one in which every single sample
         // was rejected
         size_t rejections = sample_sz;
         sampling_attempts = 0;
