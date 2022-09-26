@@ -1,7 +1,8 @@
 
-#include <cassert>
+#pragma once
 
-#include "ds/IsamTree.h"
+#include <cassert>
+#include "lsm/IsamTree.h"
 #include "lsm/SampleRange.h"
 #include "util/record.h"
 
