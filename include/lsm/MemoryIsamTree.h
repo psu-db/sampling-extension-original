@@ -39,6 +39,8 @@ public:
 
     std::pair<const char*, const char*> get_bounds(const char *lower_key, const char *upper_key, char *buffer);
 
+    const char *sample_record(const char *start_ptr, size_t record_idx);
+
     /*
      * Returns the newest record within this tree with the specified key, and a
      * timestamp no greater than time.

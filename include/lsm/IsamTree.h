@@ -113,6 +113,17 @@ public:
     char *get(const char *key, char *buffer);
 
     /*
+     * Returns a pointer to the record_idx'th record starting to count from the
+     * first record of start_page, or nullptr if this record doesn't exist
+     * (passed the end of the tree). The pointer will point to a record contained
+     * within buffer. If pg_in_buffer matches the page containing the desired
+     * record, no IO will be performed as the existing buffer contents will be
+     * reused. Otherwise, an IO will be performed, and the pg_in_buffer will be
+     * updated to match the page currently in the buffer.
+     */
+    const char *sample_record(PageNum start_page, size_t record_idx, char *buffer, PageNum &pg_in_buffer);
+
+    /*
      * Searches the tree for a tombstone record for the specified key/value
      * pair active at Timestamp time. If no such tombstone exists, returns an
      * invalid record, otherwise return the tombstone.
