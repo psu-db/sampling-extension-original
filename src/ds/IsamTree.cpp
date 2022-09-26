@@ -434,7 +434,7 @@ PageNum ISAMTree::pre_init(size_t record_count, size_t tombstone_count, gsl_rng 
     // Allocate initial pages for data and for metadata
     size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + ((record_count % ISAM_RECORDS_PER_LEAF) != 0);
 
-    PageNum meta = pfile->allocate_pages(1); // Should be page 0
+    PageNum meta = pfile->allocate_pages(1); // Should be page 1
     PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
 
     if(!(*buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE))) {
