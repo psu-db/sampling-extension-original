@@ -37,6 +37,8 @@ public:
      */
     char *get_upper_bound(const char *key);
 
+    std::pair<const char*, const char*> get_bounds(const char *lower_key, const char *upper_key, char *buffer);
+
     /*
      * Returns the newest record within this tree with the specified key, and a
      * timestamp no greater than time.

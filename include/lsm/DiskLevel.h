@@ -3,7 +3,6 @@
 
 #include <cassert>
 #include "lsm/IsamTree.h"
-#include "lsm/SampleRange.h"
 #include "util/record.h"
 
 namespace lsm {
@@ -18,7 +17,7 @@ public:
         this->truncate();
     }
 
-    std::vector<SampleRange *> get_sample_ranges(const char *lower_bound, const char *upper_bound, char *buffer) {
+    std::vector<std::pair<PageNum, PageNum>> sample_ranges(const char *lower_bound, const char *upper_bound, char *buffer) {
         // arguments cannot be null
         assert(lower_bound);
         assert(upper_bound);
@@ -27,12 +26,10 @@ public:
         // lower bound must be less than or equal to the upper bound
         assert(key_cmp(lower_bound, upper_bound) <= 0);
 
-        std::vector<SampleRange *> ranges(this->run_tail_ptr);
+        std::vector<std::pair<PageNum, PageNum>> ranges(this->run_tail_ptr);
 
         for (size_t i=0, j=0; i<this->run_tail_ptr; i++) {
-            auto lb = this->runs[i]->get_lower_bound(lower_bound, buffer);
-            auto ub = this->runs[i]->get_upper_bound(upper_bound, buffer);
-            ranges[j++] = new DiskSampleRange(this->runs[i], lb, ub);
+            ranges[i] = this->runs[i]->get_bounds(lower_bound, upper_bound, buffer);
         }
 
         return ranges;

@@ -11,7 +11,7 @@
 #include "io/PagedFile.h"
 #include "ds/BloomFilter.h"
 #include "lsm/MemTable.h"
-#include "ds/MemoryIsamTree.h"
+#include "lsm/MemoryIsamTree.h"
 
 namespace lsm { 
 
@@ -88,8 +88,7 @@ public:
      * Two buffers are required here because at some points during function
      * execution, two different pages must be kept in memory at once.
      */
-    std::pair<PageNum, PageNum> get_bounds(const char *lower_key, const char *upper_key, 
-                                           char *buffer1, char *buffer2);
+    std::pair<PageNum, PageNum> get_bounds(const char *lower_key, const char *upper_key, char *buffer);
 
     /*
      * Reads a random record from within the specified page range and returns a

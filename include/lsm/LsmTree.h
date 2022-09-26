@@ -1,11 +1,13 @@
 #pragma once
 
 #include <atomic>
+#include <numeric>
 
 #include "lsm/IsamTree.h"
 #include "lsm/MemTable.h"
 #include "lsm/MemoryLevel.h"
 #include "lsm/DiskLevel.h"
+#include "ds/Alias.h"
 
 namespace lsm {
 
@@ -45,8 +47,61 @@ public:
         return 1;
     }
 
-    char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz) {
-        return nullptr;
+    char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer) {
+        // Allocate buffer into which to write the samples
+        char *sample_set = new char[sample_sz * record_size];
+        size_t sample_idx = 0;
+
+        // Obtain the sampling ranges for each level
+        std::vector<std::pair<const char *, const char *>> memory_ranges;
+        std::vector<std::pair<PageNum, PageNum>> disk_ranges;
+        std::vector<size_t> record_counts;
+
+        MemTable *memtable = nullptr;
+
+        while (!memtable) {
+            memtable = this->memtable();
+        }
+
+        record_counts.push_back(memtable->get_record_count());
+
+        for (auto &level : this->memory_levels) {
+            if (level) {
+                auto ranges = level->sample_ranges(lower_key, upper_key);
+                for (auto range : ranges) {
+                    memory_ranges.push_back(range);
+                    record_counts.push_back((range.second - range.first) / record_size);
+                }
+            }
+        }
+
+        for (auto &level : this->disk_levels) {
+            if (level) {
+                auto ranges = level->sample_ranges(lower_key, upper_key, buffer);
+                for (auto range : ranges) {
+                    disk_ranges.push_back(range);
+                    record_counts.push_back((range.second - range.first) * (PAGE_SIZE / record_size));
+                }
+            }
+        }
+
+        std::vector<double> weights(record_counts.size());
+        size_t total_records = std::accumulate(record_counts.begin(), record_counts.end(), 0);
+        for (size_t i=0; i < record_counts.size(); i++) {
+            weights[i] = (double) record_counts[i] / (double) total_records;
+        }
+
+        auto alias = Alias(weights);
+
+        while (sample_idx < sample_sz) {
+            // get sample
+
+            // reject if needed
+
+            // copy record into sample_set
+        }
+
+        return sample_set;
     }
 
 private:
