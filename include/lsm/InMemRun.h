@@ -54,10 +54,10 @@ public:
             for (size_t i = 0; i < inmem_isam_fanout; ++i) {
                 auto rec_ptr = leaf_base + i * record_size;
                 if (rec_ptr >= leaf_stop) break;
-                memcpy(current_node + key_size * i, get_key(), key_size);
-                memcpy(current_node + key_skip + sizeof(const char*) * i, &rec_ptr, sizeof(const char*));
+                memcpy(current_node + key_size * i, get_key(rec_ptr), key_size);
+                memcpy(current_node + key_skip + sizeof(char*) * i, &rec_ptr, sizeof(char*));
             }
-            node_offset += inmem_isam_node_size;
+            current_node += inmem_isam_node_size;
             leaf_base += inmem_isam_fanout * record_size;
         }
 
@@ -66,13 +66,23 @@ public:
         auto current_level_node_cnt = (level_stop - level_start) / inmem_isam_node_size;
         assert(leaf_level_nodes == current_level_node_cnt);
         while (current_level_node_cnt > 1) {
-            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                auto node_ptr = level_start + i * 
+            auto now = level_start;
+            while (now < level_stop) {
+                for (size_t i = 0; i < inmem_isam_fanout; ++i) {
+                    auto node_ptr = now + i * inmem_isam_node_size;
+                    if (node_ptr > level_stop) break;
+                    memcpy(current_node + key_size * i, node_ptr, key_size)
+                    memcpy(current_node + key_skip + sizeof(char *), &node_ptr, sizeof(char*));
+                }
+                now += inmem_isam_fanout * inmem_isam_node_size;
+                current_node += inmem_isam_node_size;
             }
+            level_start = level_stop;
+            level_stop = current_node;
+            current_level_node_cnt = (level_stop - level_start) / inmem_isam_node_size;
         }
         
-
-
+        assert(level_stop - level_start == inmem_isam_node_size);
     }
 
     // Master interface to create an ondisk Run.
