@@ -126,7 +126,7 @@ public:
             const char* sep_key = now + sizeof(double);
             char* next = nullptr;
             while (ptr_offset < 7) {
-                if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
+                if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
                     next = *child_ptr;
                     break;
                 } else {
@@ -142,8 +142,52 @@ public:
     }
 
     size_t get_upper_bound(const char* key) const {
+        char* now = m_root;
+        while (!is_leaf(now)) {
+            char** child_ptr = (char**)(now + inmem_isam_nope_keyskip);
+            uint8_t ptr_offset = 0;
+            const char* sep_key = now + sizeof(double);
+            char* next = nullptr;
+            while (ptr_offset < 7) {
+                if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
+                    next = *child_ptr;
+                    break;
+                } else {
+                    sep_key += key_size;
+                    child_ptr += sizeof(char*);
+                    ++ptr_offset;
+                }
+            }
+            now = next ? next : *child_ptr;
+        }
 
+        return (now - m_data) / record_size;
     }
+
+    double get_range_weight(char* node, const char* low, const char* high) {
+        if (is_leaf(node) && key_cmp(low, get_key(node)) <= 0 && key_cmp(get_key(node), high) <= 0) {
+            return 1.0;
+        }
+        double res = 0.0;
+        char** left_ptr = (char**)(node + inmem_isam_nope_keyskip);
+        uint8_t ptr_offset = 0;
+        const char* sep_key = node + sizeof(double);
+        while (ptr_offset < 7 && key_cmp(sep_key, low) == -1) {
+            ++ptr_offset;
+            sep_key += key_size;
+            left_ptr += sizeof(char*);
+        }
+        res += get_range_weight(*left_ptr, low, high);
+        char** right_ptr = left_ptr;
+        while (ptr_offset < 7 && key_cmp(sep_key, high) <= 0) {
+            res += *(double*)(*right_ptr);
+            ++ptr_offset;
+            sep_key += key_size;
+            right_ptr += sizeof(char*);
+        }
+        res += get_range_weight(*right_ptr, low, high);
+    }
+
 
     
 private:
