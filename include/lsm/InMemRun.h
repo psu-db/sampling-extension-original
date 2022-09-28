@@ -22,11 +22,6 @@ public:
         char* target;
     };
 
-    struct InMemSampleRange {
-        size_t start, stop;
-        double weight;
-    };
-
     InMemRun(MemTable* mem_table) {
         m_data = (char*)std::aligned_alloc(SECTOR_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
@@ -125,7 +120,7 @@ public:
             uint8_t ptr_offset = 0;
             const char* sep_key = now + sizeof(double);
             char* next = nullptr;
-            while (ptr_offset < 7) {
+            while (ptr_offset < inmem_isam_fanout - 1) {
                 if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
                     next = *child_ptr;
                     break;
@@ -148,7 +143,7 @@ public:
             uint8_t ptr_offset = 0;
             const char* sep_key = now + sizeof(double);
             char* next = nullptr;
-            while (ptr_offset < 7) {
+            while (ptr_offset < inmem_isam_fanout - 1) {
                 if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
                     next = *child_ptr;
                     break;
@@ -172,14 +167,14 @@ public:
         char** left_ptr = (char**)(node + inmem_isam_nope_keyskip);
         uint8_t ptr_offset = 0;
         const char* sep_key = node + sizeof(double);
-        while (ptr_offset < 7 && key_cmp(sep_key, low) == -1) {
+        while (ptr_offset < inmem_isam_fanout - 1 && key_cmp(sep_key, low) == -1) {
             ++ptr_offset;
             sep_key += key_size;
             left_ptr += sizeof(char*);
         }
         res += get_range_weight(*left_ptr, low, high);
         char** right_ptr = left_ptr;
-        while (ptr_offset < 7 && key_cmp(sep_key, high) <= 0) {
+        while (ptr_offset < inmem_isam_fanout - 1 && key_cmp(sep_key, high) <= 0) {
             res += *(double*)(*right_ptr);
             ++ptr_offset;
             sep_key += key_size;
