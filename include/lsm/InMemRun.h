@@ -191,7 +191,7 @@ private:
         size_t level_node_cnt = leaf_level_nodes;
         size_t node_cnt = level_node_cnt;
         while (level_node_cnt > 1) {
-            level_node_cnt = level_node_cnt / inmem_isam_fanout;
+            level_node_cnt = level_node_cnt / inmem_isam_fanout + (level_node_cnt % inmem_isam_fanout != 0);
             node_cnt += level_node_cnt;
         }
 
