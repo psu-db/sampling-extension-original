@@ -11,7 +11,6 @@
 #include "io/PagedFile.h"
 #include "ds/BloomFilter.h"
 #include "lsm/MemTable.h"
-#include "lsm/MemoryIsamTree.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
 #include "lsm/InMemRun.h"
@@ -60,7 +59,6 @@ public:
         this->rec_cnt = meta->record_count;
         this->tombstone_cnt = meta->tombstone_count;
     }
-
 
     /*
      * Constructors for building an ISAM Tree based on combinations of 
@@ -372,8 +370,6 @@ public:
     }
 
 private:
-    ISAMTreeMetaHeader *get_metapage();
-
     PagedFile *pfile;
     PageNum root_page;
     PageNum first_data_page;
