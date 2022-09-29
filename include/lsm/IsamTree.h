@@ -13,6 +13,7 @@
 #include "lsm/MemTable.h"
 #include "lsm/MemoryIsamTree.h"
 #include "ds/PriorityQueue.h"
+#include "util/Cursor.h"
 
 namespace lsm { 
 
@@ -28,7 +29,7 @@ struct ISAMTreeInternalNodeHeader {
     PageNum next_sibling;
     PageNum prev_sibling;
     size_t leaf_rec_cnt; // number of records in leaf nodes under this node
-    size_t internal_rec_nt; // number of internal records in this node
+    size_t internal_rec_cnt; // number of internal records in this node
 };
 
 constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISAMTreeInternalNodeHeader));
@@ -54,11 +55,6 @@ public:
     size_t get_tombstone_count();
 };
 
-struct cursor {
-    const char *ptr;
-    const char *end;
-};
-
 
 class ISAMTree {
 public:
@@ -79,7 +75,7 @@ public:
      * pass an empty vector instead.
      */
     ISAMTree(PagedFile *pfile, gsl_rng *rng, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
-        std::vector<cursor> cursors(runs.size() + trees.size());
+        std::vector<Cursor> cursors(runs.size() + trees.size());
         std::vector<PagedFileIterator *> isam_iters(trees.size());
 
         PriorityQueue pq(runs.size() + trees.size());
@@ -93,7 +89,7 @@ public:
             assert(runs[i]);
             const char *start = runs[i]->get_sorted_output();
             const char *end = start + runs[i]->get_record_count() * record_size;
-            cursors[RCUR(i)] = cursor{start, end};
+            cursors[RCUR(i)] = Cursor{start, end};
             pq.push(cursors[RCUR(i)].ptr, RCUR(i));
 
             incoming_record_cnt += runs[i]->get_record_count();
@@ -107,7 +103,7 @@ public:
             assert(isam_iters[i]->next());
             const char *start = isam_iters[i]->get_item();
             const char *end = start + ISAM_RECORDS_PER_LEAF * record_size;
-            cursors[TCUR(i)] = cursor{start, end};
+            cursors[TCUR(i)] = Cursor{start, end};
             pq.push(cursors[TCUR(i)].ptr, TCUR(i));
 
             incoming_record_cnt += trees[i]->get_record_count();
@@ -142,11 +138,13 @@ public:
                 // pop the next two records from the queue and discard them
                 pq.pop(); pq.pop();
 
-                if (advance_cursor(cursors[cur.version], cur.version, runs.size(), isam_iters)) {
+                auto iter = (cur.version < runs.size()) ? nullptr : isam_iters[cur.version - runs.size()];
+                if (advance_cursor(cursors[cur.version], iter)) {
                     pq.push(cursors[cur.version].ptr, cur.version);
                 }
 
-                if (advance_cursor(cursors[next.version], next.version, runs.size(), isam_iters)) {
+                iter = (next.version < runs.size()) ? nullptr : isam_iters[next.version - runs.size()];
+                if (advance_cursor(cursors[next.version], iter)) {
                     pq.push(cursors[next.version].ptr, next.version);
                 }
 
@@ -161,7 +159,8 @@ public:
             }
             
             pq.pop();
-            if (advance_cursor(cursors[cur.version], cur.version, runs.size(), isam_iters)) {
+            auto iter = (next.version < runs.size()) ? nullptr : isam_iters[next.version - runs.size()];
+            if (advance_cursor(cursors[cur.version], iter)) {
                 pq.push(cursors[cur.version].ptr, cur.version);
             }
 
@@ -278,7 +277,24 @@ public:
      * reused. Otherwise, an IO will be performed, and the pg_in_buffer will be
      * updated to match the page currently in the buffer.
      */
-    const char *sample_record(PageNum start_page, size_t record_idx, char *buffer, PageNum &pg_in_buffer);
+    const char *sample_record(PageNum start_page, size_t record_idx, char *buffer, PageNum &pg_in_buffer) {
+        // TODO: Verify that this is the appropriate interface to use 
+        assert(start_page >= this->first_data_page && start_page <= this->last_data_page);
+
+        constexpr size_t records_per_page = PAGE_SIZE / record_size;
+
+        PageNum page_offset = record_idx / records_per_page;
+        assert(start_page + page_offset <= this->last_data_page);
+
+        size_t idx = page_offset % records_per_page;
+
+        if (start_page + page_offset != pg_in_buffer) {
+            assert(this->pfile->read_page(start_page + page_offset, buffer));
+            pg_in_buffer = start_page + page_offset;
+        }
+
+        return buffer + idx * record_size;
+    }
 
     /*
      * Searches the tree for a tombstone record for the specified key/value
@@ -386,7 +402,7 @@ private:
         this->pfile->read_page(pnum, buffer);
 
         size_t min = 0;
-        size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_nt - 1;
+        size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_cnt - 1;
 
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
@@ -413,7 +429,7 @@ private:
         this->pfile->read_page(pnum, buffer);
 
         size_t min = 0;
-        size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_nt - 1;
+        size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_cnt - 1;
 
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
@@ -641,8 +657,6 @@ private:
             return INVALID_PNUM;
     }
 
-    static void generate_leaf_pages(PagedFile *pfile, PagedFileIterator *iter1, PagedFileIterator *iter2);
-
     static PageNum pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, BloomFilter **filter, char **buffer) {
         // Allocate initial pages for data and for metadata
         size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + ((record_count % ISAM_RECORDS_PER_LEAF) != 0);
@@ -739,20 +753,6 @@ private:
         return copy;
     }
 
-    static inline bool advance_cursor(cursor &cur, size_t version, size_t memrun_cnt, const std::vector<PagedFileIterator*> &iters) {
-        cur.ptr += record_size;
-        if (cur.ptr >= cur.end) {
-            if (version >= memrun_cnt && iters[version - memrun_cnt]->next()) {
-                cur.ptr = iters[version-memrun_cnt]->get_item();
-                cur.end = cur.ptr + ISAM_RECORDS_PER_LEAF * record_size;
-                return true;
-            }
-
-            return false;
-        }
-
-        return true;
-    }
 };
 
 }
