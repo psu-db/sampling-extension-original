@@ -63,7 +63,8 @@ public:
             memtable = this->memtable();
         }
 
-        record_counts.push_back(memtable->get_record_count());
+        size_t memtable_cutoff = memtable->get_record_count() - 1;
+        record_counts.push_back(memtable_cutoff + 1);
 
         for (auto &level : this->memory_levels) {
             if (level) {
@@ -87,18 +88,12 @@ public:
 
         size_t total_records = std::accumulate(record_counts.begin(), record_counts.end(), 0);
 
-        // NOTE: With the full pre-calculation with record offset only,
-        // we don't actually need an alias structure anymore for the
-        // non-weighted case, I don't think.
-
-        /*
         std::vector<double> weights(record_counts.size());
         for (size_t i=0; i < record_counts.size(); i++) {
             weights[i] = (double) record_counts[i] / (double) total_records;
         }
 
         auto alias = Alias(weights);
-        */
 
         // For implementation convenience, we'll treat the very
         // first sampling pass as though it were a sampling
@@ -108,76 +103,82 @@ public:
         sampling_attempts = 0;
         sampling_rejections = 0;
 
-        // FIXME: it would probably do to rearrange this so that the
-        // memory allocation for the to_sample vector only occurs once. Just
-        // need to track the end pointer for use with std::sort. Or we could
-        // use a c-array with quicksort instead, though tracking the end there
-        // might be a bit trickier.
+        std::vector<size_t> run_samples(record_counts.size(), 0);
+
         do {
             // pre-calculate the random numbers. If a sample rejects,
             // we'll track that and redo the rejections in bulk, until
             // there are no further rejections.
-            std::vector<size_t> to_sample(rejections);
             for (size_t i=0; i<rejections; i++) {
-                to_sample[i] = gsl_rng_uniform_int(rng, total_records);
+                run_samples[alias.get(rng)] += 1;
             }
 
             // reset rejection counter to begin tracking for next
             // sampling pass
             rejections = 0;
+            const char *sample_record;
 
-            // Rather than hopping all over the place, we'll draw the
-            // sample records in order to maximize locality and simplify
-            // sampling logic.
-            std::sort(to_sample.begin(), to_sample.end());
+            // We will draw the records from the runs in order
 
-            size_t level_idx = 0;
-            size_t records_so_far = 0;
-            RunId rid = INVALID_RID;
-            PageNum buff_pnum = INVALID_PNUM;
+            // First the memtable,
+            while (run_samples[0] > 0) {
+                size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
+                sample_record = memtable->get_record(idx);
 
-            for (size_t i=0; i<to_sample.size(); i++) {
-                // Check to see if we need to advance the level index
-                // for the current record to be sampled. If so, advance
-                // until we hit the level containing the record
-                while (to_sample[i] > record_counts[level_idx]) {
-                    records_so_far += record_counts[level_idx++];
-                }
+                run_samples[0]--;
 
-                size_t record_idx = to_sample[i] - records_so_far;
-                sampling_attempts++;
-
-                // get the record
-                const char *sample_record;
-                if (level_idx == 0) {
-                    // sample from memtable
-                    rid = INVALID_RID;
-                    sample_record = memtable->get_record(record_idx);
-                } else if (level_idx < memory_levels.size()) {
-                    // sample from memory
-                    rid = memory_ranges[level_idx - 1].first;
-                    const char *start = memory_ranges[level_idx - 1].second.first;
-                    sample_record = this->memory_levels[rid.level_idx]->get_run(rid.run_idx)->sample_record(start, record_idx);
-                } else {
-                    // sample from the disk
-                    rid = disk_ranges[level_idx - memory_ranges.size() - 1].first;
-                    PageNum start = disk_ranges[level_idx - memory_ranges.size() - 1].second.first;
-                    sample_record = this->disk_levels[rid_to_disk(rid)]->get_run(rid.run_idx)->sample_record(start, record_idx, buffer, buff_pnum);
-                }
-                
-                // check for rejection, either the record is nullptr, meaning that the
-                // run itself returned with a rejection (out of range on the last page of
-                // an ondisk ISAMTree), or the record is a tombstone, outside of the key
-                // range, or has been deleted.
-                if (!sample_record || rejection(sample_record, rid, lower_key, upper_key, utility_buffer)) {
+                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
                     sampling_rejections++;
-                    rejections++; 
-                    continue; 
+                    rejections++;
+                }
+            }
+
+            // Next the in-memory runs
+            // QUESTION: can we assume that the memory page size is a multiple of the record length?
+            // If so, we can do this. Otherwise, we'll need to do a double roll to get a leaf page
+            // first, or use an interface like I have for the ISAM tree for getting a record based
+            // on an index offset and a starting page.
+            size_t run_offset = 1; // skip the memtable
+            for (size_t i=0; i<memory_ranges.size(); i++) {
+                size_t range_length = (memory_ranges[i].second.second - memory_ranges[i].second.first) / record_size;
+                while (run_samples[i+run_offset] > 0) {
+                    size_t idx = gsl_rng_uniform_int(rng, range_length);
+                    sample_record = memory_ranges[i].second.first + (idx * record_size);
+                    run_samples[i+run_offset]--;
+
+                    if (!add_to_sample(sample_record, memory_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
+                        sampling_rejections++;
+                        rejections++;
+                    }
                 }
 
-                // if record isn't rejected, add it to the sample set
-                memcpy(sample_set + (sample_idx++ * record_size), sample_record, record_size);
             }
+
+            // Finally, the ISAM Trees
+            // NOTE: this setup is not leveraging rolling all the pages first,
+            // and then batching the IO operations so that each duplicate page
+            // is sampled multiple times in a row. This could be done at the
+            // cost of space, by tracking each page and the number of times it
+            // is sampled, or at the cost of time, by sorting.
+            run_offset = 1 + memory_ranges.size(); // Skip the memtable and the memory levels
+            size_t records_per_page = PAGE_SIZE / record_size;
+            PageNum buffered_page = INVALID_PNUM;
+            for (size_t i=0; i<disk_ranges.size(); i++) {
+                size_t range_length = (disk_ranges[i].second.second - disk_ranges[i].second.first) * records_per_page;
+                size_t level_idx = disk_ranges[i].first.level_idx;
+                size_t run_idx = disk_ranges[i].first.run_idx;
+                while (run_samples[i+run_offset] > 0) {
+                    size_t idx = gsl_rng_uniform_int(rng, range_length);
+                    sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].second.first, idx, buffer, buffered_page);
+                    run_samples[i+run_offset]--;
+
+                    if (!add_to_sample(sample_record, disk_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
+                        sampling_rejections++;
+                        rejections++;
+                    }
+                }
+            }
+
         } while (sample_idx < sample_sz);
 
         return sample_set;
@@ -216,6 +217,16 @@ private:
 
     inline size_t rid_to_disk(RunId rid) {
         return rid.level_idx - this->memory_levels.size();
+    }
+
+    inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
+                              char *sample_buffer, size_t &sample_idx) {
+        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer)) {
+            return false;
+        }
+
+        memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
+        return true;
     }
 
 };
