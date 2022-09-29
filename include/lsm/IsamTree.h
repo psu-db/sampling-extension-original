@@ -14,6 +14,7 @@
 #include "lsm/MemoryIsamTree.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
+#include "lsm/InMemRun.h"
 
 namespace lsm { 
 
@@ -48,14 +49,6 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 // the corresponding index into the cursor array
 #define TCUR(i) (runs.size() + (i))
 
-class InMemRun {
-public:
-    char * get_sorted_output();
-    size_t get_record_count();
-    size_t get_tombstone_count();
-};
-
-
 class ISAMTree {
 public:
     ISAMTree(PagedFile *pfile, BloomFilter *tombstone_filter, char *buffer) {
@@ -74,7 +67,7 @@ public:
      * in memory and on disk runs. If there are no input runs of a given type,
      * pass an empty vector instead.
      */
-    ISAMTree(PagedFile *pfile, gsl_rng *rng, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
+    ISAMTree(PagedFile *pfile, gsl_rng *rng, const std::vector<InMemRun *> &runs, BloomFilter *tomb_filter, const std::vector<ISAMTree *> &trees) {
         std::vector<Cursor> cursors(runs.size() + trees.size());
         std::vector<PagedFileIterator *> isam_iters(trees.size());
 
@@ -87,7 +80,7 @@ public:
         // load up the memory levels;
         for (size_t i=0; i<runs.size(); i++) {
             assert(runs[i]);
-            const char *start = runs[i]->get_sorted_output();
+            const char *start = runs[i]->sorted_output();
             const char *end = start + runs[i]->get_record_count() * record_size;
             cursors[RCUR(i)] = Cursor{start, end};
             pq.push(cursors[RCUR(i)].ptr, RCUR(i));
@@ -110,13 +103,11 @@ public:
             incoming_tombstone_cnt += trees[i]->get_tombstone_count();
         }
 
-        this->tombstone_bloom_filter = nullptr;
         char *buffer = nullptr;
         size_t last_leaf_rec_cnt = 0;
 
-        PageNum leaf_page_cnt = ISAMTree::pre_init(incoming_record_cnt, incoming_tombstone_cnt, rng, pfile, &this->tombstone_bloom_filter, &buffer);
+        PageNum leaf_page_cnt = ISAMTree::pre_init(incoming_record_cnt, incoming_tombstone_cnt, rng, pfile, &buffer);
         assert(leaf_page_cnt);
-        assert(this->tombstone_bloom_filter);
         assert(buffer);
 
         PageNum cur_leaf_pnum = BTREE_FIRST_LEAF_PNUM;
@@ -153,8 +144,8 @@ public:
 
             memcpy((void *) get_record(buffer, output_idx++), cur.data, record_size);
             this->rec_cnt += 1;
-            if (is_tombstone(cur.data)) {
-                this->tombstone_bloom_filter->insert((char*) get_key(cur.data), key_size);
+            if (is_tombstone(cur.data) && tomb_filter) {
+                tomb_filter->insert((char*) get_key(cur.data), key_size);
                 this->tombstone_cnt += 1;
             }
             
@@ -189,7 +180,6 @@ public:
 
     ~ISAMTree() {
         this->pfile->remove_file();
-        delete this->tombstone_bloom_filter;
     }
 
     /*
@@ -308,10 +298,6 @@ public:
      * will be clobbered by this function.
      */
     char *check_tombstone(const char *key, const char *val, char *buffer) {
-        if (!this->tombstone_bloom_filter->lookup((char *) key, record_size)) {
-            return nullptr;
-        }
-
         auto pnum = this->get_lower_bound(key, buffer);
 
         do {
@@ -375,7 +361,7 @@ public:
      * associated with this ISAM tree.
      */
     inline size_t get_memory_utilization() {
-        return this->tombstone_bloom_filter->mem_utilization();
+        return 0;
     }
 
     /*
@@ -389,7 +375,6 @@ private:
     ISAMTreeMetaHeader *get_metapage();
 
     PagedFile *pfile;
-    BloomFilter *tombstone_bloom_filter;
     PageNum root_page;
     PageNum first_data_page;
     PageNum last_data_page;
@@ -657,7 +642,7 @@ private:
             return INVALID_PNUM;
     }
 
-    static PageNum pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, BloomFilter **filter, char **buffer) {
+    static PageNum pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, char **buffer) {
         // Allocate initial pages for data and for metadata
         size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + ((record_count % ISAM_RECORDS_PER_LEAF) != 0);
 
@@ -671,8 +656,6 @@ private:
         if (meta != BTREE_META_PNUM || first_leaf != BTREE_FIRST_LEAF_PNUM) {
             goto error_buffer;
         }
-
-        *filter = new BloomFilter(BF_FPR, tombstone_count, BF_HASH_FUNCS, rng);
 
         return leaf_page_cnt;
 
