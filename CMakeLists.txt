@@ -29,6 +29,10 @@ if (tests)
     add_executable(memtable_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memtable_tests.cpp)
     target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(memtable_tests PUBLIC -g -llib)
+
+    add_executable(inmemrun_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/inmemrun_tests.cpp)
+    target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_compile_options(inmemrun_tests PUBLIC -g -llib)
 endif()
 
 

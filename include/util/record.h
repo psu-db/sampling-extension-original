@@ -5,8 +5,8 @@
 
 namespace lsm {
 
-typedef uint64_t rec_hdr;
-typedef uint64_t key_type;
+typedef uint32_t rec_hdr;
+typedef uint32_t key_type;
 typedef uint64_t value_type;
 
 constexpr static size_t key_size = sizeof(key_type);
@@ -14,13 +14,20 @@ constexpr static size_t value_size = sizeof(value_type);
 constexpr static size_t header_size = sizeof(rec_hdr);
 
 // Layout ==> key | value | flags (each part padded to 8.)
-constexpr static size_t record_size = MAXALIGN(key_size) + MAXALIGN(value_size) + MAXALIGN(header_size);
+constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size;
 
 inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
-    *(uint64_t*)(buffer + MAXALIGN(key_size) + MAXALIGN(value_size)) |= tombstone;
+    *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= tombstone;
+}
+
+inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts) {
+    memset(buffer, 0, record_size);
+    memcpy(buffer, key, key_size);
+    memcpy(buffer + MAXALIGN(key_size), value, value_size);
+    *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 1) | (tombstone ? 1 : 0));
 }
 
 inline static const char *get_key(const char *buffer) {
@@ -36,11 +43,11 @@ inline static const char *get_record(const char *buffer, size_t idx) {
 }
 
 inline static const char* get_hdr(const char *buffer) {
-    return buffer + MAXALIGN(key_size) + MAXALIGN(value_size);
+    return buffer + MAXALIGN(key_size) + value_size;
 }
 
 inline static bool is_tombstone(const char *buffer) {
-    return *((rec_hdr *) buffer + MAXALIGN(key_size) + MAXALIGN(value_size)) & 1;
+    return *((rec_hdr *)get_hdr(buffer)) & 1;
 }
 
 static int record_match(const char* rec, const char* key, const char* value, bool tombstone) {
@@ -73,17 +80,18 @@ static int val_cmp(const char *a, const char *b) {
 static int record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
+    if (cmp == 0)
+        return val_cmp(get_val((const char*)a), get_val((const char*)b));
+    else return cmp;
+}
+
+static int memtable_record_cmp(const void *a, const void *b) {
+    int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
+
     if (cmp == 0) {
-        bool tomb_a = is_tombstone((char*) a);
-        bool tomb_b = is_tombstone((char*) b);
-        if (tomb_a && tomb_b) {
-            return 0;
-        }
-
-        return (tomb_a) ? -1 : 1;
-    }
-
-    return cmp;
+        if (*(rec_hdr*)get_hdr((char*)a) < *(rec_hdr*)get_hdr((char*)b)) return -1;
+        else return 1;
+    } else return cmp;
 }
 
 }

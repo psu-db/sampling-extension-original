@@ -31,7 +31,7 @@ public:
         auto stop = base + mem_table->get_record_count() * record_size;
         while (base < stop) {
             if (!is_tombstone(base) && (base + record_size < stop)
-                && !key_cmp(get_key(base+ record_size), get_key(base)) && is_tombstone(base + record_size)) {
+                && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
                 base += record_size * 2;
             } else {
                 memcpy(m_data + offset, base, record_size);
@@ -40,6 +40,8 @@ public:
                 base += record_size;
             }
         }
+
+        //printf("%zu\n", m_reccnt);
 
         build_internal_levels();
     }
@@ -56,7 +58,7 @@ public:
         for (size_t i = 0; i < runs.size(); ++i) {
             assert(runs[i]);
             auto base = runs[i]->sorted_output();
-            cursors.emplace_back(base, base + runs[i]->get_record_count() * record_size);
+            cursors.emplace_back(MergeCursor{base, base + runs[i]->get_record_count() * record_size});
             attemp_reccnt += runs[i]->get_record_count();
             pq.push(cursors[i].ptr, i);
         }
@@ -140,49 +142,24 @@ public:
         while (!is_leaf(now)) {
             char** child_ptr = (char**)(now + inmem_isam_node_keyskip);
             uint8_t ptr_offset = 0;
-            const char* sep_key = now + sizeof(double);
+            const char* sep_key = now;
             char* next = nullptr;
-            while (ptr_offset < inmem_isam_fanout - 1) {
+            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
                 if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
                     next = *child_ptr;
                     break;
-                } else {
-                    sep_key += key_size;
-                    child_ptr += sizeof(char*);
-                    ++ptr_offset;
                 }
+                sep_key += key_size;
+                child_ptr += sizeof(char*);
             }
             now = next ? next : *child_ptr;
         }
 
+        while (now < m_data + m_reccnt * record_size && key_cmp(now, key) <= 0)
+            ++now;
+
         return (now - m_data) / record_size;
     }
-
-/*
-    double get_range_weight(char* node, const char* low, const char* high) {
-        if (is_leaf(node) && key_cmp(low, get_key(node)) <= 0 && key_cmp(get_key(node), high) <= 0) {
-            return 1.0;
-        }
-        double res = 0.0;
-        char** left_ptr = (char**)(node + inmem_isam_node_keyskip);
-        uint8_t ptr_offset = 0;
-        const char* sep_key = node + sizeof(double);
-        while (ptr_offset < inmem_isam_fanout - 1 && key_cmp(sep_key, low) == -1) {
-            ++ptr_offset;
-            sep_key += key_size;
-            left_ptr += sizeof(char*);
-        }
-        res += get_range_weight(*left_ptr, low, high);
-        char** right_ptr = left_ptr;
-        while (ptr_offset < inmem_isam_fanout - 1 && key_cmp(sep_key, high) <= 0) {
-            res += *(double*)(*right_ptr);
-            ++ptr_offset;
-            sep_key += key_size;
-            right_ptr += sizeof(char*);
-        }
-        res += get_range_weight(*right_ptr, low, high);
-    }
-*/
     
 private:
     void build_internal_levels() {
@@ -204,9 +181,9 @@ private:
         const char* leaf_stop = m_data + m_reccnt * record_size;
         while (leaf_base < leaf_stop) {
             for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                auto rec_ptr = leaf_base + inmem_isam_fanout * record_size * i;
+                auto rec_ptr = leaf_base + inmem_isam_leaf_fanout * record_size * i;
                 if (rec_ptr >= leaf_stop) break;
-                const char* sep_key = std::min(rec_ptr + (inmem_isam_fanout - 1) * record_size, leaf_stop - record_size);
+                const char* sep_key = std::min(rec_ptr + (inmem_isam_leaf_fanout - 1) * record_size, leaf_stop - record_size);
                 memcpy(current_node + key_size * i, get_key(sep_key), key_size);
                 memcpy(current_node + inmem_isam_node_keyskip + sizeof(char*) * i, &rec_ptr, sizeof(char*));
             }
