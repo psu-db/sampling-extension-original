@@ -173,6 +173,16 @@ public:
 
         return (now - m_data) / record_size;
     }
+
+    bool check_tombstone(const char* key, const char* val) const {
+        auto ptr = m_data + (get_lower_bound(key) * record_size);
+        char buf[record_size];
+        layout_record(buf, key, val, false);
+        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
+            ptr += record_size;
+        }
+        return record_match(ptr, key, val, true);
+    }
     
 private:
     void build_internal_levels() {
