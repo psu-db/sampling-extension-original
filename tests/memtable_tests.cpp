@@ -20,7 +20,7 @@ START_TEST(t_create)
     ck_assert_int_eq(mtable->get_record_count(), 0);
     ck_assert_int_eq(mtable->is_full(), false);
     ck_assert_ptr_nonnull(mtable->sorted_output());
-    ck_assert_int_eq(mtable->tombstone_count(), 0);
+    ck_assert_int_eq(mtable->get_tombstone_count(), 0);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -44,7 +44,7 @@ START_TEST(t_insert)
         val++;
 
         ck_assert_int_eq(mtable->get_record_count(), i+1);
-        ck_assert_int_eq(mtable->tombstone_count(), 0);
+        ck_assert_int_eq(mtable->get_tombstone_count(), 0);
         ck_assert_int_eq(mtable->is_full(), 0);
     }
 
@@ -86,7 +86,7 @@ START_TEST(t_insert_tombstones)
         val++;
 
         ck_assert_int_eq(mtable->get_record_count(), i+1);
-        ck_assert_int_eq(mtable->tombstone_count(), ts_cnt);
+        ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
         ck_assert_int_eq(mtable->is_full(), 0);
     }
 
@@ -127,7 +127,7 @@ START_TEST(t_truncate)
         val++;
 
         ck_assert_int_eq(mtable->get_record_count(), i+1);
-        ck_assert_int_eq(mtable->tombstone_count(), ts_cnt);
+        ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
     }
 
     ck_assert_int_eq(mtable->is_full(), 1);
@@ -137,7 +137,7 @@ START_TEST(t_truncate)
 
     ck_assert_int_eq(mtable->is_full(), 0);
     ck_assert_int_eq(mtable->get_record_count(), 0);
-    ck_assert_int_eq(mtable->tombstone_count(), 0);
+    ck_assert_int_eq(mtable->get_tombstone_count(), 0);
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
 
     delete mtable;

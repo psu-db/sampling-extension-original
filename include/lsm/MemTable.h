@@ -67,7 +67,7 @@ public:
         return m_reccnt == m_cap;
     }
 
-    size_t tombstone_count() {
+    size_t get_tombstone_count() {
         return m_tombstonecnt.load();
     }
 

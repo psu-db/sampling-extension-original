@@ -22,7 +22,7 @@ public:
         char* target;
     };
 
-    InMemRun(MemTable* mem_table) {
+    InMemRun(MemTable* mem_table, BloomFilter* bf) {
         m_data = (char*)std::aligned_alloc(SECTOR_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
@@ -34,7 +34,13 @@ public:
                 && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
                 base += record_size * 2;
             } else {
+                //Masking off the ts.
+                *((rec_hdr*)get_hdr(base)) &= 1;
                 memcpy(m_data + offset, base, record_size);
+                if (is_tombstone(base)) {
+                    ++m_tombstone_cnt;
+                    bf->insert(get_key(base), key_size);
+                }
                 offset += record_size;
                 ++m_reccnt;
                 base += record_size;
@@ -45,7 +51,7 @@ public:
     }
 
     // Master interface to create an ondisk Run.
-    InMemRun(std::vector<InMemRun*> runs) {
+    InMemRun(const std::vector<InMemRun*>& runs, BloomFilter* bf) {
         std::vector<MergeCursor> cursors;
         cursors.reserve(runs.size() + 1);
 
@@ -84,10 +90,15 @@ public:
                     pq.push(cursor2.ptr, next.version);
                 }
             } else {
-                memcpy(m_data + offset, cursors[now.version].ptr, record_size);
+                auto& cursor = cursors[now.version];
+                memcpy(m_data + offset, cursor.ptr, record_size);
+                if (is_tombstone(cursor.ptr)) {
+                    ++m_tombstone_cnt;
+                    bf->insert(get_key(cursor.ptr), key_size);
+                }
                 offset += record_size;
                 pq.pop();
-                auto& cursor = cursors[now.version];
+                
                 if (cursor.ptr + record_size < cursor.target) {
                     cursor.ptr += record_size;
                     pq.push(cursor.ptr, now.version);
@@ -104,6 +115,10 @@ public:
     
     size_t get_record_count() const {
         return m_reccnt;
+    }
+
+    size_t get_tombestone_count() const {
+        return m_tombstone_cnt;
     }
 
     const char* get_record_at(size_t idx) const {
@@ -223,6 +238,7 @@ private:
     char* m_isam_nodes;
     char* m_root;
     size_t m_reccnt;
+    size_t m_tombstone_cnt;
 };
 
 }

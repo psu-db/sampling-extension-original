@@ -29,7 +29,7 @@ ISAMTree *ISAMTree::create(PagedFile *pfile, MemTable *mtable, ISAMTree *tree2, 
     auto sortedrun1 = mtable->sorted_output();
     auto iter2 = tree2->start_scan();
 
-    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), iter2, tree2->rec_cnt, mtable->tombstone_count() + tree2->tombstone_cnt, rng);
+    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), iter2, tree2->rec_cnt, mtable->get_tombstone_count() + tree2->tombstone_cnt, rng);
     delete iter2;
 
     if (!filter) {
@@ -45,7 +45,7 @@ ISAMTree *ISAMTree::create(PagedFile *pfile, MemTable *mtable, MemISAMTree *tree
     auto sortedrun1 = mtable->sorted_output();
     auto sortedrun2 = tree->start_scan();
 
-    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), sortedrun2, tree->get_record_count(), mtable->tombstone_count() + tree->tombstone_count(), rng);
+    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), sortedrun2, tree->get_record_count(), mtable->get_tombstone_count() + tree->tombstone_count(), rng);
 
     if (!filter) {
         return nullptr;
@@ -74,7 +74,7 @@ ISAMTree *ISAMTree::create(PagedFile *pfile, MemTable *mtable, gsl_rng *rng)
 {
     auto sortedrun1 = mtable->sorted_output();
 
-    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), mtable->tombstone_count(), rng);
+    auto filter = ISAMTree::initialize(pfile, sortedrun1, mtable->get_record_count(), mtable->get_tombstone_count(), rng);
 
     if (!filter) {
         return nullptr;
