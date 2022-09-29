@@ -41,8 +41,6 @@ public:
             }
         }
 
-        //printf("%zu\n", m_reccnt);
-
         build_internal_levels();
     }
 
