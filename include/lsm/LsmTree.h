@@ -128,7 +128,6 @@ public:
                 run_samples[0]--;
 
                 if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
-                    sampling_rejections++;
                     rejections++;
                 }
             }
@@ -147,7 +146,6 @@ public:
                     run_samples[i+run_offset]--;
 
                     if (!add_to_sample(sample_record, memory_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
-                        sampling_rejections++;
                         rejections++;
                     }
                 }
@@ -173,7 +171,6 @@ public:
                     run_samples[i+run_offset]--;
 
                     if (!add_to_sample(sample_record, disk_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
-                        sampling_rejections++;
                         rejections++;
                     }
                 }
@@ -221,7 +218,9 @@ private:
 
     inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
                               char *sample_buffer, size_t &sample_idx) {
+        sampling_attempts++;
         if (!record || rejection(record, rid, lower_key, upper_key, io_buffer)) {
+            sampling_rejections++;
             return false;
         }
 
