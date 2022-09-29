@@ -9,14 +9,14 @@
 
 namespace lsm {
 
-constexpr size_t inmem_isam_fanout = 8;
-constexpr size_t inmem_isam_node_size = 128;
-constexpr size_t inmem_isam_nope_keyskip = key_size * inmem_isam_fanout;
+constexpr size_t inmem_isam_node_size = 64;
+
+constexpr size_t inmem_isam_fanout = inmem_isam_node_size / (key_size + sizeof(char*));
+constexpr size_t inmem_isam_leaf_fanout = inmem_isam_node_size / record_size;
+constexpr size_t inmem_isam_node_keyskip = key_size * inmem_isam_fanout;
 
 class InMemRun {
 public:
-    // InMemISAM Tree Node: | double | 7 keys | 8 pointers |
-    // Each node: 128 bytes;
     struct MergeCursor {
         char* ptr;
         char* target;
@@ -112,26 +112,25 @@ public:
     }
 
     size_t get_lower_bound(const char* key) const {
-        //| size | keys * 7 | ptrs * 8 |
-
         char* now = m_root;
         while (!is_leaf(now)) {
-            char** child_ptr = (char**)(now + inmem_isam_nope_keyskip);
+            char** child_ptr = (char**)(now + inmem_isam_node_keyskip);
             uint8_t ptr_offset = 0;
-            const char* sep_key = now + sizeof(double);
+            const char* sep_key = now;
             char* next = nullptr;
-            while (ptr_offset < inmem_isam_fanout - 1) {
+            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
                 if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
                     next = *child_ptr;
                     break;
-                } else {
-                    sep_key += key_size;
-                    child_ptr += sizeof(char*);
-                    ++ptr_offset;
                 }
+                sep_key += key_size;
+                child_ptr += sizeof(char*);
             }
             now = next ? next : *child_ptr;
         }
+
+        while (now < m_data + m_reccnt * record_size && key_cmp(now, key) == -1)
+            ++now;
 
         return (now - m_data) / record_size;
     }
@@ -139,7 +138,7 @@ public:
     size_t get_upper_bound(const char* key) const {
         char* now = m_root;
         while (!is_leaf(now)) {
-            char** child_ptr = (char**)(now + inmem_isam_nope_keyskip);
+            char** child_ptr = (char**)(now + inmem_isam_node_keyskip);
             uint8_t ptr_offset = 0;
             const char* sep_key = now + sizeof(double);
             char* next = nullptr;
@@ -159,12 +158,13 @@ public:
         return (now - m_data) / record_size;
     }
 
+/*
     double get_range_weight(char* node, const char* low, const char* high) {
         if (is_leaf(node) && key_cmp(low, get_key(node)) <= 0 && key_cmp(get_key(node), high) <= 0) {
             return 1.0;
         }
         double res = 0.0;
-        char** left_ptr = (char**)(node + inmem_isam_nope_keyskip);
+        char** left_ptr = (char**)(node + inmem_isam_node_keyskip);
         uint8_t ptr_offset = 0;
         const char* sep_key = node + sizeof(double);
         while (ptr_offset < inmem_isam_fanout - 1 && key_cmp(sep_key, low) == -1) {
@@ -182,57 +182,49 @@ public:
         }
         res += get_range_weight(*right_ptr, low, high);
     }
-
-
+*/
     
 private:
     void build_internal_levels() {
-        size_t leaf_level_nodes = m_reccnt / inmem_isam_fanout + (m_reccnt % inmem_isam_fanout != 0);
-        size_t level_node_cnt = leaf_level_nodes;
-        size_t node_cnt = level_node_cnt;
-        while (level_node_cnt > 1) {
+        size_t n_leaf_nodes = m_reccnt / inmem_isam_leaf_fanout + (m_reccnt % inmem_isam_leaf_fanout != 0);
+        size_t level_node_cnt = n_leaf_nodes;
+        size_t node_cnt = 0;
+        do {
             level_node_cnt = level_node_cnt / inmem_isam_fanout + (level_node_cnt % inmem_isam_fanout != 0);
             node_cnt += level_node_cnt;
-        }
+        } while (level_node_cnt > 1);
 
         m_isam_nodes = (char*)std::aligned_alloc(SECTOR_SIZE, node_cnt * inmem_isam_node_size);
         memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
 
+
         char* current_node = m_isam_nodes;
+
         const char* leaf_base = m_data;
         const char* leaf_stop = m_data + m_reccnt * record_size;
         while (leaf_base < leaf_stop) {
-            double node_weight = 0.0;
             for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                auto rec_ptr = leaf_base + i * record_size;
+                auto rec_ptr = leaf_base + inmem_isam_fanout * record_size * i;
                 if (rec_ptr >= leaf_stop) break;
-                node_weight += 1.0;
-                if (i == 0) continue;
-                memcpy(current_node + key_size * i, get_key(rec_ptr), key_size);
-                memcpy(current_node + inmem_isam_nope_keyskip + sizeof(char*) * i, &rec_ptr, sizeof(char*));
+                const char* sep_key = std::min(rec_ptr + (inmem_isam_fanout - 1) * record_size, leaf_stop - record_size);
+                memcpy(current_node + key_size * i, get_key(sep_key), key_size);
+                memcpy(current_node + inmem_isam_node_keyskip + sizeof(char*) * i, &rec_ptr, sizeof(char*));
             }
-            memcpy(current_node, &node_weight, sizeof(double));
             current_node += inmem_isam_node_size;
-            leaf_base += inmem_isam_fanout * record_size;
+            leaf_base += inmem_isam_fanout * inmem_isam_leaf_fanout * record_size;
         }
 
         auto level_start = m_isam_nodes;
         auto level_stop = current_node;
         auto current_level_node_cnt = (level_stop - level_start) / inmem_isam_node_size;
-        assert(leaf_level_nodes == current_level_node_cnt);
         while (current_level_node_cnt > 1) {
             auto now = level_start;
             while (now < level_stop) {
-                double node_weight = 0.0;
                 for (size_t i = 0; i < inmem_isam_fanout; ++i) {
                     auto node_ptr = now + i * inmem_isam_node_size;
                     if (node_ptr > level_stop) break;
-                    double child_weight;
-                    memcpy(&child_weight, node_ptr, sizeof(double));
-                    node_weight += child_weight;
-                    if (i == 0) continue;
-                    memcpy(current_node + key_size * i, node_ptr, key_size);
-                    memcpy(current_node + inmem_isam_nope_keyskip + sizeof(char *), &node_ptr, sizeof(char*));
+                    memcpy(current_node + key_size * i, node_ptr + inmem_isam_node_keyskip - key_size, key_size);
+                    memcpy(current_node + inmem_isam_node_keyskip + sizeof(char *), &node_ptr, sizeof(char*));
                 }
                 now += inmem_isam_fanout * inmem_isam_node_size;
                 current_node += inmem_isam_node_size;
