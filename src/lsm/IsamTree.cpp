@@ -859,7 +859,7 @@ char *ISAMTree::get(const char *key, char *buffer)
 }
 
 
-char *ISAMTree::get_tombstone(const char *key, const char *val, char *buffer)
+char *ISAMTree::check_tombstone(const char *key, const char *val, char *buffer)
 {
     if (!this->tombstone_bloom_filter->lookup((char *) key, record_size)) {
         return nullptr;

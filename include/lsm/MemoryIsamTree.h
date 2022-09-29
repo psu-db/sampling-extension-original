@@ -52,7 +52,7 @@ public:
      * pair active at Timestamp time. If no such tombstone exists, returns an
      * invalid record, otherwise return the tombstone.
      */
-    char *get_tombstone(const char *key, const char *val);
+    char *check_tombstone(const char *key, const char *val);
 
     /*
      * Returns an iterator over all of the leaf pages within this ISAM Tree.

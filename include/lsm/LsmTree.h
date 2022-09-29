@@ -106,6 +106,12 @@ public:
         std::vector<size_t> run_samples(record_counts.size(), 0);
 
         do {
+            // This *should* be fully reset to 0 at the end of each loop
+            // iteration.
+            for (size_t i=0; i<run_samples.size(); i++) {
+                assert(run_samples[i] == 0);
+            }
+
             // pre-calculate the random numbers. If a sample rejects,
             // we'll track that and redo the rejections in bulk, until
             // there are no further rejections.
@@ -127,7 +133,7 @@ public:
 
                 run_samples[0]--;
 
-                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
+                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                     rejections++;
                 }
             }
@@ -145,7 +151,7 @@ public:
                     sample_record = memory_ranges[i].second.first + (idx * record_size);
                     run_samples[i+run_offset]--;
 
-                    if (!add_to_sample(sample_record, memory_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
+                    if (!add_to_sample(sample_record, memory_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
                     }
                 }
@@ -157,7 +163,10 @@ public:
             // and then batching the IO operations so that each duplicate page
             // is sampled multiple times in a row. This could be done at the
             // cost of space, by tracking each page and the number of times it
-            // is sampled, or at the cost of time, by sorting.
+            // is sampled, or at the cost of time, by sorting. In either case,
+            // we'd need to double the number of random numbers rolled--as we'd
+            // need to roll the pages, and then the record index within each
+            // page
             run_offset = 1 + memory_ranges.size(); // Skip the memtable and the memory levels
             size_t records_per_page = PAGE_SIZE / record_size;
             PageNum buffered_page = INVALID_PNUM;
@@ -165,12 +174,13 @@ public:
                 size_t range_length = (disk_ranges[i].second.second - disk_ranges[i].second.first) * records_per_page;
                 size_t level_idx = disk_ranges[i].first.level_idx;
                 size_t run_idx = disk_ranges[i].first.run_idx;
+
                 while (run_samples[i+run_offset] > 0) {
                     size_t idx = gsl_rng_uniform_int(rng, range_length);
                     sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].second.first, idx, buffer, buffered_page);
                     run_samples[i+run_offset]--;
 
-                    if (!add_to_sample(sample_record, disk_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx)) {
+                    if (!add_to_sample(sample_record, disk_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
                     }
                 }
@@ -186,7 +196,50 @@ public:
     // should correspond to the run containing the record in question
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
-    bool is_deleted(const char *record, RunId rid, char *buffer);
+    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
+        if (memtable->check_tombstone(get_key(record), get_val(record))) {
+            return true;
+        }
+
+        // if the record is in the memtable, then we're done.
+        if (rid == INVALID_RID) {
+            return false;
+        }
+
+        // check all runs on all levels above the level containing the record
+        for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
+            if (lvl<memory_levels.size()) {
+                for (size_t run=0; run<memory_levels[lvl]->run_count(); run++) {
+                    if (memory_levels[lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record))) {
+                        return true;
+                    }
+                }
+            } else {
+                size_t isam_lvl = lvl - memory_levels.size();
+                for (size_t run=0; run<disk_levels[isam_lvl]->run_count(); run++) {
+                    if (disk_levels[isam_lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record), buffer)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // check any runs on the record's level that are before it
+        for (size_t run=0; run<rid.run_idx; run++) {
+            if (rid.level_idx < memory_levels.size()) {
+                if (memory_levels[rid.level_idx]->get_run(run)->check_tombstone(get_key(record), get_val(record))) {
+                    return true;
+                }
+            } else {
+                if (disk_levels[rid.level_idx - memory_levels.size()]->get_run(run)->check_tombstone(get_key(record), get_val(record), buffer)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
 private:
     MemTable *memtable_1;
@@ -208,8 +261,8 @@ private:
         return (active_memtable) ? memtable_2 : memtable_1;
     }
 
-    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer) {
-        return is_tombstone(record) || key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0 || this->is_deleted(record, rid, buffer);
+    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        return is_tombstone(record) || key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0 || this->is_deleted(record, rid, buffer, memtable, memtable_cutoff);
     }
 
     inline size_t rid_to_disk(RunId rid) {
@@ -217,9 +270,9 @@ private:
     }
 
     inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
-                              char *sample_buffer, size_t &sample_idx) {
+                              char *sample_buffer, size_t &sample_idx, MemTable *memtable, size_t memtable_cutoff) {
         sampling_attempts++;
-        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer)) {
+        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer, memtable, memtable_cutoff)) {
             sampling_rejections++;
             return false;
         }

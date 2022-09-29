@@ -134,7 +134,7 @@ public:
      * will vary over the function call and are not defined. Any data within it
      * will be clobbered by this function.
      */
-    char *get_tombstone(const char *key, const char *val, char *buffer);
+    char *check_tombstone(const char *key, const char *val, char *buffer);
 
     /*
      * Returns an iterator over all of the leaf pages within this ISAM Tree.

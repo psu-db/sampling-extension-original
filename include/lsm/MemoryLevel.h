@@ -14,6 +14,7 @@ public:
     }
 
     MemISAMTree *get_run(size_t idx);
+    size_t run_count();
 };
 
 }
