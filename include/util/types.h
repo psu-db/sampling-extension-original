@@ -62,5 +62,11 @@ struct RunId {
 
 const RunId INVALID_RID = {-1, -1};
 
+struct SampleRange {
+    RunId run_id;
+    size_t low;
+    size_t high;
+};
+
 }
 #endif
