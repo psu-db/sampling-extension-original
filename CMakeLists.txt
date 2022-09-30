@@ -22,9 +22,9 @@ if (tests)
     target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(pagedfile_tests PUBLIC -g -llib)
 
-    add_executable(isamtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/isamtree_tests.cpp)
-    target_link_libraries(isamtree_tests PUBLIC ${PROJECT_NAME} check subunit)
-    target_compile_options(isamtree_tests PUBLIC -g -llib)
+    #add_executable(isamtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/isamtree_tests.cpp)
+    #target_link_libraries(isamtree_tests PUBLIC ${PROJECT_NAME} check subunit)
+    #target_compile_options(isamtree_tests PUBLIC -g -llib)
 
     add_executable(memtable_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memtable_tests.cpp)
     target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit)
@@ -41,7 +41,7 @@ endif()
 
 target_sources(${PROJECT_NAME} 
     PRIVATE 
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ds/IsamTree.cpp
+        #${CMAKE_CURRENT_SOURCE_DIR}/src/ds/IsamTree.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/io/PagedFile.cpp
 )
 

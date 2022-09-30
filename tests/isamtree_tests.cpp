@@ -2,7 +2,7 @@
 #include <string>
 
 #include "testing.h"
-#include "ds/IsamTree.h"
+#include "lsm/IsamTree.h"
 #include "io/PagedFile.h"
 
 using namespace lsm;
