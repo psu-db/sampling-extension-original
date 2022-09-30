@@ -31,9 +31,13 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_sample_ranges(std::vector<SampleRange>& dst, const char* low, const char* high) {
+    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high) {
         for (ssize_t i = 0; i < m_run_cnt; ++i) {
-            dst.emplace_back(SampleRange{RunId{m_level_no, i}, m_runs[i]->get_lower_bound(low), m_runs[i]->get_upper_bound(high)});
+            auto low_pos = m_runs[i]->get_lower_bound(low);
+            auto high_pos = m_runs[i]->get_upper_bound(high);
+            assert(high_pos >= low_pos);
+            dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
+            rec_cnts.emplace_back(high_pos - low_pos);
         }
     }
 

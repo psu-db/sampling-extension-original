@@ -53,7 +53,8 @@ public:
         size_t sample_idx = 0;
 
         // Obtain the sampling ranges for each level
-        std::vector<std::pair<RunId, std::pair<const char *, const char *>>> memory_ranges;
+        //std::vector<std::pair<RunId, std::pair<const char *, const char *>>> memory_ranges;
+        std::vector<SampleRange> memory_ranges;
         std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> disk_ranges;
         std::vector<size_t> record_counts;
 
@@ -68,12 +69,15 @@ public:
 
         for (auto &level : this->memory_levels) {
             if (level) {
-                auto ranges = level->sample_ranges(lower_key, upper_key);
-                for (auto range : ranges) {
-                    memory_ranges.push_back(range);
-                    record_counts.push_back((range.second.second - range.second.first) / record_size);
-                }
+                level->get_sample_ranges(memory_ranges, record_counts, lower_key, upper_key);
             }
+            //{
+                //auto ranges = level->sample_ranges(lower_key, upper_key);
+                //for (auto range : ranges) {
+                //    memory_ranges.push_back(range);
+                //    record_counts.push_back((range.second.second - range.second.first) / record_size);
+                //}
+            //}
         }
 
         for (auto &level : this->disk_levels) {
@@ -145,13 +149,14 @@ public:
             // on an index offset and a starting page.
             size_t run_offset = 1; // skip the memtable
             for (size_t i=0; i<memory_ranges.size(); i++) {
-                size_t range_length = (memory_ranges[i].second.second - memory_ranges[i].second.first) / record_size;
+                size_t range_length = memory_ranges[i].high - memory_ranges[i].low;
+                auto run_id = memory_ranges[i].run_id;
                 while (run_samples[i+run_offset] > 0) {
                     size_t idx = gsl_rng_uniform_int(rng, range_length);
-                    sample_record = memory_ranges[i].second.first + (idx * record_size);
+                    sample_record = memory_levels[run_id.level_idx]->get_record_at(run_id.run_idx, idx + memory_ranges[i].low);
                     run_samples[i+run_offset]--;
 
-                    if (!add_to_sample(sample_record, memory_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
+                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
                     }
                 }
@@ -210,7 +215,7 @@ public:
         // check all runs on all levels above the level containing the record
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl<memory_levels.size()) {
-                for (size_t run=0; run<memory_levels[lvl]->run_count(); run++) {
+                for (size_t run=0; run<memory_levels[lvl]->get_run_count(); run++) {
                     if (memory_levels[lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record))) {
                         return true;
                     }
