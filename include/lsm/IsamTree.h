@@ -37,7 +37,7 @@ constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISAMTreeIn
 const PageNum BTREE_META_PNUM = 1;
 const PageNum BTREE_FIRST_LEAF_PNUM = 2;
 
-const size_t ISAM_INIT_BUFFER_SIZE = 1; // measured in pages
+const size_t ISAM_INIT_BUFFER_SIZE = 64; // measured in pages
 const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 // Convert an index into the runs array to the
@@ -50,6 +50,7 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 class ISAMTree {
 public:
+    /*
     ISAMTree(PagedFile *pfile, BloomFilter *tombstone_filter, char *buffer) {
         this->pfile->read_page(BTREE_META_PNUM, buffer);
         auto meta = (ISAMTreeMetaHeader *) buffer;
@@ -59,13 +60,14 @@ public:
         this->rec_cnt = meta->record_count;
         this->tombstone_cnt = meta->tombstone_count;
     }
+    */
 
     /*
      * Constructors for building an ISAM Tree based on combinations of 
      * in memory and on disk runs. If there are no input runs of a given type,
      * pass an empty vector instead.
      */
-    ISAMTree(PagedFile *pfile, gsl_rng *rng, const std::vector<InMemRun *> &runs, BloomFilter *tomb_filter, const std::vector<ISAMTree *> &trees) {
+    ISAMTree(PagedFile *pfile, gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
         std::vector<Cursor> cursors(runs.size() + trees.size());
         std::vector<PagedFileIterator *> isam_iters(trees.size());
 
@@ -203,6 +205,16 @@ public:
         return current_page;
     }
 
+    std::pair<PageNum, size_t> get_lower_bound_index(const char *key, char *buffer) {
+
+    }
+
+
+    std::pair<PageNum, size_t> get_upper_bound_index(const char *key, char *buffer) {
+
+    }
+
+
     /*
      * Returns the last leaf page pid within the tree that contains a key less
      * than or equal to the specified boundary key. Returns INVALID_PID if no
@@ -250,11 +262,13 @@ public:
      * Two buffers are required here because at some points during function
      * execution, two different pages must be kept in memory at once.
      */
+    /*
     std::pair<PageNum, PageNum> get_bounds(const char *lower_key, const char *upper_key, char *buffer) {
         // TODO: Implement in a more clever fashion--we could save some traversals of the
         // upper portion of the tree.
         return {this->get_lower_bound(lower_key, buffer), this->get_upper_bound(upper_key, buffer)};
     }
+    */
 
     /*
      * Returns a pointer to the record_idx'th record starting to count from the
@@ -295,32 +309,28 @@ public:
      * will vary over the function call and are not defined. Any data within it
      * will be clobbered by this function.
      */
-    char *check_tombstone(const char *key, const char *val, char *buffer) {
-        auto pnum = this->get_lower_bound(key, buffer);
+    bool check_tombstone(const char *key, const char *val, char *buffer) {
+        auto lb = this->get_lower_bound_index(key, buffer);
 
         do {
-            size_t idx;
-            auto record = this->search_leaf_page(pnum, key, buffer, &idx);
+            for (size_t i=lb.second; i<this->max_leaf_record_idx(lb.first); i++) {
 
-            if (!record) {
-                return nullptr;
-            }
-
-            for (size_t i=idx; i<this->max_leaf_record_idx(pnum); i++) {
+                /*
                 auto rec = buffer + (idx * record_size);
                 if (key_cmp(get_key(rec), key) != 0) {
-                    return nullptr;
+                    return false;
                 }
 
                 if (record_match(rec, key, val, true)) {
-                    return copy_of(rec);
+                    return true;
                 }
+                */
             }
 
             pnum++;
         } while (pnum <= this->last_data_page);
 
-        return nullptr;
+        return false;
     }
 
     /*

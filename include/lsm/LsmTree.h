@@ -29,9 +29,9 @@ static constexpr bool LSM_LEVELING = true;
 
 class LSMTree {
 public:
-    LSMTree(size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
+    LSMTree(size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t n_memory_levels,
             gsl_rng *rng) 
-        : active_memtable(0), memory_levels(std::vector<MemoryLevel*>(memory_levels)),
+        : active_memtable(0), memory_levels(n_memory_levels, nullptr),
           scale_factor(scale_factor), 
           memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
           memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
@@ -47,9 +47,8 @@ public:
         return 1;
     }
 
-    char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    char *range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // Allocate buffer into which to write the samples
-        char *sample_set = new char[sample_sz * record_size];
         size_t sample_idx = 0;
 
         // Obtain the sampling ranges for each level

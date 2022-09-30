@@ -108,7 +108,7 @@ private:
     }
 
     inline bool heap_cmp(size_t a, size_t b) {
-        auto cmp = key_cmp(get_key(this->data[a].data), get_key(this->data[b].data));
+        auto cmp = record_cmp(this->data[a].data, this->data[b].data);
         if (cmp == 0) {
             if (this->data[a].version != this->data[b].version)
                 return this->data[a].version < this->data[b].version;
