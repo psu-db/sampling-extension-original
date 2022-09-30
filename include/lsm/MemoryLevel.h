@@ -5,13 +5,14 @@
 #include "util/types.h"
 #include "lsm/InMemRun.h"
 #include "ds/BloomFilter.h"
+#include "lsm/SampleRange.h"
 
 namespace lsm {
 
 class MemoryLevel {
 public:
-    MemoryLevel(size_t run_cap)
-    : m_run_cap(run_cap), m_run_cnt(0)
+    MemoryLevel(size_t level_no, size_t run_cap)
+    : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
     , m_runs(new InMemRun*[run_cap]{nullptr})
     , m_bfs(new BloomFilter*[run_cap]{nullptr}) {}
 
@@ -25,10 +26,17 @@ public:
         delete[] m_bfs;
     }
 
-    std::vector<std::pair<RunId, std::pair<const char*, const char*>>> sample_ranges(const char *lower_bound, const char *upper_bound) {
-        return std::vector<std::pair<RunId, std::pair<const char*, const char*>>>();
+    // Append the sample range in-order.....
+    void get_sample_ranges(std::vector<SampleRange>& dst, const char* low, const char* high) {
+        for (size_t i = 0; i < m_run_cnt; ++i) {
+            dst.emplace_back(SampleRange{m_level_no, i, m_runs[i]->get_lower_bound(low), m_runs[i]->get_upper_bound(high)});
+        }
     }
 
+    const char* get_record_at(size_t run_no, size_t idx) {
+        m_runs[run_no]->get_record_at(idx);
+    }
+    
     InMemRun* get_run(size_t idx) {
         return m_runs[idx];
     }
@@ -38,6 +46,7 @@ public:
     }
 
 private:
+    size_t m_level_no;
     size_t m_run_cap;
     size_t m_run_cnt;
     InMemRun** m_runs;
