@@ -26,11 +26,32 @@ public:
         delete[] m_bfs;
     }
 
+    void append_run(InMemRun* run) {
+        assert(m_run_cnt < m_run_cap);
+        m_runs[m_run_cnt ++] = run;
+    }
+
     // Append the sample range in-order.....
     void get_sample_ranges(std::vector<SampleRange>& dst, const char* low, const char* high) {
         for (size_t i = 0; i < m_run_cnt; ++i) {
             dst.emplace_back(SampleRange{m_level_no, i, m_runs[i]->get_lower_bound(low), m_runs[i]->get_upper_bound(high)});
         }
+    }
+
+    bool bf_rejection_check(size_t run_stop, const char* key) {
+        for (size_t i = 0; i < run_stop; ++i) {
+            if (m_bfs[i] && m_bfs[i]->lookup(key, key_size))
+                return true;
+        }
+        return false;
+    }
+
+    bool tombstone_check(size_t run_stop, const char* key, const char* val) {
+        for (size_t i = 0; i < run_stop;  ++i) {
+            if (m_runs[i] && m_runs[i]->check_tombstone(key, val))
+                return true;
+        }
+        return false;
     }
 
     const char* get_record_at(size_t run_no, size_t idx) {

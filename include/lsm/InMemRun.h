@@ -6,6 +6,7 @@
 
 #include "lsm/MemTable.h"
 #include "ds/PriorityQueue.h"
+#include "util/Cursor.h"
 
 namespace lsm {
 
@@ -17,12 +18,7 @@ constexpr size_t inmem_isam_node_keyskip = key_size * inmem_isam_fanout;
 
 class InMemRun {
 public:
-    struct MergeCursor {
-        char* ptr;
-        char* target;
-    };
-
-    InMemRun(MemTable* mem_table) {
+    InMemRun(MemTable* mem_table, BloomFilter* bf) {
         m_data = (char*)std::aligned_alloc(SECTOR_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
@@ -34,21 +30,25 @@ public:
                 && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
                 base += record_size * 2;
             } else {
+                //Masking off the ts.
+                *((rec_hdr*)get_hdr(base)) &= 1;
                 memcpy(m_data + offset, base, record_size);
+                if (is_tombstone(base)) {
+                    ++m_tombstone_cnt;
+                    bf->insert(get_key(base), key_size);
+                }
                 offset += record_size;
                 ++m_reccnt;
                 base += record_size;
             }
         }
 
-        //printf("%zu\n", m_reccnt);
-
         build_internal_levels();
     }
 
     // Master interface to create an ondisk Run.
-    InMemRun(std::vector<InMemRun*> runs) {
-        std::vector<MergeCursor> cursors;
+    InMemRun(const std::vector<InMemRun*>& runs, BloomFilter* bf) {
+        std::vector<Cursor> cursors;
         cursors.reserve(runs.size() + 1);
 
         PriorityQueue pq(runs.size());
@@ -58,7 +58,7 @@ public:
         for (size_t i = 0; i < runs.size(); ++i) {
             assert(runs[i]);
             auto base = runs[i]->sorted_output();
-            cursors.emplace_back(MergeCursor{base, base + runs[i]->get_record_count() * record_size});
+            cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size});
             attemp_reccnt += runs[i]->get_record_count();
             pq.push(cursors[i].ptr, i);
         }
@@ -74,26 +74,21 @@ public:
                 !key_cmp(get_key(now.data), get_key(next.data)) && is_tombstone(next.data)) {
                 
                 pq.pop(); pq.pop();
-                
                 auto& cursor1 = cursors[now.version];
                 auto& cursor2 = cursors[next.version];
-                if (cursor1.ptr + record_size < cursor1.target) {
-                    cursor1.ptr += record_size;
-                    pq.push(cursor1.ptr, now.version);
-                }
-                if (cursor2.ptr + record_size < cursor2.target) {
-                    cursor2.ptr += record_size;
-                    pq.push(cursor2.ptr, next.version);
-                }
+                if (advance_cursor(cursor1)) pq.push(cursor1.ptr, now.version);
+                if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
             } else {
-                memcpy(m_data + offset, cursors[now.version].ptr, record_size);
+                auto& cursor = cursors[now.version];
+                memcpy(m_data + offset, cursor.ptr, record_size);
+                if (is_tombstone(cursor.ptr)) {
+                    ++m_tombstone_cnt;
+                    bf->insert(get_key(cursor.ptr), key_size);
+                }
                 offset += record_size;
                 pq.pop();
-                auto& cursor = cursors[now.version];
-                if (cursor.ptr + record_size < cursor.target) {
-                    cursor.ptr += record_size;
-                    pq.push(cursor.ptr, now.version);
-                }
+                
+                if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
             }
         }
 
@@ -106,6 +101,10 @@ public:
     
     size_t get_record_count() const {
         return m_reccnt;
+    }
+
+    size_t get_tombestone_count() const {
+        return m_tombstone_cnt;
     }
 
     const char* get_record_at(size_t idx) const {
@@ -161,8 +160,14 @@ public:
         return (now - m_data) / record_size;
     }
 
-    size_t get_tombstone_count() {
-        return 0;
+    bool check_tombstone(const char* key, const char* val) const {
+        auto ptr = m_data + (get_lower_bound(key) * record_size);
+        char buf[record_size];
+        layout_record(buf, key, val, false);
+        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
+            ptr += record_size;
+        }
+        return record_match(ptr, key, val, true);
     }
     
 private:
@@ -229,6 +234,7 @@ private:
     char* m_isam_nodes;
     char* m_root;
     size_t m_reccnt;
+    size_t m_tombstone_cnt;
 };
 
 }
