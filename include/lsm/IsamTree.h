@@ -210,12 +210,41 @@ public:
     }
 
     std::pair<PageNum, size_t> get_lower_bound_index(const char *key, char *buffer) {
-        return {0, 0};
+        auto pnum = this->get_lower_bound(key, buffer);
+
+        if (pnum == INVALID_PNUM) {
+            return {pnum, 0};
+        }
+
+        this->pfile->read_page(pnum, buffer);
+
+        size_t idx;
+        this->search_leaf_page(pnum, key, buffer , &idx);
+
+        return {pnum, idx};
     }
 
 
     std::pair<PageNum, size_t> get_upper_bound_index(const char *key, char *buffer) {
-        return {0, 0};
+        auto pnum = this->get_lower_bound(key, buffer);
+
+        if (pnum == INVALID_PNUM) {
+            return {pnum, 0};
+        }
+
+        this->pfile->read_page(pnum, buffer);
+
+        size_t idx;
+        this->search_leaf_page(pnum, key, buffer, &idx);
+
+        // FIXME: This could be replaced by a modified version of
+        // search_leaf_page, but this avoids a lot of code duplication for what
+        // will almost certainly be a very short loop over in-cache data.
+        while (key_cmp(key, get_key(buffer + idx*record_size)) <= 0 && idx < this->max_leaf_record_idx(pnum)) {
+            idx++;
+        }
+
+        return {pnum, idx};
     }
 
 
@@ -472,13 +501,15 @@ private:
 
         char *record = buffer + (min * record_size);
 
+        // Update idx if required, regardless of if the found
+        // record is an exact match (lower-bound behavior).
+        if (idx) {
+            *idx = min;
+        }
+
         // Check if the thing that we found matches the target. If so, we've found
         // it. If not, the target doesn't exist on the page.
         if (key_cmp(key, get_key(record)) == 0) {
-            if (idx) {
-                *idx = min;
-            }
-
             return record;
         }
 
