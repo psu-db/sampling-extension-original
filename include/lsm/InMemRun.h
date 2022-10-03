@@ -103,7 +103,7 @@ public:
         return m_reccnt;
     }
 
-    size_t get_tombestone_count() const {
+    size_t get_tombstone_count() const {
         return m_tombstone_cnt;
     }
 
