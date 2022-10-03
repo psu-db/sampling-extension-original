@@ -4,8 +4,8 @@ build/*
 lib/*
 bin/*
 
-tests/*
-!tests/*.{cpp,sh}
+#tests/*
+#!tests/*.{cpp,sh}
 
 benchmarks/*
 !benchmarks/*.{cpp,sh}
