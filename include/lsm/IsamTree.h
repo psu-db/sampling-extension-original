@@ -67,11 +67,11 @@ public:
      * in memory and on disk runs. If there are no input runs of a given type,
      * pass an empty vector instead.
      */
-    ISAMTree(PagedFile *pfile, gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
+    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
         ISAMTree(pfile, rng, tomb_filter, runs.data(), runs.size(), trees.data(), trees.size());
     }
 
-    ISAMTree(PagedFile *pfile, gsl_rng *rng, BloomFilter *tomb_filter, InMemRun *const*runs, size_t run_cnt, ISAMTree *const*trees, size_t tree_cnt) {
+    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun *const*runs, size_t run_cnt, ISAMTree *const*trees, size_t tree_cnt) {
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);
 

@@ -1,166 +1,121 @@
-
 #pragma once
 
-#include <cassert>
+#include <vector>
+#include <string>
+
+#include "util/types.h"
+#include "util/bf_config.h"
+#include "lsm/InMemRun.h"
 #include "lsm/IsamTree.h"
-#include "util/record.h"
+#include "ds/BloomFilter.h"
+#include "lsm/MemoryLevel.h"
 
 namespace lsm {
 
 class DiskLevel {
 public:
-    DiskLevel(size_t run_capacity, size_t level_index) 
-    : runs(std::vector<ISAMTree*>(run_capacity)), run_tail_ptr(0), level_idx(level_index)
-    {}
+    DiskLevel(ssize_t level_no, size_t run_cap, std::string root_directory)
+    : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
+    , m_runs(new ISAMTree*[run_cap]{nullptr})
+    , m_bfs(new BloomFilter*[run_cap]{nullptr})
+    , m_pfiles(new PagedFile*[run_cap]{nullptr})
+    , m_directory(root_directory) {}
 
     ~DiskLevel() {
-        this->truncate();
-    }
-
-    std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> sample_ranges(const char *lower_bound, const char *upper_bound, char *buffer) {
-        // arguments cannot be null
-        assert(lower_bound);
-        assert(upper_bound);
-        assert(buffer);
-
-        // lower bound must be less than or equal to the upper bound
-        assert(key_cmp(lower_bound, upper_bound) <= 0);
-
-        std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> ranges(this->run_tail_ptr);
-
-        for (size_t i=0; i<this->run_tail_ptr; i++) {
-            auto bounds = this->runs[i]->get_bounds(lower_bound, upper_bound, buffer);
-            ranges[i] = {{this->level_idx, i}, bounds};
+        for (size_t i = 0; i < m_run_cap; ++i) {
+            if (m_runs[i]) delete m_runs[i];
+            if (m_bfs[i]) delete m_bfs[i];
+            if (m_pfiles[i]) delete m_pfiles[i];
         }
 
-        return ranges;
+        delete[] m_runs;
+        delete[] m_bfs;
+        delete[] m_pfiles;
     }
 
-    // This will flat out delete all of the runs on this level,
-    // so if the intent is to move a run to a different level,
-    // once the pointer is copied be sure to set the entry for
-    // that run on this level to NULL.
-    void truncate() {
-        for (size_t i=0; i<this->run_tail_ptr; i++) {
-            delete this->runs[i];
+    void append_merged_runs(DiskLevel* level, const gsl_rng* rng) {
+        assert(m_run_cnt < m_run_cap);
+        m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
+
+        m_pfiles[m_run_cnt] = PagedFile::create(this->get_fname(m_run_cnt), true);
+        assert(m_pfiles[m_run_cnt]);
+
+        m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], nullptr, 0, level->m_runs, level->m_run_cnt);
+        ++m_run_cnt;
+    }
+
+    void append_merged_runs(MemoryLevel *level, const gsl_rng *rng) {
+        assert(m_run_cnt < m_run_cap);
+        m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
+
+        m_pfiles[m_run_cnt] = PagedFile::create(this->get_fname(m_run_cnt), true);
+        assert(m_pfiles[m_run_cnt]);
+
+        m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], level->m_runs, level->m_run_cnt, nullptr, 0);
+        ++m_run_cnt;
+
+    }
+
+    // Append the sample range in-order.....
+    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high, char *buffer) {
+        for (ssize_t i = 0; i < m_run_cnt; ++i) {
+            auto low_pos = m_runs[i]->get_lower_bound(low, buffer);
+            auto high_pos = m_runs[i]->get_upper_bound(high, buffer);
+            assert(high_pos >= low_pos);
+            dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
+            rec_cnts.emplace_back((high_pos - low_pos) * (PAGE_SIZE/record_size));
         }
     }
 
-/*
- * Functions used for merging and compaction
- */
-
-    /*
-     * Proactively compact the runs in this level to 
-     * remove deleted records, etc. Note that we could
-     * also use this to proactively merge all the runs
-     * on this level into one for teiring purposes--it
-     * may make sense to proactively do this.
-     */
-    void compact_runs() { 
-        // TODO: awaiting ISAMTree compaction interface
-    }
-
-    /*
-     * Return a pointer to the specified run, if it
-     * exists within this level, and set its current
-     * reference within the level to nullptr.
-     */
-    ISAMTree *get_and_remove_run(size_t idx) {
-        assert(idx < this->runs.size());
-
-        ISAMTree *run = this->runs[idx];
-        this->runs[idx] = nullptr;
-        return run;
-    }
-
-
-    ISAMTree *get_run(size_t idx) {
-        assert(idx < this->runs.size());
-        return this->runs[idx];
-    }
-
-
-    /*
-     * Append a new run to this level. The current
-     * run count must be less than the run capacity.
-     */
-    void add_run(ISAMTree *run) {
-        assert(this->run_tail_ptr < this->runs.size()); // there must be room for the run
-        assert(run);
-
-        this->runs[this->run_tail_ptr++] = run;
-    }
-
-    /*
-     * Merge all of the runs on this level into a single,
-     * new ISAM Tree, fit for putting into a lower level.
-     *
-     * Leaves this level untouched. Once the new run has
-     * been installed somewhere, this level should be
-     * cleared via a call to truncate().
-     *
-     * NOTE: In the current state, if there is only 1 run
-     * on this level, a reference to it is returned for
-     * efficiency. This means that this level should *not*
-     * be truncated, but rather the reference to the run
-     * in question should be nulled out. It would be cleaner
-     * to just return a copy--but that is extra work we
-     * don't need to do.
-     */
-    ISAMTree *merge_all_runs() {
-        assert(this->run_tail_ptr != 0); // must be runs to merge
-        
-        // if there is only one run, just return it.
-        if (this->run_tail_ptr == 1) {
-            return this->runs[0];
+    bool bf_rejection_check(size_t run_stop, const char* key) {
+        for (size_t i = 0; i < run_stop; ++i) {
+            if (m_bfs[i] && m_bfs[i]->lookup(key, key_size))
+                return true;
         }
-
-        // pending ISAM refactor for new merging interface
-        // return new ISAMTree(this->runs);
-        // or create a vector of iterators and pass that in,
-        // depending on the interface we settle on.
-
-        return nullptr;
+        return false;
     }
 
-/*
- * General use accessors
- */
-
-    /*
-     * Return the number of runs that this level can hold
-     */
-    size_t run_capacity() {
-        return this->runs.size();
-    }
-
-
-    /*
-     * Return the number of runs that this level currently
-     * holds
-     */
-    size_t run_count() {
-        return this->run_tail_ptr;
-    }
-
-    // not sure that we care about record or tombstone
-    // counts here, but those can be exposed by walking
-    // over the runs and tallying.
-
-    size_t memory_utilization() {
-        size_t mem = 0;
-        for (size_t i=0; i<this->run_tail_ptr; i++) {
-            mem += this->runs[i]->memory_utilization();
+    bool tombstone_check(size_t run_stop, const char* key, const char* val, char *buffer) {
+        for (size_t i = 0; i < run_stop;  ++i) {
+            if (m_runs[i] && m_runs[i]->check_tombstone(key, val, buffer))
+                return true;
         }
-
-        return mem;
+        return false;
     }
 
-  private:
-    std::vector<ISAMTree *> runs;
-    size_t run_tail_ptr;
-    size_t level_idx;
+    const char* get_record_at(size_t run_no, PageNum initial_pnum, size_t idx, char *buffer, PageNum &pg_in_buffer) {
+        return m_runs[run_no]->sample_record(initial_pnum, idx, buffer, pg_in_buffer);
+    }
     
+    ISAMTree* get_run(size_t idx) {
+        return m_runs[idx];
+    }
+
+    size_t get_run_count() {
+        return m_run_cnt;
+    }
+    
+    size_t get_tombstone_count() {
+        size_t res = 0;
+        for (size_t i = 0; i < m_run_cnt; ++i) {
+            res += m_runs[i]->get_tombstone_count();
+        }
+        return res;
+    }
+
+private:
+    ssize_t m_level_no;
+    size_t m_run_cap;
+    size_t m_run_cnt;
+    ISAMTree** m_runs;
+    BloomFilter** m_bfs;
+    PagedFile** m_pfiles;
+    std::string m_directory;
+
+    std::string get_fname(size_t idx) {
+        return m_directory + "/level" + std::to_string(m_level_no)
+            + "_run" + std::to_string(idx) + ".dat";
+    }
 };
+
 }

@@ -9,7 +9,11 @@
 
 namespace lsm {
 
+class DiskLevel;
+
 class MemoryLevel {
+friend class DiskLevel;
+
 public:
     MemoryLevel(ssize_t level_no, size_t run_cap)
     : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
