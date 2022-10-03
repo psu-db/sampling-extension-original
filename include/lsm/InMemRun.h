@@ -47,15 +47,15 @@ public:
     }
 
     // Master interface to create an ondisk Run.
-    InMemRun(const std::vector<InMemRun*>& runs, BloomFilter* bf) {
+    InMemRun(InMemRun** runs, size_t len, BloomFilter* bf) {
         std::vector<Cursor> cursors;
-        cursors.reserve(runs.size() + 1);
+        cursors.reserve(len);
 
-        PriorityQueue pq(runs.size());
+        PriorityQueue pq(len);
 
         size_t attemp_reccnt = 0;
         
-        for (size_t i = 0; i < runs.size(); ++i) {
+        for (size_t i = 0; i < len; ++i) {
             assert(runs[i]);
             auto base = runs[i]->sorted_output();
             cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size});

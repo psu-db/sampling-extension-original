@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "util/types.h"
+#include "util/bf_config.h"
 #include "lsm/InMemRun.h"
 #include "ds/BloomFilter.h"
 
@@ -25,9 +26,18 @@ public:
         delete[] m_bfs;
     }
 
-    void append_run(InMemRun* run) {
+    void append_mem_table(MemTable* memtable, const gsl_rng* rng) {
         assert(m_run_cnt < m_run_cap);
-        m_runs[m_run_cnt ++] = run;
+        m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, memtable->get_tombstone_count(), BF_HASH_FUNCS, rng);
+        m_runs[m_run_cnt] = new InMemRun(memtable, m_bfs[m_run_cnt]);
+        ++m_run_cnt;
+    }
+
+    void append_merged_runs(MemoryLevel* level, const gsl_rng* rng) {
+        assert(m_run_cnt < m_run_cap);
+        m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
+        m_runs[m_run_cnt] = new InMemRun(level->m_runs, level->m_run_cnt, m_bfs[m_run_cnt]);
+        ++m_run_cnt;
     }
 
     // Append the sample range in-order.....
@@ -67,6 +77,14 @@ public:
 
     size_t get_run_count() {
         return m_run_cnt;
+    }
+    
+    size_t get_tombstone_count() {
+        size_t res = 0;
+        for (size_t i = 0; i < m_run_cnt; ++i) {
+            res += m_runs[i]->get_tombstone_count();
+        }
+        return res;
     }
 
 private:

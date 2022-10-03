@@ -26,7 +26,7 @@ START_TEST(t_memtable_init)
         mem_table->append((const char*)&i, (const char*)&v);
     }
 
-    BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->tombstone_count(), BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
     InMemRun* run = new InMemRun(mem_table, bf);
     ck_assert_uint_eq(run->get_record_count(), 512);
 
