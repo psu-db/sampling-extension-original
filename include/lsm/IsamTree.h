@@ -46,7 +46,7 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 // Convert an index into the trees array to
 // the corresponding index into the cursor array
-#define TCUR(i) (runs.size() + (i))
+#define TCUR(i) (run_cnt + (i))
 
 class ISAMTree {
 public:
@@ -68,17 +68,21 @@ public:
      * pass an empty vector instead.
      */
     ISAMTree(PagedFile *pfile, gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
-        std::vector<Cursor> cursors(runs.size() + trees.size());
-        std::vector<PagedFileIterator *> isam_iters(trees.size());
+        ISAMTree(pfile, rng, tomb_filter, runs.data(), runs.size(), trees.data(), trees.size());
+    }
 
-        PriorityQueue pq(runs.size() + trees.size());
+    ISAMTree(PagedFile *pfile, gsl_rng *rng, BloomFilter *tomb_filter, InMemRun *const*runs, size_t run_cnt, ISAMTree *const*trees, size_t tree_cnt) {
+        std::vector<Cursor> cursors(run_cnt + tree_cnt);
+        std::vector<PagedFileIterator *> isam_iters(tree_cnt);
+
+        PriorityQueue pq(run_cnt + tree_cnt);
 
         size_t incoming_record_cnt = 0;
         size_t incoming_tombstone_cnt = 0;
 
         // Initialize the priority queue
         // load up the memory levels;
-        for (size_t i=0; i<runs.size(); i++) {
+        for (size_t i=0; i<run_cnt; i++) {
             assert(runs[i]);
             const char *start = runs[i]->sorted_output();
             const char *end = start + runs[i]->get_record_count() * record_size;
@@ -90,7 +94,7 @@ public:
         }
 
         // load up the disk levels
-        for (size_t i=0; i<trees.size(); i++) {
+        for (size_t i=0; i<tree_cnt; i++) {
             assert(trees[i]);
             isam_iters[i] = trees[i]->start_scan();
             assert(isam_iters[i]->next());
@@ -129,12 +133,12 @@ public:
                 // pop the next two records from the queue and discard them
                 pq.pop(); pq.pop();
 
-                auto iter = (cur.version < runs.size()) ? nullptr : isam_iters[cur.version - runs.size()];
+                auto iter = (cur.version < run_cnt) ? nullptr : isam_iters[cur.version - run_cnt];
                 if (advance_cursor(cursors[cur.version], iter)) {
                     pq.push(cursors[cur.version].ptr, cur.version);
                 }
 
-                iter = (next.version < runs.size()) ? nullptr : isam_iters[next.version - runs.size()];
+                iter = (next.version < run_cnt ? nullptr : isam_iters[next.version - run_cnt]);
                 if (advance_cursor(cursors[next.version], iter)) {
                     pq.push(cursors[next.version].ptr, next.version);
                 }
@@ -150,7 +154,7 @@ public:
             }
             
             pq.pop();
-            auto iter = (next.version < runs.size()) ? nullptr : isam_iters[next.version - runs.size()];
+            auto iter = (next.version < run_cnt) ? nullptr : isam_iters[next.version - run_cnt];
             if (advance_cursor(cursors[cur.version], iter)) {
                 pq.push(cursors[cur.version].ptr, cur.version);
             }
@@ -206,12 +210,12 @@ public:
     }
 
     std::pair<PageNum, size_t> get_lower_bound_index(const char *key, char *buffer) {
-
+        return {0, 0};
     }
 
 
     std::pair<PageNum, size_t> get_upper_bound_index(const char *key, char *buffer) {
-
+        return {0, 0};
     }
 
 
@@ -311,23 +315,28 @@ public:
      */
     bool check_tombstone(const char *key, const char *val, char *buffer) {
         auto lb = this->get_lower_bound_index(key, buffer);
+        PageNum pnum = lb.first;
+        size_t idx = lb.second;
+
+        if (pnum == INVALID_PNUM) {
+            return false;
+        }
+
+        char test_rec[record_size];
+        layout_record(test_rec, key, val, false);
 
         do {
-            for (size_t i=lb.second; i<this->max_leaf_record_idx(lb.first); i++) {
-
-                /*
+            this->pfile->read_page(pnum, buffer);
+            for (size_t i=idx; i<this->max_leaf_record_idx(pnum); i++) {
                 auto rec = buffer + (idx * record_size);
-                if (key_cmp(get_key(rec), key) != 0) {
-                    return false;
-                }
 
-                if (record_match(rec, key, val, true)) {
-                    return true;
+                if (record_cmp(rec, test_rec) >= 0) {
+                    return record_match(rec, key, val, true);
                 }
-                */
             }
 
             pnum++;
+            idx = 0;
         } while (pnum <= this->last_data_page);
 
         return false;
