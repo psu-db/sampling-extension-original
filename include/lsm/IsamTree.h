@@ -688,7 +688,7 @@ private:
             return INVALID_PNUM;
     }
 
-    static PageNum pre_init(size_t record_count, size_t tombstone_count, gsl_rng *rng, PagedFile *pfile, char **buffer) {
+    static PageNum pre_init(size_t record_count, size_t tombstone_count, const gsl_rng *rng, PagedFile *pfile, char **buffer) {
         // Allocate initial pages for data and for metadata
         size_t leaf_page_cnt = (record_count / ISAM_RECORDS_PER_LEAF) + ((record_count % ISAM_RECORDS_PER_LEAF) != 0);
 

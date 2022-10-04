@@ -29,9 +29,9 @@ static constexpr bool LSM_LEVELING = true;
 
 class LSMTree {
 public:
-    LSMTree(size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t n_memory_levels,
+    LSMTree(size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             gsl_rng *rng) 
-        : active_memtable(0), memory_levels(n_memory_levels, nullptr),
+        : active_memtable(0), memory_levels(std::vector<MemoryLevel*>(memory_levels)),
           scale_factor(scale_factor), 
           memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
           memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
@@ -47,14 +47,16 @@ public:
         return 1;
     }
 
-    char *range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // Allocate buffer into which to write the samples
+        char *sample_set = new char[sample_sz * record_size];
         size_t sample_idx = 0;
 
         // Obtain the sampling ranges for each level
         //std::vector<std::pair<RunId, std::pair<const char *, const char *>>> memory_ranges;
         std::vector<SampleRange> memory_ranges;
-        std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> disk_ranges;
+        //std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> disk_ranges;
+        std::vector<SampleRange> disk_ranges;
         std::vector<size_t> record_counts;
 
         MemTable *memtable = nullptr;
@@ -81,11 +83,12 @@ public:
 
         for (auto &level : this->disk_levels) {
             if (level) {
-                auto ranges = level->sample_ranges(lower_key, upper_key, buffer);
-                for (auto range : ranges) {
-                    disk_ranges.push_back(range);
-                    record_counts.push_back((range.second.second - range.second.first) * (PAGE_SIZE / record_size));
-                }
+                //auto ranges = level->sample_ranges(lower_key, upper_key, buffer);
+                level->get_sample_ranges(disk_ranges, record_counts, lower_key, upper_key, buffer);
+                //for (auto range : ranges) {
+                //    disk_ranges.push_back(range);
+                //    record_counts.push_back((range.second.second - range.second.first) * (PAGE_SIZE / record_size));
+                //}
             }
         }
 
@@ -175,16 +178,16 @@ public:
             size_t records_per_page = PAGE_SIZE / record_size;
             PageNum buffered_page = INVALID_PNUM;
             for (size_t i=0; i<disk_ranges.size(); i++) {
-                size_t range_length = (disk_ranges[i].second.second - disk_ranges[i].second.first) * records_per_page;
-                size_t level_idx = disk_ranges[i].first.level_idx;
-                size_t run_idx = disk_ranges[i].first.run_idx;
+                size_t range_length = (disk_ranges[i].high - disk_ranges[i].low) * records_per_page;
+                size_t level_idx = disk_ranges[i].run_id.level_idx;
+                size_t run_idx = disk_ranges[i].run_id.run_idx;
 
                 while (run_samples[i+run_offset] > 0) {
                     size_t idx = gsl_rng_uniform_int(rng, range_length);
-                    sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].second.first, idx, buffer, buffered_page);
+                    sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].low, idx, buffer, buffered_page);
                     run_samples[i+run_offset]--;
 
-                    if (!add_to_sample(sample_record, disk_ranges[i].first, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
+                    if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
                     }
                 }
@@ -221,7 +224,7 @@ public:
                 }
             } else {
                 size_t isam_lvl = lvl - memory_levels.size();
-                for (size_t run=0; run<disk_levels[isam_lvl]->run_count(); run++) {
+                for (size_t run=0; run<disk_levels[isam_lvl]->get_run_count(); run++) {
                     if (disk_levels[isam_lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record), buffer)) {
                         return true;
                     }
