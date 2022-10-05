@@ -214,38 +214,29 @@ public:
             return false;
         }
 
-        // check all runs on all levels above the level containing the record
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
-            if (lvl<memory_levels.size()) {
-                for (size_t run=0; run<memory_levels[lvl]->get_run_count(); run++) {
-                    if (memory_levels[lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record))) {
-                        return true;
-                    }
+            if (lvl < memory_levels.size()) {
+                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
+                    return true;
                 }
             } else {
                 size_t isam_lvl = lvl - memory_levels.size();
-                for (size_t run=0; run<disk_levels[isam_lvl]->get_run_count(); run++) {
-                    if (disk_levels[isam_lvl]->get_run(run)->check_tombstone(get_key(record), get_val(record), buffer)) {
-                        return true;
-                    }
+                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), get_key(record), get_val(record), buffer)) {
+                    return true;
                 }
+
             }
         }
 
-        // check any runs on the record's level that are before it
-        for (size_t run=0; run<rid.run_idx; run++) {
-            if (rid.level_idx < memory_levels.size()) {
-                if (memory_levels[rid.level_idx]->get_run(run)->check_tombstone(get_key(record), get_val(record))) {
-                    return true;
-                }
-            } else {
-                if (disk_levels[rid.level_idx - memory_levels.size()]->get_run(run)->check_tombstone(get_key(record), get_val(record), buffer)) {
-                    return true;
-                }
-            }
+        // check the level containing the run
+        if (rid.level_idx < memory_levels.size()) {
+            size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
+            return memory_levels[rid.level_idx]->tombstone_check(run_idx, get_key(record), get_val(record));
+        } else {
+            size_t isam_lvl = rid.level_idx - memory_levels.size();
+            size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
+            return disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
         }
-
-        return false;
     }
 
 private:
