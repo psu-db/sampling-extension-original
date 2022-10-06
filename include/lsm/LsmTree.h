@@ -37,14 +37,17 @@ public:
           memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
           memtable_1_merging(false), memtable_2_merging(false) {}
 
-    int insert(const char *key, const char *val, bool tombstone=false) {
-        // spin while both memtables are blocked and insertion fails
-        // This can be switched out for a condition variable later
-        MemTable *table;
-        while (!(table = this->memtable()) || !(table->append(key, val, tombstone)))
+    int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
+        // NOTE: single-threaded implementation only
+        MemTable *mtable;
+        while (!(mtable = this->memtable()))
             ;
+        
+        if (mtable->is_full()) {
+            this->merge_memtable(rng);
+        }
 
-        return 1;
+        return mtable->append(key, val, tombstone);
     }
 
     char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
