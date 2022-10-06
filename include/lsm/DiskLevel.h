@@ -103,6 +103,15 @@ public:
         return res;
     }
 
+    size_t get_record_cnt() {
+        size_t cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            cnt += m_runs[i]->get_record_count();
+        }
+
+        return cnt;
+    }
+
 private:
     ssize_t m_level_no;
     size_t m_run_cap;

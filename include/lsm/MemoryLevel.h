@@ -82,6 +82,15 @@ public:
     size_t get_run_count() {
         return m_run_cnt;
     }
+
+    size_t get_record_cnt() {
+        size_t cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            cnt += m_runs[i]->get_record_count();
+        }
+
+        return cnt;
+    }
     
     size_t get_tombstone_count() {
         size_t res = 0;

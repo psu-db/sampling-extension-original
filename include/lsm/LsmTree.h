@@ -25,7 +25,7 @@ thread_local size_t sampling_rejections;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 class LSMTree {
 public:
@@ -72,23 +72,11 @@ public:
             if (level) {
                 level->get_sample_ranges(memory_ranges, record_counts, lower_key, upper_key);
             }
-            //{
-                //auto ranges = level->sample_ranges(lower_key, upper_key);
-                //for (auto range : ranges) {
-                //    memory_ranges.push_back(range);
-                //    record_counts.push_back((range.second.second - range.second.first) / record_size);
-                //}
-            //}
         }
 
         for (auto &level : this->disk_levels) {
             if (level) {
-                //auto ranges = level->sample_ranges(lower_key, upper_key, buffer);
                 level->get_sample_ranges(disk_ranges, record_counts, lower_key, upper_key, buffer);
-                //for (auto range : ranges) {
-                //    disk_ranges.push_back(range);
-                //    record_counts.push_back((range.second.second - range.second.first) * (PAGE_SIZE / record_size));
-                //}
             }
         }
 
@@ -249,7 +237,12 @@ private:
     size_t scale_factor;
 
     std::vector<MemoryLevel *> memory_levels;
+    size_t memory_level_cnt;
     std::vector<DiskLevel *> disk_levels;
+
+    // The directory containing all of the backing files
+    // for this LSM Tree.
+    std::string root_directory;
 
     MemTable *memtable() {
         if (memtable_1_merging && memtable_2_merging) {
@@ -277,6 +270,149 @@ private:
 
         memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
         return true;
+    }
+
+    // Add a new level to the tree as part of the merge process. Returns true
+    // if the new level is a disk level, and false if it is a memory level.
+    // Update the level_idx parameter to the index of the new level in the
+    // appropriate backing array.
+    inline bool grow(size_t &new_level_idx) {
+        bool new_disk_level;
+        size_t new_run_cnt = (LSM_LEVELING) ? 1 : this->scale_factor;
+
+        // Determine where to insert the new level
+        if (this->memory_levels.size() < this->memory_level_cnt - 1) {
+            new_level_idx = this->memory_levels.size();
+            this->memory_levels.emplace_back(new MemoryLevel(new_level_idx, new_run_cnt));
+            new_disk_level = false;
+        } else {
+            new_level_idx = this->disk_levels.size();
+            this->disk_levels.emplace_back(new DiskLevel(this->memory_levels.size() + new_level_idx, new_run_cnt, this->root_directory));
+            new_disk_level = true;
+        }
+
+        return new_disk_level;
+    }
+
+
+    // Merge the memory table down into the tree, completing any required other
+    // merges to make room for it.
+    void merge_memtable(gsl_rng *rng) {
+        auto mtable = this->memtable();
+
+        // swapping over to the backup in the case of merging would go here.
+        
+        bool level_found = false;
+        bool disk_level;
+        size_t merge_level_idx;
+
+        size_t incoming_rec_cnt = mtable->get_record_count();
+        for (size_t i=0; i<this->memory_levels.size() + this->disk_levels.size(); i++) {
+            if (i < this-> memory_levels.size()) {
+                if (memlevel_can_merge_with(incoming_rec_cnt, i)) {
+                    merge_level_idx = i;
+                    level_found = true;
+                    disk_level = false;
+                    break;
+                }
+
+                incoming_rec_cnt = this->memory_levels[i]->get_record_cnt();
+            } else {
+                if (disklevel_can_merge_with(incoming_rec_cnt, i - this->memory_level_cnt)) {
+                    merge_level_idx = i;
+                    disk_level = true;
+                    level_found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!level_found) { 
+            disk_level = this->grow(merge_level_idx);
+        }
+
+        // NOTE: This currently will only support tiering. Leveling cannot be
+        // done with the existing Level interface.
+        static_assert(!LSM_LEVELING);
+
+        if (disk_level) {
+            for (size_t i=merge_level_idx; i>0; i++) {
+                this->disk_levels[i]->append_merged_runs(this->disk_levels[i-1], rng);
+            }
+
+            this->disk_levels[0]->append_merged_runs(this->memory_levels[this->memory_level_cnt - 1], rng);
+            merge_level_idx = this->memory_level_cnt;
+        }
+
+        for (size_t i=merge_level_idx; i>0; i++) {
+            this->memory_levels[i]->append_merged_runs(this->memory_levels[i-1], rng);
+        }
+
+        // NOTE: This is assuming that we will always have memory levels. If
+        // not, the DiskLevel interface will need to be expanded to allow
+        // appending a memory table as well, with an appropriate branch added
+        // here.
+        auto new_level = new MemoryLevel(0, (LSM_LEVELING) ? 1 : this->scale_factor);
+        new_level->append_mem_table(mtable, rng);
+        auto old_level = this->memory_levels[0];
+        this->memory_levels[0] = new_level;
+
+        // For concurrency, we can't delete this right away.
+        delete old_level;
+    }
+
+    /*
+     * For a given level number, returns true if the level corresponds to
+     * a disk level and false if it corresponds to a memory level. Additionally,
+     * set level_idx equal to the index of this level in the corresponding
+     * backing array (disk_levels or memory_levels), based on the returned value.
+     */
+    inline bool decode_level_number(size_t level_no, size_t &level_idx) {
+        assert(level_no < this->memory_levels.size() + this->disk_levels.size());
+
+        if (level_no > this->memory_levels.size()) {
+            level_idx = level_no;
+            return false;
+        }
+
+        level_idx = level_no - this->memory_levels.size();
+        return true;
+    }
+
+    // Assume that level "0" should be larger than the memtable
+    inline size_t calc_level_rec_cnt(size_t idx) {
+        return this->memtable()->get_capacity() * pow(this->scale_factor, idx+1);
+    }
+
+
+    inline bool memlevel_can_merge_with(size_t incoming_rec_cnt, size_t idx) {
+        if (LSM_LEVELING) {
+            if (this->memory_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_rec_cnt(idx)) {
+                return true;
+            }
+
+            return false;
+        } else {
+            return this->memory_levels[idx]->get_run_count() < this->scale_factor;
+        }
+    }
+
+
+    /*
+     * Accepts the index into the disk level vector directly, not the level number,
+     * so that translation should be made in advance.
+     */
+    inline bool disklevel_can_merge_with(size_t incoming_rec_cnt, size_t idx) {
+        if (LSM_LEVELING) {
+            if (this->disk_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_rec_cnt(idx)) {
+                return true;
+            }
+
+            return false;
+        } else {
+            return this->disk_levels[idx]->get_run_count() < this->scale_factor;
+        }
+
     }
 
 };
