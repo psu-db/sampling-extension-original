@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <queue>
+#include <memory>
 
 #include "lsm/MemTable.h"
 #include "ds/PriorityQueue.h"
