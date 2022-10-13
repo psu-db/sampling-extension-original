@@ -147,10 +147,6 @@ private:
     size_t m_run_cnt;
     size_t m_run_size_cap;
     std::shared_ptr<InternalLevelStructure> m_structure;
-    //size_t m_run_cap;
-    //std::shared_ptr<InMemRun*[]> m_runs;
-    //std::shared_ptr<BloomFilter*[]> m_bfs;
-
 };
 
 }
