@@ -25,7 +25,13 @@ public:
     void pop() {
         assert(this->tail != 0);
 
-        //const char *result = this->data[0].data;
+        // If there is only one element, just decrement the
+        // tail.
+        if (this->size() == 1) {
+            this->tail--;
+            return;
+        }
+
         swap(0, --this->tail);
 
         ssize_t idx;
@@ -35,8 +41,6 @@ public:
             swap(idx, child_idx);
             idx = child_idx;
         }
-
-        //return result;
     }
 
     void push(const char* record, size_t version=0) {
