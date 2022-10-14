@@ -67,11 +67,13 @@ public:
      * in memory and on disk runs. If there are no input runs of a given type,
      * pass an empty vector instead.
      */
+    /*
     ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
         ISAMTree(pfile, rng, tomb_filter, runs.data(), runs.size(), trees.data(), trees.size());
     }
+    */
 
-    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun *const*runs, size_t run_cnt, ISAMTree *const*trees, size_t tree_cnt) {
+    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);
 
@@ -94,6 +96,8 @@ public:
         }
 
         // load up the disk levels
+        //
+        // FIXME: Move this to before the memory levels
         for (size_t i=0; i<tree_cnt; i++) {
             assert(trees[i]);
             isam_iters[i] = trees[i]->start_scan();
@@ -154,7 +158,9 @@ public:
             }
             
             pq.pop();
+
             auto iter = (next.version < run_cnt) ? nullptr : isam_iters[next.version - run_cnt];
+
             if (advance_cursor(cursors[cur.version], iter)) {
                 pq.push(cursors[cur.version].ptr, cur.version);
             }
@@ -177,6 +183,8 @@ public:
         for (size_t i=0; i<isam_iters.size(); i++) {
             delete isam_iters[i];
         }
+
+        this->pfile = pfile;
 
         free(buffer);
     }
@@ -712,7 +720,7 @@ private:
     }
 
     static PageNum write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer) {
-        size_t full_leaf_pages = (output_idx) / PAGE_SIZE;
+        size_t full_leaf_pages = (output_idx) / (PAGE_SIZE / record_size);
         *last_leaf_rec_cnt = (output_idx) % PAGE_SIZE;
 
         if (full_leaf_pages == 0 && *last_leaf_rec_cnt == 0) {

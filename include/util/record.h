@@ -6,8 +6,8 @@
 namespace lsm {
 
 typedef uint32_t rec_hdr;
-typedef uint32_t key_type;
-typedef uint64_t value_type;
+typedef uint64_t key_type;
+typedef uint32_t value_type;
 
 constexpr static size_t key_size = sizeof(key_type);
 constexpr static size_t value_size = sizeof(value_type);

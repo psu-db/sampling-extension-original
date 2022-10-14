@@ -3,7 +3,9 @@
 
 #include "testing.h"
 #include "lsm/IsamTree.h"
+#include "lsm/InMemRun.h"
 #include "io/PagedFile.h"
+#include "ds/BloomFilter.h"
 
 using namespace lsm;
 
@@ -12,10 +14,13 @@ gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
 static MemTable *create_test_memtable(size_t cnt);
 
-static ISAMTree *create_test_isam(size_t cnt, std::string fname, MemTable **mtbl) 
+static ISAMTree *create_test_isam(size_t cnt, std::string fname, MemTable **mtbl, BloomFilter **filter) 
 {
+    *filter = new BloomFilter(100, 9, g_rng);
     auto mtable = create_test_memtable(cnt);
+    auto memrun = new InMemRun(mtable, *filter);
     auto pfile = PagedFile::create(fname);
+    
 
     if (mtbl) {
         *mtbl = mtable;
@@ -23,7 +28,25 @@ static ISAMTree *create_test_isam(size_t cnt, std::string fname, MemTable **mtbl
         delete mtable;
     }
 
-    return ISAMTree::create(pfile, mtable, g_rng);
+    (*filter)->clear();
+    auto tree = new ISAMTree(pfile, g_rng, *filter, &memrun, 1, nullptr, 0);
+
+    delete memrun;
+
+    return tree;
+}
+
+
+static ISAMTree *create_isam_from_memtable(PagedFile *pfile, MemTable *mtable, BloomFilter **filter)
+{
+    *filter = new BloomFilter(100, 9, g_rng);
+    auto memrun = new InMemRun(mtable, *filter);
+
+    (*filter)->clear();
+    auto tree = new ISAMTree(pfile, g_rng, *filter, &memrun, 1, nullptr, 0);
+    delete memrun;
+
+    return tree;
 }
 
 
@@ -81,52 +104,6 @@ static PageNum get_internal_value(const char *buffer) {
 }
 
 
-START_TEST(t_create_from_memtable)
-{
-    size_t cnt = 15000;
-    size_t page_cnt = required_leaf_pages(cnt);
-    auto mtable = create_test_memtable(cnt);
-    auto pfile = PagedFile::create(g_fname1);
-    auto isam = ISAMTree::create(pfile, mtable, g_rng);
-
-    ck_assert_ptr_nonnull(isam);
-    ck_assert_int_eq(isam->get_record_count(), mtable->get_record_count());
-    ck_assert_int_eq(isam->get_leaf_page_count(), page_cnt);
-
-    delete mtable;
-    delete pfile;
-    delete isam;
-}
-END_TEST
-
-
-START_TEST(t_create_from_memtable_isam)
-{
-    size_t cnt_tbl = 10000;
-    size_t cnt_isam = 15000;
-    size_t cnt = cnt_tbl + cnt_isam;
-    size_t page_cnt = required_leaf_pages(cnt);
-
-    auto mtable = create_test_memtable(cnt_tbl);
-    MemTable *mtable2 = nullptr;
-    auto isam1 = create_test_isam(cnt_isam, "tests/data/testisam2.dat", &mtable2);
-
-    auto pfile = PagedFile::create("tests/data/testisam3.dat");
-    auto isam = ISAMTree::create(pfile, mtable, isam1, g_rng);
-
-    ck_assert_ptr_nonnull(isam);
-    ck_assert_int_eq(isam->get_record_count(), cnt);
-    ck_assert_int_eq(isam->get_leaf_page_count(), page_cnt);
-
-    delete mtable;
-    delete mtable2;
-    delete pfile;
-    delete isam;
-    delete isam1;
-}
-END_TEST
-
-
 START_TEST(t_verify_page_structure)
 {
     size_t cnt = 1000000;
@@ -134,9 +111,10 @@ START_TEST(t_verify_page_structure)
     size_t records_per_leaf = PAGE_SIZE / record_size;
 
     auto mtable = create_sequential_memtable(cnt);
+    BloomFilter *filter;
 
     auto pfile = PagedFile::create("tests/data/sequential_isam.dat");
-    auto isam = ISAMTree::create(pfile, mtable, g_rng);
+    auto isam = create_isam_from_memtable(pfile, mtable, &filter);
 
     ck_assert_ptr_nonnull(isam);
     ck_assert_int_eq(isam->get_record_count(), cnt);
@@ -149,14 +127,15 @@ START_TEST(t_verify_page_structure)
 
         for (size_t i=0; i<records_per_leaf; i++) {
             if (total_records >= cnt) {
+                fprintf(stderr,"here\n");
                 break;
             }
 
             key_type key = *(key_type*)get_key(leaf_page + i*record_size);
-
             ck_assert_int_eq(key, total_records);
             total_records++;
         }
+
     }
 
     ck_assert_int_eq(total_records, cnt);

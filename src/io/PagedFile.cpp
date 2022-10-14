@@ -175,9 +175,9 @@ PagedFile::~PagedFile()
 }
 
 
-bool PagedFile::check_pnum(PageNum pnum)
+bool PagedFile::check_pnum(PageNum pnum) const
 {
-    return pnum != INVALID_PNUM && pnum < (this->size / PAGE_SIZE);
+    return pnum != INVALID_PNUM && pnum < (this->get_file_size() / PAGE_SIZE);
 }
 
 
@@ -278,7 +278,7 @@ std::string PagedFile::get_fname()
 }
 
 
-off_t PagedFile::get_file_size()
+off_t PagedFile::get_file_size() const
 {
     return this->size;
 }

@@ -111,7 +111,7 @@ public:
     /*
      * Returns the raw number of bytes allocated in the backing file.
      */
-    off_t get_file_size();
+    off_t get_file_size() const;
 
     PagedFileIterator *start_scan(PageNum start_page=1, PageNum end_page=0);
 
@@ -122,7 +122,7 @@ public:
 private:
     PagedFile(int fd, std::string fname, off_t size, mode_t mode);
     static off_t pnum_to_offset(PageNum pnum);
-    bool check_pnum(PageNum pnum);
+    bool check_pnum(PageNum pnum) const;
 
     int raw_read(char *buffer, off_t amount, off_t offset);
     int raw_readv(std::vector<char *> buffers, off_t buffer_size, off_t initial_offset);
@@ -142,22 +142,25 @@ private:
 
 class PagedFileIterator {
 public:
-    PagedFileIterator(PagedFile *pfile, PageNum start_page=0, PageNum stop_page = 0) :
-    pfile(pfile), current_pnum((start_page == INVALID_PNUM) ? 0 : start_page - 1), start_pnum(start_page), stop_pnum(stop_page),
-    buffer((char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE)) {}
+  PagedFileIterator(PagedFile *pfile, PageNum start_page = 0,
+                    PageNum stop_page = 0)
+      : pfile(pfile),
+        current_pnum((start_page == INVALID_PNUM) ? 0 : start_page - 1),
+        start_pnum(start_page), stop_pnum(stop_page),
+        buffer((char *)aligned_alloc(SECTOR_SIZE, PAGE_SIZE)) {}
 
-    bool next() {
-        while (this->current_pnum < this->stop_pnum) {
-            if (this->pfile->read_page(++this->current_pnum, this->buffer)) {
-                return true;
-            }
+  bool next() {
+    while (this->current_pnum < this->stop_pnum) {
+      if (this->pfile->read_page(++this->current_pnum, this->buffer)) {
+        return true;
+      }
 
-            // IO error of some kind
-            return false;
-        }
+      // IO error of some kind
+      return false;
+    }
 
-        // no more pages to read
-        return false;
+    // no more pages to read
+    return false;
     }
 
     char *get_item() {
