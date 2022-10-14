@@ -42,11 +42,11 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 // Convert an index into the runs array to the
 // corresponding index into the cursor array
-#define RCUR(i) (i)
+#define RCUR(i) (run_cnt + (i))
 
 // Convert an index into the trees array to
 // the corresponding index into the cursor array
-#define TCUR(i) (run_cnt + (i))
+#define TCUR(i) ((i))
 
 class ISAMTree {
 public:
@@ -83,21 +83,7 @@ public:
         size_t incoming_tombstone_cnt = 0;
 
         // Initialize the priority queue
-        // load up the memory levels;
-        for (size_t i=0; i<run_cnt; i++) {
-            assert(runs[i]);
-            const char *start = runs[i]->sorted_output();
-            const char *end = start + runs[i]->get_record_count() * record_size;
-            cursors[RCUR(i)] = Cursor{start, end};
-            pq.push(cursors[RCUR(i)].ptr, RCUR(i));
-
-            incoming_record_cnt += runs[i]->get_record_count();
-            incoming_tombstone_cnt += runs[i]->get_tombstone_count();
-        }
-
         // load up the disk levels
-        //
-        // FIXME: Move this to before the memory levels
         for (size_t i=0; i<tree_cnt; i++) {
             assert(trees[i]);
             isam_iters[i] = trees[i]->start_scan();
@@ -109,6 +95,18 @@ public:
 
             incoming_record_cnt += trees[i]->get_record_count();
             incoming_tombstone_cnt += trees[i]->get_tombstone_count();
+        }
+
+        // load up the memory levels;
+        for (size_t i=0; i<run_cnt; i++) {
+            assert(runs[i]);
+            const char *start = runs[i]->sorted_output();
+            const char *end = start + runs[i]->get_record_count() * record_size;
+            cursors[RCUR(i)] = Cursor{start, end};
+            pq.push(cursors[RCUR(i)].ptr, RCUR(i));
+
+            incoming_record_cnt += runs[i]->get_record_count();
+            incoming_tombstone_cnt += runs[i]->get_tombstone_count();
         }
 
         char *buffer = nullptr;
