@@ -535,9 +535,7 @@ private:
         size_t pl_final_rec_cnt = final_leaf_rec_cnt;
         PageNum pl_pg_cnt = ISAMTree::generate_next_internal_level(pfile, &pl_final_rec_cnt, &pl_first_pg, true, out_buffer, out_buffer_sz, in_buffer, in_buffer_sz);
 
-        if (pl_pg_cnt == INVALID_PNUM) {
-            goto error_buffer;
-        }
+        assert(pl_pg_cnt != INVALID_PNUM);
 
         // If there was only 1 page in the first internal level, then that will be our root.
         if (pl_pg_cnt == 1) {
@@ -547,20 +545,12 @@ private:
         // Otherwise, we need to repeatedly create new levels until the page count returned
         // is 1.
         while ((pl_pg_cnt = ISAMTree::generate_next_internal_level(pfile, &pl_final_rec_cnt, &pl_first_pg, false, out_buffer, out_buffer_sz, in_buffer, in_buffer_sz)) != 1) {
-            if (pl_pg_cnt == INVALID_PNUM) {
-                goto error_buffer;
-            }
+            assert(pl_pg_cnt != INVALID_PNUM);
         }
 
         // The last page allocated is the tree root.
         free(in_buffer);
         return pl_first_pg + pl_pg_cnt;
-
-        error_buffer:
-            free(in_buffer);
-
-        error:
-            return INVALID_PNUM;
     }
 
     static PageNum generate_next_internal_level(PagedFile *pfile, size_t *pl_final_pg_rec_cnt, PageNum *pl_first_pg, bool first_level, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz) {
@@ -589,6 +579,8 @@ private:
         get_header(out_buffer)->prev_sibling = INVALID_PNUM;
         get_header(out_buffer)->leaf_rec_cnt = 0;
 
+        size_t total_records = 0;
+
         do {
             // Read as many input pages from the previous level as the buffer
             // will allow, or as many pages as remain, whichever is smaller.
@@ -606,15 +598,12 @@ private:
                 // Get the key of the last record in this leaf page
                 size_t last_record = (in_pnum < pl_last_pg) ? pl_recs_per_pg - 1 : (*pl_final_pg_rec_cnt) - 1;
 
-                const char *key;
-                if (first_level) {
-                    key = get_key(get_record(get_page(in_buffer, in_pg_idx), last_record));
-                } else {
-                    key = get_internal_key(get_internal_record(get_page(in_buffer, in_pg_idx), last_record));
-                }
+                const char *key = (first_level) ? get_key(get_record(get_page(in_buffer, in_pg_idx), last_record))
+                                                : get_internal_key(get_internal_record(get_page(in_buffer, in_pg_idx), last_record));
 
                 // Increment the total number of children of this internal page
                 get_header(out_buffer, out_pg_idx)->leaf_rec_cnt += (first_level) ? pl_recs_per_pg : get_header(in_buffer, in_pg_idx)->leaf_rec_cnt;
+                total_records += (first_level) ? pl_recs_per_pg : get_header(in_buffer, in_pg_idx)->leaf_rec_cnt;
 
                 // Get the address in the buffer for the new internal record
                 char *internal_buff = get_internal_record(get_page(out_buffer, out_pg_idx), out_rec_idx++);
@@ -719,7 +708,7 @@ private:
 
     static PageNum write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer) {
         size_t full_leaf_pages = (output_idx) / (PAGE_SIZE / record_size);
-        *last_leaf_rec_cnt = (output_idx) % PAGE_SIZE;
+        *last_leaf_rec_cnt = (output_idx) % (PAGE_SIZE / record_size);
 
         if (full_leaf_pages == 0 && *last_leaf_rec_cnt == 0) {
             return cur_pnum - 1;
