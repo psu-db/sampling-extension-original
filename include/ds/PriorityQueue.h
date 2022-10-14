@@ -49,7 +49,7 @@ public:
         size_t new_idx = this->tail++;
         this->data[new_idx] = {record, version};
 
-        while (new_idx != 0 && heap_cmp(parent(new_idx), new_idx)) {
+        while (new_idx != 0 && !heap_cmp(parent(new_idx), new_idx)) {
             swap(parent(new_idx), new_idx);
             new_idx = parent(new_idx);
         }

@@ -50,29 +50,6 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 class ISAMTree {
 public:
-    /*
-    ISAMTree(PagedFile *pfile, BloomFilter *tombstone_filter, char *buffer) {
-        this->pfile->read_page(BTREE_META_PNUM, buffer);
-        auto meta = (ISAMTreeMetaHeader *) buffer;
-        this->root_page = meta->root_node;
-        this->first_data_page = meta->first_data_page;
-        this->last_data_page = meta->last_data_page;
-        this->rec_cnt = meta->record_count;
-        this->tombstone_cnt = meta->tombstone_count;
-    }
-    */
-
-    /*
-     * Constructors for building an ISAM Tree based on combinations of 
-     * in memory and on disk runs. If there are no input runs of a given type,
-     * pass an empty vector instead.
-     */
-    /*
-    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, const std::vector<InMemRun *> &runs, const std::vector<ISAMTree *> &trees) {
-        ISAMTree(pfile, rng, tomb_filter, runs.data(), runs.size(), trees.data(), trees.size());
-    }
-    */
-
     ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);
@@ -122,6 +99,12 @@ public:
         this->rec_cnt = 0;
         this->tombstone_cnt = 0;
 
+        size_t tree_rec_cnts[tree_cnt];
+        for (size_t i=0; i<tree_cnt; i++) {
+            tree_rec_cnts[i] = 0;
+        }
+
+
         while (pq.size()) {
             auto cur = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
@@ -135,12 +118,12 @@ public:
                 // pop the next two records from the queue and discard them
                 pq.pop(); pq.pop();
 
-                auto iter = (cur.version < run_cnt) ? nullptr : isam_iters[cur.version - run_cnt];
+                auto iter = (cur.version >= tree_cnt) ? nullptr : isam_iters[cur.version];
                 if (advance_cursor(cursors[cur.version], iter)) {
                     pq.push(cursors[cur.version].ptr, cur.version);
                 }
 
-                iter = (next.version < run_cnt ? nullptr : isam_iters[next.version - run_cnt]);
+                iter = (next.version >= tree_cnt ? nullptr : isam_iters[next.version]);
                 if (advance_cursor(cursors[next.version], iter)) {
                     pq.push(cursors[next.version].ptr, next.version);
                 }
@@ -157,10 +140,17 @@ public:
             
             pq.pop();
 
-            auto iter = (next.version < run_cnt) ? nullptr : isam_iters[next.version - run_cnt];
+            auto iter = (cur.version >= tree_cnt) ? nullptr : isam_iters[cur.version];
 
             if (advance_cursor(cursors[cur.version], iter)) {
-                pq.push(cursors[cur.version].ptr, cur.version);
+                if (cur.version < tree_cnt) {
+                    tree_rec_cnts[cur.version]++;
+                    if (tree_rec_cnts[cur.version] < trees[cur.version]->get_record_count()) {
+                        pq.push(cursors[cur.version].ptr, cur.version);
+                    }
+                } else {
+                    pq.push(cursors[cur.version].ptr, cur.version);
+                }
             }
 
             if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
@@ -695,20 +685,10 @@ private:
         PageNum meta = pfile->allocate_pages(1); // Should be page 1
         PageNum first_leaf = pfile->allocate_pages(leaf_page_cnt); // should start at page 1
 
-        if(!(*buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE))) {
-            goto error;
-        }
-
-        if (meta != BTREE_META_PNUM || first_leaf != BTREE_FIRST_LEAF_PNUM) {
-            goto error_buffer;
-        }
+        assert(*buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE * ISAM_INIT_BUFFER_SIZE));
+        assert(meta == BTREE_META_PNUM && first_leaf == BTREE_FIRST_LEAF_PNUM);
 
         return leaf_page_cnt;
-
-        error_buffer:
-            free(buffer);
-        error:
-            return 0;
     }
 
     static PageNum write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer) {
@@ -727,7 +707,7 @@ private:
             return cur_pnum + full_leaf_pages - (last_leaf_rec_cnt == 0);
         }
 
-        return INVALID_PNUM;
+        assert(false);
     }
 
     static bool post_init(size_t record_count, size_t tombstone_count, PageNum last_leaf, PageNum root_pnum, char* buffer, PagedFile *pfile) {
