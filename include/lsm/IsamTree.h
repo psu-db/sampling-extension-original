@@ -561,6 +561,11 @@ private:
         //      in - input -- refers to the buffers, etc. for the previous level that are read
         //      out - output -- refers to buffers, etc. for the new level that are written
 
+        // We need to zero out the output buffer, as we may not exactly fill a page,
+        // and there could be leftover data that would corrupt the last page in the level
+        // otherwise.
+        memset(out_buffer, 0, out_buffer_sz * PAGE_SIZE);
+
         size_t int_recs_per_pg = (PAGE_SIZE - ISAMTreeInternalNodeHeaderSize) / internal_record_size;
 
         size_t pl_recs_per_pg = (first_level) ? PAGE_SIZE / record_size : int_recs_per_pg;

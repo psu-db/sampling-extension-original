@@ -171,7 +171,7 @@ START_TEST(t_verify_page_structure)
     // check the root page
     auto root_pg = l1_iter->get_item();
     current_pnum = isam->get_leaf_page_count() + 2;
-    for (size_t i=0; i<24; i++) {
+    for (size_t i=0; i<16; i++) {
         auto rec = get_internal_record(root_pg, i);
         auto key = *(int64_t*) get_internal_key(rec);
         val = get_internal_value(rec);
