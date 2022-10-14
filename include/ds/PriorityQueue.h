@@ -34,10 +34,10 @@ public:
 
         swap(0, --this->tail);
 
-        ssize_t idx;
+        ssize_t idx = 0;
         ssize_t child_idx;
 
-        while ((child_idx = min_child(idx)) != 1 && heap_cmp(child_idx, idx)) {
+        while ((child_idx = min_child(idx)) != -1 && heap_cmp(child_idx, idx)) {
             swap(idx, child_idx);
             idx = child_idx;
         }
@@ -57,11 +57,12 @@ public:
 
 
     queue_record peek(size_t depth=0) {
-        size_t idx = depth;
+        ssize_t idx = 0;
         size_t cur_depth = 0;
 
         while (cur_depth != depth) {
             idx = min_child(idx);
+            assert(idx != -1);
             cur_depth++;
         }
 
