@@ -244,6 +244,9 @@ START_TEST(t_multithreaded_insert)
         key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
         ck_assert_int_eq(*table_key, records[i].first);
     }
+
+    delete mtable;
+    gsl_rng_free(rng);
 }
 END_TEST
 

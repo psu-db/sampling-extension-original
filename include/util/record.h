@@ -77,6 +77,7 @@ static int val_cmp(const char *a, const char *b) {
     return 0;
 }
 
+/*
 static int record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
@@ -84,14 +85,23 @@ static int record_cmp(const void *a, const void *b) {
         return val_cmp(get_val((const char*)a), get_val((const char*)b));
     else return cmp;
 }
+*/
 
-static int memtable_record_cmp(const void *a, const void *b) {
+// Fall back to the original record_cmp
+static int record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
     if (cmp == 0) {
-        if (*(rec_hdr*)get_hdr((char*)a) < *(rec_hdr*)get_hdr((char*)b)) return -1;
-        else return 1;
-    } else return cmp;
+        bool tomb_a = is_tombstone((char*) a);
+        bool tomb_b = is_tombstone((char*) b);
+        if (tomb_a && tomb_b) {
+            return 0;
+        }
+
+        return (tomb_a) ? -1 : 1;
+    }
+
+    return cmp;
 }
 
 }
