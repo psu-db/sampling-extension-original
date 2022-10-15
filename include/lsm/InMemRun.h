@@ -20,7 +20,7 @@ constexpr size_t inmem_isam_node_keyskip = key_size * inmem_isam_fanout;
 class InMemRun {
 public:
     InMemRun(MemTable* mem_table, BloomFilter* bf) {
-        m_data = (char*)std::aligned_alloc(SECTOR_SIZE, mem_table->get_record_count() * record_size);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
         m_reccnt = 0;
@@ -64,7 +64,7 @@ public:
             pq.push(cursors[i].ptr, i);
         }
 
-        m_data = (char*)std::aligned_alloc(SECTOR_SIZE, attemp_reccnt * record_size);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, attemp_reccnt * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
         
@@ -94,6 +94,11 @@ public:
         }
 
         build_internal_levels();
+    }
+
+    ~InMemRun() {
+        if (m_data) free(m_data);
+        if (m_isam_nodes) free(m_isam_nodes);
     }
 
     char* sorted_output() const {
@@ -181,7 +186,7 @@ private:
             node_cnt += level_node_cnt;
         } while (level_node_cnt > 1);
 
-        m_isam_nodes = (char*)std::aligned_alloc(SECTOR_SIZE, node_cnt * inmem_isam_node_size);
+        m_isam_nodes = (char*)std::aligned_alloc(CACHELINE_SIZE, node_cnt * inmem_isam_node_size);
         memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
 
 

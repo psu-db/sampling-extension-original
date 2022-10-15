@@ -13,7 +13,7 @@ class BloomFilter {
 public:
     BloomFilter(size_t n_bits, size_t k, const gsl_rng* rng)
     : m_n_bits(n_bits), m_n_salts(k), m_bitarray(n_bits) {
-        salt = (uint16_t*) aligned_alloc(CACHELINE_SIZE, k * sizeof(uint16_t));
+        salt = (uint16_t*) aligned_alloc(CACHELINE_SIZE, CACHELINEALIGN(k * sizeof(uint16_t)));
         for (size_t i = 0;  i < k; ++i) {
             salt[i] = (uint16_t) gsl_rng_uniform_int(rng, 1 << 16);
         }

@@ -23,6 +23,10 @@ public:
         }
     }
 
+    ~MemTable() {
+        if (m_data) free(m_data);
+    }
+
     int append(const char* key, const char* value, bool is_tombstone = false) {
         ssize_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;

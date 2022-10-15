@@ -241,6 +241,7 @@ START_TEST(t_create_from_isams)
         }
     }
 
+    printf("%ld\n", total_cnt);
     ck_assert_int_eq(total_cnt -1 , 3*n);
     delete iter;
 
