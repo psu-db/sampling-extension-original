@@ -23,6 +23,10 @@ public:
     BloomFilter(double max_fpr, size_t n, size_t k, const gsl_rng* rng)
     : BloomFilter((size_t)(-(double) (k * n) / std::log(1.0 - std::pow(max_fpr, 1.0 / k))), k, rng) {}
 
+    ~BloomFilter() {
+        if (salt) free(salt);
+    }
+
     int insert(const char* key, size_t sz) {
         if (m_bitarray.size() == 0) return 0;
 

@@ -240,25 +240,31 @@ START_TEST(t_create_from_isams)
             }
         }
     }
-
-    printf("%ld\n", total_cnt);
     ck_assert_int_eq(total_cnt -1 , 3*n);
     delete iter;
 
+    // FIXME, need a better way to manage file eventually??
+    auto file = tree1->get_pfile();
     delete tree1;
+    delete file;
     delete tbl1;
-    // Deleting this specific filter results in an abort signal...
-    // delete filter1; 
+    delete filter1; 
 
+    file = tree2->get_pfile();
     delete tree2;
+    delete file;
     delete tbl2;
     delete filter2;
 
+    file = tree3->get_pfile();
     delete tree3;
+    delete file;
     delete tbl3;
     delete filter3;
 
+    file = tree4->get_pfile();
     delete tree4;
+    delete file;
     delete filter4;
 }
 END_TEST
