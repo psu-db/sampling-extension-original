@@ -6,6 +6,7 @@ bin/*
 
 #tests/*
 #!tests/*.{cpp,sh}
+tests/data
 
 benchmarks/*
 !benchmarks/*.{cpp,sh}

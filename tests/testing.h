@@ -36,6 +36,8 @@ bool initialize_test_file(std::string fname, size_t page_cnt)
         }
     }
 
+    free(page);
+
     return 1;
 
 error_alloced:

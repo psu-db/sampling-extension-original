@@ -25,6 +25,7 @@ public:
 
     ~MemTable() {
         if (m_data) free(m_data);
+        if (m_tombstone_filter) delete m_tombstone_filter;
     }
 
     int append(const char* key, const char* value, bool is_tombstone = false) {

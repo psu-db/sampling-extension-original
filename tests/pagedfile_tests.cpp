@@ -70,7 +70,9 @@ START_TEST(t_read_page)
 
     ck_assert_int_eq(pfile->read_page(0, buffer), 0);
     ck_assert_int_eq(pfile->read_page(11, buffer), 0);
-
+    
+    free(buffer);
+    delete pfile;
 }
 END_TEST
 
@@ -118,7 +120,7 @@ START_TEST(t_read_pages_seq)
     char *buffer = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE*read_cnt);
     ck_assert_ptr_nonnull(buffer);
 
-    ck_assert_int_eq(pfile->read_pages(start_pg, start_pg + read_cnt, buffer), 1);
+    ck_assert_int_eq(pfile->read_pages(start_pg, read_cnt, buffer), 1);
     for (size_t i=0; i<read_cnt; i++) {
         ck_assert_int_eq(i + start_pg, *((int*) (buffer + PAGE_SIZE * i)));    
     }
@@ -129,7 +131,7 @@ START_TEST(t_read_pages_seq)
     // FIXME: This throws a double free error, but otherwise works.
     // I'm definitely not freeing this anywhere else, so not sure
     // what to make of that.
-    //free(buffer);
+    free(buffer);
     delete pfile;
 }
 END_TEST
@@ -296,36 +298,30 @@ Suite *unit_testing()
     tcase_add_test(initialize, t_create);
     tcase_add_test(initialize, t_create_fail);
     tcase_add_test(initialize, t_create_open);
-
     suite_add_tcase(unit, initialize);
 
     TCase *read = tcase_create("lsm::PagedFile::read_page(s) Testing");
     tcase_add_test(read, t_read_page);
     tcase_add_test(read, t_read_pages_sg);
     tcase_add_test(read, t_read_pages_seq);
-
     suite_add_tcase(unit, read);
 
     TCase *allocate = tcase_create("lsm::PagedFile::allocate_pages Testing");
     tcase_add_test(allocate, t_allocate_pages);
-
     suite_add_tcase(unit, allocate);
 
     TCase *write = tcase_create("lsm::PagedFile::write_page(s) Testing");
     tcase_add_test(write, t_write);
     tcase_add_test(write, t_write_pages);
-
     suite_add_tcase(unit, write);
 
     TCase *remove = tcase_create("lsm::PagedFile::remove_file Testing");
     tcase_add_test(remove, t_remove);
-
     suite_add_tcase(unit, remove);
 
     TCase *iter = tcase_create("lsm::PagedFile::start_scan Testing");
     tcase_add_test(iter, t_iterator);
     tcase_add_test(iter, t_iterator_page_range);
-
     suite_add_tcase(unit, iter);
 
     return unit;

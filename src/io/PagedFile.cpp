@@ -122,7 +122,7 @@ int PagedFile::read_pages(std::vector<std::pair<PageNum, char*>> pages)
 int PagedFile::read_pages(PageNum first_page, size_t page_cnt, char *buffer_ptr)
 {
     if (this->check_pnum(first_page) && this->check_pnum(first_page + page_cnt - 1)) {
-       return this->raw_read(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
+        return this->raw_read(buffer_ptr, page_cnt * PAGE_SIZE, first_page * PAGE_SIZE); 
     }
 
     return 0;
@@ -196,7 +196,6 @@ int PagedFile::raw_read(char *buffer, off_t amount, off_t offset)
     if (pread(this->fd, buffer, amount, offset) != amount) {
         return 0;
     }
-
     return 1;
 }
 
@@ -219,6 +218,8 @@ int PagedFile::raw_readv(std::vector<char *> buffers, off_t buffer_size, off_t i
     if (preadv(this->fd, iov, buffer_cnt, initial_offset) != amount) {
         return 0;
     }
+
+    delete[] iov;
 
     return 1;
 }
