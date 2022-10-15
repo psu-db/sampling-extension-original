@@ -15,7 +15,7 @@ struct queue_record {
 
 class PriorityQueue {
 public:
-    PriorityQueue(size_t size) : data(std::vector<queue_record>(size)), tail(0) {}
+    PriorityQueue(size_t size) : data(size), tail(0) {}
     ~PriorityQueue() = default;
 
     size_t size() const {

@@ -20,7 +20,7 @@ static ISAMTree *create_test_isam(size_t cnt, std::string fname, MemTable **mtbl
     auto mtable = create_test_memtable(cnt);
     auto memrun = new InMemRun(mtable, *filter);
     auto pfile = PagedFile::create(fname);
-    
+    assert(pfile);
 
     if (mtbl) {
         *mtbl = mtable;

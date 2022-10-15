@@ -42,7 +42,7 @@ const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
 // Convert an index into the runs array to the
 // corresponding index into the cursor array
-#define RCUR(i) (run_cnt + (i))
+#define RCUR(i) (tree_cnt + (i))
 
 // Convert an index into the trees array to
 // the corresponding index into the cursor array
