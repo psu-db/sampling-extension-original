@@ -139,9 +139,12 @@ START_TEST(t_create_test_isam)
 
     ck_assert_int_eq(total_cnt -1 , n);
     delete iter;
+    auto pf = tree1->get_pfile();
     delete tree1;
+    delete pf;
     delete tbl;
     delete filter;
+    free(buf);
 }
 END_TEST
 
@@ -292,19 +295,17 @@ START_TEST(t_verify_page_structure)
         char *leaf_page = pg_iter->get_item();
 
         for (size_t i=0; i<records_per_leaf; i++) {
-            if (total_records >= cnt) {
-                fprintf(stderr,"here\n");
-                break;
-            }
+            if (total_records >= cnt) break;
 
             key_type key = *(key_type*)get_key(leaf_page + i*record_size);
             ck_assert_int_eq(key, total_records);
             total_records++;
         }
-
     }
 
     ck_assert_int_eq(total_records, cnt);
+
+    delete pg_iter;
 
     // check on the first internal level
     auto l1_iter = pfile->start_scan(isam->get_leaf_page_count() + 2);
@@ -348,9 +349,13 @@ START_TEST(t_verify_page_structure)
 
     ck_assert_int_eq(((ISAMTreeInternalNodeHeader *) root_pg)->leaf_rec_cnt, cnt);
 
+    pfile->remove_file();
+
+    delete l1_iter;
     delete mtable;
     delete pfile;
     delete isam;
+    delete filter;
 }
 END_TEST
 
@@ -359,10 +364,10 @@ Suite *unit_testing()
 {
     Suite *unit = suite_create("IsamTree Unit Testing");
     TCase *create = tcase_create("lsm::ISAMTree::create Testing");
-//    tcase_add_test(create, t_create_from_memtable);
- //   tcase_add_test(create, t_create_from_memtable_isam);
-    //tcase_add_test(create, t_create_test_isam);
-    //tcase_add_test(create, t_verify_page_structure);
+    //tcase_add_test(create, t_create_from_memtable);
+    //tcase_add_test(create, t_create_from_memtable_isam);
+    tcase_add_test(create, t_create_test_isam);
+    tcase_add_test(create, t_verify_page_structure);
     tcase_add_test(create, t_create_from_isams);
 
     tcase_set_timeout(create, 100);
