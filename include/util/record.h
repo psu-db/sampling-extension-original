@@ -104,4 +104,13 @@ static int record_cmp(const void *a, const void *b) {
     return cmp;
 }
 
+static int memtable_record_cmp(const void *a, const void *b) {
+    int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
+
+    if (cmp == 0) {
+        if (*(rec_hdr*)get_hdr((char*)a) < *(rec_hdr*)get_hdr((char*)b)) return -1;
+        else return 1;
+    } else return cmp;
+}
+
 }

@@ -52,7 +52,7 @@ public:
     }
 
     char* sorted_output() {
-        qsort(m_data, m_reccnt.load(), record_size, record_cmp);
+        qsort(m_data, m_reccnt.load(), record_size, memtable_record_cmp);
         return m_data;
     }
     
