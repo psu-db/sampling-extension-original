@@ -86,7 +86,6 @@ static int record_cmp(const void *a, const void *b) {
     else return cmp;
 }
 
-
 // Fall back to the original record_cmp
 /*
 static int record_cmp(const void *a, const void *b) {
@@ -110,8 +109,11 @@ static int memtable_record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
     if (cmp == 0) {
-        if (*(rec_hdr*)get_hdr((char*)a) < *(rec_hdr*)get_hdr((char*)b)) return -1;
-        else return 1;
+        int cmp2 = val_cmp(get_val((char*) a), get_val((char*) b));
+        if (cmp2 == 0) {
+            if (*(rec_hdr*)get_hdr((char*)a) < *(rec_hdr*)get_hdr((char*)b)) return -1;
+            else return 1;
+        } else return cmp2;
     } else return cmp;
 }
 
