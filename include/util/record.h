@@ -77,7 +77,7 @@ static int val_cmp(const char *a, const char *b) {
     return 0;
 }
 
-/*
+
 static int record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
@@ -85,9 +85,10 @@ static int record_cmp(const void *a, const void *b) {
         return val_cmp(get_val((const char*)a), get_val((const char*)b));
     else return cmp;
 }
-*/
+
 
 // Fall back to the original record_cmp
+/*
 static int record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
@@ -103,6 +104,7 @@ static int record_cmp(const void *a, const void *b) {
 
     return cmp;
 }
+*/
 
 static int memtable_record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));

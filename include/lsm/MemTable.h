@@ -32,7 +32,7 @@ public:
         ssize_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
 
-        layout_record(m_data + pos, key, value, is_tombstone);
+        layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size);
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
             if (m_tombstone_filter) m_tombstone_filter->insert(key, key_size);
