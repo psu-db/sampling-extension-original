@@ -265,9 +265,21 @@ public:
         // keys within the range. This can only occur in this case of the internal
         // key being equal to the boundary key, and the next page containing
         // duplicate values of that same key.
+        /*
         if (current_page < this->last_data_page && current_page != INVALID_PNUM) {
             if (this->search_leaf_page(current_page + 1, key, buffer) != 0) {
                 current_page = current_page + 1;
+            }
+        }
+        */
+
+        // If the key being searched for is the boundary key, search_internal_node_upper
+        // will return the page after the page for which it is the boundary key. If the
+        // page in question does not actually contain the key being searched for, then
+        // we want to return one less than the returned page.
+        if (current_page > BTREE_FIRST_LEAF_PNUM) {
+            if (this->search_leaf_page(current_page, key, buffer) == 0) {
+                return current_page - 1;
             }
         }
 
@@ -435,7 +447,7 @@ private:
 
         while (min < max) {
             size_t mid = (min + max) / 2;
-            auto node_key = get_internal_key(get_internal_record(buffer, mid));
+            node_key = get_internal_key(get_internal_record(buffer, mid));
             if (key_cmp(key, node_key) > 0) {
                 min = mid + 1;
             } else {
@@ -455,15 +467,14 @@ private:
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
         // bound. So we need to check this case manually and return INVALID_PNUM.
-
-        auto node_key = get_internal_key(get_internal_record(buffer, min));
-        if (key_cmp(key, node_key) >= 0) {
-            return get_internal_value(get_internal_record(buffer, min));
+        auto node_key = get_internal_key(get_internal_record(buffer, max));
+        if (key_cmp(key, node_key) > 0) {
+            return INVALID_PNUM;
         }
 
         while (min < max) {
             size_t mid = (min + max) / 2;
-            auto node_key = get_internal_key(get_internal_record(buffer, mid));
+            node_key = get_internal_key(get_internal_record(buffer, mid));
             if (key_cmp(key, node_key) >= 0) {
                 min = mid + 1;
             } else {
