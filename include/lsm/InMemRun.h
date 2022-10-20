@@ -149,23 +149,23 @@ public:
     size_t get_upper_bound(const char* key) const {
         char* now = m_root;
         while (!is_leaf(now)) {
-            char** child_ptr = (char**)(now + inmem_isam_node_keyskip);
+            char* child_ptr = now + inmem_isam_node_keyskip;
             uint8_t ptr_offset = 0;
             const char* sep_key = now;
             char* next = nullptr;
             for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
-                    next = *child_ptr;
+                if (nullptr == *(char**)(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
+                    next = *(char**)child_ptr;
                     break;
                 }
                 sep_key += key_size;
                 child_ptr += sizeof(char*);
             }
-            now = next ? next : *child_ptr;
+            now = next ? next : *(char**)(now + inmem_isam_node_size - sizeof(char*));
         }
 
         while (now < m_data + m_reccnt * record_size && key_cmp(now, key) <= 0)
-            ++now;
+            now += record_size;
 
         return (now - m_data) / record_size;
     }

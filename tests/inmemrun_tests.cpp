@@ -12,7 +12,7 @@ static MemTable *create_test_memtable(size_t cnt)
 {
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
-    for (size_t i=0; i<cnt; i++) {
+    for (size_t i = 0; i < cnt; i++) {
         key_type key = rand();
         value_type val = rand();
 
@@ -23,13 +23,20 @@ static MemTable *create_test_memtable(size_t cnt)
 }
 
 
-static MemTable *create_sequential_memtable(size_t cnt) 
+static MemTable *create_double_seq_memtable(size_t cnt) 
 {
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
-    for (size_t i=0; i<cnt; i++) {
+    for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
         value_type val = i;
+
+        mtable->append((char*) &key, (char *) &val);
+    }
+
+    for (size_t i = 0; i < cnt / 2; i++) {
+        key_type key = i;
+        value_type val = i + 1;
 
         mtable->append((char*) &key, (char *) &val);
     }
@@ -125,7 +132,7 @@ START_TEST(t_inmemrun_init)
 START_TEST(t_get_lower_bound_index)
 {
     size_t n = 10000;
-    auto memtable = create_test_memtable(n);
+    auto memtable = create_double_seq_memtable(n);
 
     ck_assert_ptr_nonnull(memtable);
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
@@ -140,6 +147,34 @@ START_TEST(t_get_lower_bound_index)
         tbl_records + (i * record_size);
         auto pos = run->get_lower_bound(get_key(tbl_rec));
         ck_assert_int_eq(*(key_type *) get_key(run->get_record_at(pos)), *(key_type*) get_key(tbl_rec));
+        ck_assert_int_le(pos, i);
+    }
+
+    delete memtable;
+    delete bf;
+    delete run;
+}
+
+START_TEST(t_get_upper_bound_index)
+{
+    size_t n = 10000;
+    auto memtable = create_double_seq_memtable(n);
+
+    ck_assert_ptr_nonnull(memtable);
+    BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    InMemRun* run = new InMemRun(memtable, bf);
+
+    ck_assert_int_eq(run->get_record_count(), n);
+    ck_assert_int_eq(run->get_tombstone_count(), 0);
+
+    auto tbl_records = memtable->sorted_output();
+    for (size_t i=0; i<n; i++) {
+        const char *tbl_rec = memtable->get_record_at(i);
+        tbl_records + (i * record_size);
+        auto pos = run->get_upper_bound(get_key(tbl_rec));
+        ck_assert(pos == run->get_record_count() ||
+                  *(key_type *) get_key(run->get_record_at(pos)) > *(key_type*) get_key(tbl_rec));
+        ck_assert_int_ge(pos, i);
     }
 
     delete memtable;
@@ -159,6 +194,7 @@ Suite *unit_testing()
 
     TCase *bounds = tcase_create("lsm::InMemRun::get_{lower,upper}_bound Testing");
     tcase_add_test(bounds, t_get_lower_bound_index);
+    tcase_add_test(bounds, t_get_upper_bound_index);
     tcase_set_timeout(bounds, 100);   
     suite_add_tcase(unit, bounds);
 
