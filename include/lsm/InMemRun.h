@@ -19,7 +19,8 @@ constexpr size_t inmem_isam_node_keyskip = key_size * inmem_isam_fanout;
 
 class InMemRun {
 public:
-    InMemRun(MemTable* mem_table, BloomFilter* bf) {
+    InMemRun(MemTable* mem_table, BloomFilter* bf)
+    :m_reccnt(0), m_tombstone_cnt(0) {
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
@@ -48,7 +49,8 @@ public:
     }
 
     // Master interface to create an ondisk Run.
-    InMemRun(InMemRun** runs, size_t len, BloomFilter* bf) {
+    InMemRun(InMemRun** runs, size_t len, BloomFilter* bf)
+    :m_reccnt(0), m_tombstone_cnt(0) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -87,6 +89,7 @@ public:
                     bf->insert(get_key(cursor.ptr), key_size);
                 }
                 offset += record_size;
+                ++m_reccnt;
                 pq.pop();
                 
                 if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
@@ -114,7 +117,7 @@ public:
     }
 
     const char* get_record_at(size_t idx) const {
-        assert(idx < m_reccnt);
+        if (idx >= m_reccnt) return nullptr;
         return m_data + idx * record_size;
     }
 
@@ -188,7 +191,6 @@ private:
 
         m_isam_nodes = (char*)std::aligned_alloc(CACHELINE_SIZE, node_cnt * inmem_isam_node_size);
         memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
-
 
         char* current_node = m_isam_nodes;
 

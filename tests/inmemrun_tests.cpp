@@ -8,6 +8,35 @@ using namespace lsm;
 
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
+static MemTable *create_test_memtable(size_t cnt)
+{
+    auto mtable = new MemTable(cnt, true, 0, g_rng);
+
+    for (size_t i=0; i<cnt; i++) {
+        key_type key = rand();
+        value_type val = rand();
+
+        mtable->append((char*) &key, (char*) &val);
+    }
+
+    return mtable;
+}
+
+
+static MemTable *create_sequential_memtable(size_t cnt) 
+{
+    auto mtable = new MemTable(cnt, true, 0, g_rng);
+
+    for (size_t i=0; i<cnt; i++) {
+        key_type key = i;
+        value_type val = i;
+
+        mtable->append((char*) &key, (char *) &val);
+    }
+
+    return mtable;
+}
+
 START_TEST(t_memtable_init)
 {
     auto mem_table = new MemTable(1024, true, 50, g_rng);
@@ -35,12 +64,70 @@ START_TEST(t_memtable_init)
     delete run;
 }
 
+START_TEST(t_inmemrun_init)
+{
+    auto memtable1 = create_test_memtable(512);
+    auto memtable2 = create_test_memtable(512);
+    auto memtable3 = create_test_memtable(512);
+
+    BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    auto run1 = new InMemRun(memtable1, bf1);
+    auto run2 = new InMemRun(memtable2, bf2);
+    auto run3 = new InMemRun(memtable3, bf3);
+
+    BloomFilter* bf4 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    InMemRun* runs[3] = {run1, run2, run3};
+    auto run4 = new InMemRun(runs, 3, bf4);
+
+    ck_assert_int_eq(run4->get_record_count(), 512 * 3);
+    ck_assert_int_eq(run4->get_tombstone_count(), 0);
+
+    size_t total_cnt = 0;
+    size_t run1_idx = 0;
+    size_t run2_idx = 0;
+    size_t run3_idx = 0;
+
+    for (size_t i = 0; i < run4->get_record_count(); ++i) {
+        auto rec1 = run1->get_record_at(run1_idx);
+        auto rec2 = run2->get_record_at(run2_idx);
+        auto rec3 = run3->get_record_at(run3_idx);
+
+        auto cur_rec = run4->get_record_at(i);
+
+        if (run1_idx < 512 && record_cmp(cur_rec, rec1) == 0) {
+            ++run1_idx;
+        } else if (run2_idx < 512 && record_cmp(cur_rec, rec2) == 0) {
+            ++run2_idx;
+        } else if (run3_idx < 512 && record_cmp(cur_rec, rec3) == 0) {
+            ++run3_idx;
+        } else {
+           assert(false);
+        }
+    }
+
+    delete memtable1;
+    delete memtable2;
+    delete memtable3;
+
+    delete bf1;
+    delete run1;
+    delete bf2;
+    delete run2;
+    delete bf3;
+    delete run3;
+    delete bf4;
+    delete run4;
+}
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("InMemRun Unit Testing");
     TCase *create = tcase_create("lsm::InMemRun constructor Testing");
 
     tcase_add_test(create, t_memtable_init);
+    tcase_add_test(create, t_inmemrun_init);
     tcase_set_timeout(create, 100);
 
     suite_add_tcase(unit, create);
