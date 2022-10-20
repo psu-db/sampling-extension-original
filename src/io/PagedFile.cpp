@@ -11,7 +11,8 @@ namespace lsm {
 
 PagedFile *PagedFile::create(const std::string fname, bool new_file)
 {
-    auto flags = O_RDWR | O_DIRECT;
+//    auto flags = O_RDWR | O_DIRECT;
+    auto flags = O_RDWR;
     mode_t mode = 0640;
     off_t size = 0;
 
