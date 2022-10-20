@@ -48,7 +48,6 @@ public:
         build_internal_levels();
     }
 
-    // Master interface to create an ondisk Run.
     InMemRun(InMemRun** runs, size_t len, BloomFilter* bf)
     :m_reccnt(0), m_tombstone_cnt(0) {
         std::vector<Cursor> cursors;
@@ -67,7 +66,6 @@ public:
         }
 
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, attemp_reccnt * record_size);
-        //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
         
         while (pq.size()) {
