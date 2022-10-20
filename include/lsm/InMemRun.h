@@ -124,23 +124,24 @@ public:
     size_t get_lower_bound(const char* key) const {
         char* now = m_root;
         while (!is_leaf(now)) {
-            char** child_ptr = (char**)(now + inmem_isam_node_keyskip);
+            char* child_ptr = now + inmem_isam_node_keyskip;
             uint8_t ptr_offset = 0;
             const char* sep_key = now;
             char* next = nullptr;
             for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                if (nullptr == *(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
-                    next = *child_ptr;
+                if (nullptr == *(char**)(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
+                    next = *(char**)child_ptr;
                     break;
                 }
                 sep_key += key_size;
                 child_ptr += sizeof(char*);
             }
-            now = next ? next : *child_ptr;
+            
+            now = next ? next : *(char**)(now + inmem_isam_node_size - sizeof(char*));
         }
 
         while (now < m_data + m_reccnt * record_size && key_cmp(now, key) == -1)
-            ++now;
+            now += record_size;
 
         return (now - m_data) / record_size;
     }
@@ -214,13 +215,15 @@ private:
         while (current_level_node_cnt > 1) {
             auto now = level_start;
             while (now < level_stop) {
+                size_t child_cnt = 0;
                 for (size_t i = 0; i < inmem_isam_fanout; ++i) {
                     auto node_ptr = now + i * inmem_isam_node_size;
-                    if (node_ptr > level_stop) break;
+                    ++child_cnt;
+                    if (node_ptr >= level_stop) break;
                     memcpy(current_node + key_size * i, node_ptr + inmem_isam_node_keyskip - key_size, key_size);
-                    memcpy(current_node + inmem_isam_node_keyskip + sizeof(char *), &node_ptr, sizeof(char*));
+                    memcpy(current_node + inmem_isam_node_keyskip + sizeof(char *) * i, &node_ptr, sizeof(char*));
                 }
-                now += inmem_isam_fanout * inmem_isam_node_size;
+                now += child_cnt * inmem_isam_node_size;
                 current_node += inmem_isam_node_size;
             }
             level_start = level_stop;
@@ -229,7 +232,6 @@ private:
         }
         
         assert(current_level_node_cnt == 1);
-
         m_root = level_start;
     }
 

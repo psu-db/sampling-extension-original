@@ -66,9 +66,10 @@ START_TEST(t_memtable_init)
 
 START_TEST(t_inmemrun_init)
 {
-    auto memtable1 = create_test_memtable(512);
-    auto memtable2 = create_test_memtable(512);
-    auto memtable3 = create_test_memtable(512);
+    size_t n = 512;
+    auto memtable1 = create_test_memtable(n);
+    auto memtable2 = create_test_memtable(n);
+    auto memtable3 = create_test_memtable(n);
 
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
@@ -81,7 +82,7 @@ START_TEST(t_inmemrun_init)
     InMemRun* runs[3] = {run1, run2, run3};
     auto run4 = new InMemRun(runs, 3, bf4);
 
-    ck_assert_int_eq(run4->get_record_count(), 512 * 3);
+    ck_assert_int_eq(run4->get_record_count(), n * 3);
     ck_assert_int_eq(run4->get_tombstone_count(), 0);
 
     size_t total_cnt = 0;
@@ -96,11 +97,11 @@ START_TEST(t_inmemrun_init)
 
         auto cur_rec = run4->get_record_at(i);
 
-        if (run1_idx < 512 && record_cmp(cur_rec, rec1) == 0) {
+        if (run1_idx < n && record_cmp(cur_rec, rec1) == 0) {
             ++run1_idx;
-        } else if (run2_idx < 512 && record_cmp(cur_rec, rec2) == 0) {
+        } else if (run2_idx < n && record_cmp(cur_rec, rec2) == 0) {
             ++run2_idx;
-        } else if (run3_idx < 512 && record_cmp(cur_rec, rec3) == 0) {
+        } else if (run3_idx < n && record_cmp(cur_rec, rec3) == 0) {
             ++run3_idx;
         } else {
            assert(false);
@@ -121,16 +122,46 @@ START_TEST(t_inmemrun_init)
     delete run4;
 }
 
+START_TEST(t_get_lower_bound_index)
+{
+    size_t n = 10000;
+    auto memtable = create_test_memtable(n);
+
+    ck_assert_ptr_nonnull(memtable);
+    BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    InMemRun* run = new InMemRun(memtable, bf);
+
+    ck_assert_int_eq(run->get_record_count(), n);
+    ck_assert_int_eq(run->get_tombstone_count(), 0);
+
+    auto tbl_records = memtable->sorted_output();
+    for (size_t i=0; i<n; i++) {
+        const char *tbl_rec = memtable->get_record_at(i);
+        tbl_records + (i * record_size);
+        auto pos = run->get_lower_bound(get_key(tbl_rec));
+        ck_assert_int_eq(*(key_type *) get_key(run->get_record_at(pos)), *(key_type*) get_key(tbl_rec));
+    }
+
+    delete memtable;
+    delete bf;
+    delete run;
+}
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("InMemRun Unit Testing");
-    TCase *create = tcase_create("lsm::InMemRun constructor Testing");
 
+    TCase *create = tcase_create("lsm::InMemRun constructor Testing");
     tcase_add_test(create, t_memtable_init);
     tcase_add_test(create, t_inmemrun_init);
     tcase_set_timeout(create, 100);
-
     suite_add_tcase(unit, create);
+
+    TCase *bounds = tcase_create("lsm::InMemRun::get_{lower,upper}_bound Testing");
+    tcase_add_test(bounds, t_get_lower_bound_index);
+    tcase_set_timeout(bounds, 100);   
+    suite_add_tcase(unit, bounds);
+
     return unit;
 }
 
