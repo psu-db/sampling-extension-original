@@ -84,7 +84,7 @@ public:
     }
 
 
-    const char *get_record(size_t idx) {
+    const char *get_record_at(size_t idx) {
         return this->m_data + (record_size * idx);
     }
 
