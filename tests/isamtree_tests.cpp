@@ -155,7 +155,7 @@ START_TEST(t_get_lower_bound_index)
     BloomFilter *filter = nullptr;
     char *buf = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
 
-    size_t n = 1000000;
+    size_t n = 10000;
     auto tree1 = create_test_isam(n, "tests/data/mrun_isam0.dat", &tbl, &filter);
 
     ck_assert_ptr_nonnull(tree1);
@@ -171,12 +171,58 @@ START_TEST(t_get_lower_bound_index)
         char *tbl_rec = tbl_records + (i * record_size);
         auto tree_loc = tree1->get_lower_bound_index(get_key(tbl_rec), buf);
         ck_assert_int_ne(tree_loc.first, INVALID_PNUM);
-        tree_loc.second;
+        size_t idx = tree_loc.second;
+
+        const char *tree_key = get_key(buf + (idx * record_size));
+        ck_assert_int_eq(*(key_type *) tree_key, *(key_type*) tbl_rec);
     }
 
-
+    delete filter;
+    delete tbl;
+    delete tree1->get_pfile();
+    delete tree1;
+    free(buf);
 }
 END_TEST
+
+
+START_TEST(t_get_upper_bound_index)
+{
+    MemTable *tbl = nullptr;
+    BloomFilter *filter = nullptr;
+    char *buf = (char *) aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    size_t n = 10000;
+    auto tree1 = create_test_isam(n, "tests/data/mrun_isam0.dat", &tbl, &filter);
+
+    ck_assert_ptr_nonnull(tree1);
+    ck_assert_ptr_nonnull(tbl);
+    ck_assert_ptr_nonnull(filter);
+
+    ck_assert_int_eq(tree1->get_record_count(), n);
+    ck_assert_int_eq(tree1->get_leaf_page_count(), required_leaf_pages(n));
+    ck_assert_int_eq(tree1->get_tombstone_count(), 0);
+
+    auto tbl_records = tbl->sorted_output();
+    for (size_t i=0; i<n; i++) {
+        char *tbl_rec = tbl_records + (i * record_size);
+        fprintf(stderr, "%ld\n", i);
+        auto tree_loc = tree1->get_upper_bound_index(get_key(tbl_rec), buf);
+        ck_assert_int_ne(tree_loc.first, INVALID_PNUM);
+        size_t idx = tree_loc.second;
+
+        const char *tree_key = get_key(buf + (idx * record_size));
+        ck_assert_int_eq(*(key_type *) tree_key, *(key_type*) tbl_rec);
+    }
+
+    delete filter;
+    delete tbl;
+    delete tree1->get_pfile();
+    delete tree1;
+    free(buf);
+}
+END_TEST
+
 
 START_TEST(t_create_from_isams)
 {
@@ -363,6 +409,7 @@ END_TEST
 Suite *unit_testing()
 {
     Suite *unit = suite_create("IsamTree Unit Testing");
+    /*
     TCase *create = tcase_create("lsm::ISAMTree::create Testing");
     //tcase_add_test(create, t_create_from_memtable);
     //tcase_add_test(create, t_create_from_memtable_isam);
@@ -371,8 +418,16 @@ Suite *unit_testing()
     tcase_add_test(create, t_create_from_isams);
 
     tcase_set_timeout(create, 100);
-
     suite_add_tcase(unit, create);
+        */
+
+
+    TCase *bounds = tcase_create("lsm::ISAMTree::get_{lower,upper}_bound Testing");
+    //tcase_add_test(bounds, t_get_lower_bound_index);
+    tcase_add_test(bounds, t_get_upper_bound_index);
+
+    tcase_set_timeout(bounds, 1000);
+    suite_add_tcase(unit, bounds);
 
     return unit;
 }

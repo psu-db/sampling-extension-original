@@ -212,8 +212,6 @@ public:
             return {pnum, 0};
         }
 
-        this->pfile->read_page(pnum, buffer);
-
         size_t idx;
         this->search_leaf_page(pnum, key, buffer , &idx);
 
@@ -222,13 +220,11 @@ public:
 
 
     std::pair<PageNum, size_t> get_upper_bound_index(const char *key, char *buffer) {
-        auto pnum = this->get_lower_bound(key, buffer);
+        auto pnum = this->get_upper_bound(key, buffer);
 
         if (pnum == INVALID_PNUM) {
             return {pnum, 0};
         }
-
-        this->pfile->read_page(pnum, buffer);
 
         size_t idx;
         this->search_leaf_page(pnum, key, buffer, &idx);
@@ -236,11 +232,11 @@ public:
         // FIXME: This could be replaced by a modified version of
         // search_leaf_page, but this avoids a lot of code duplication for what
         // will almost certainly be a very short loop over in-cache data.
-        while (key_cmp(key, get_key(buffer + idx*record_size)) <= 0 && idx < this->max_leaf_record_idx(pnum)) {
+        while (idx <= this->max_leaf_record_idx(pnum) && key_cmp(key, get_key(buffer + idx*record_size)) >= 0) {
             idx++;
         }
 
-        return {pnum, idx};
+        return {pnum, --idx};
     }
 
 
@@ -351,7 +347,7 @@ public:
         layout_record(test_rec, key, val, false);
 
         do {
-            this->pfile->read_page(pnum, buffer);
+            assert(this->pfile->read_page(pnum, buffer));
             for (size_t i=idx; i<this->max_leaf_record_idx(pnum); i++) {
                 auto rec = buffer + (idx * record_size);
 
@@ -424,7 +420,7 @@ private:
 
 
     PageNum search_internal_node_lower(PageNum pnum, const char *key, char *buffer) {
-        this->pfile->read_page(pnum, buffer);
+        assert(this->pfile->read_page(pnum, buffer));
 
         size_t min = 0;
         size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_cnt - 1;
@@ -451,7 +447,7 @@ private:
     }
 
     PageNum search_internal_node_upper(PageNum pnum, const char *key, char *buffer) {
-        this->pfile->read_page(pnum, buffer);
+        assert(this->pfile->read_page(pnum, buffer));
 
         size_t min = 0;
         size_t max = ((ISAMTreeInternalNodeHeader *) buffer)->internal_rec_cnt - 1;
@@ -459,9 +455,10 @@ private:
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
         // bound. So we need to check this case manually and return INVALID_PNUM.
+
         auto node_key = get_internal_key(get_internal_record(buffer, min));
-        if (key_cmp(key, node_key) < 0) {
-            return INVALID_PNUM;
+        if (key_cmp(key, node_key) >= 0) {
+            return get_internal_value(get_internal_record(buffer, min));
         }
 
         while (min < max) {
@@ -481,7 +478,7 @@ private:
         size_t min = 0;
         size_t max = this->max_leaf_record_idx(pnum);
 
-        this->pfile->read_page(pnum, buffer);
+        assert(this->pfile->read_page(pnum, buffer));
         const char * record_key;
 
         while (min < max) {
@@ -529,6 +526,7 @@ private:
 
         // If there was only 1 page in the first internal level, then that will be our root.
         if (pl_pg_cnt == 1) {
+            free(in_buffer);
             return pl_first_pg;
         }
 
@@ -540,7 +538,7 @@ private:
 
         // The last page allocated is the tree root.
         free(in_buffer);
-        return pl_first_pg + pl_pg_cnt;
+        return pl_first_pg + pl_pg_cnt - 1;
     }
 
     static PageNum generate_next_internal_level(PagedFile *pfile, size_t *pl_final_pg_rec_cnt, PageNum *pl_first_pg, bool first_level, char *out_buffer, size_t out_buffer_sz, char *in_buffer, size_t in_buffer_sz) {
@@ -606,6 +604,9 @@ private:
                 // Create the new internal record at the address from above
                 build_internal_record(internal_buff, key, in_pnum);
 
+                // Increment the record counter for this page
+                get_header(out_buffer, out_pg_idx)->internal_rec_cnt++;
+
                 // Advance to the next input page
                 in_pnum++;
 
@@ -669,7 +670,7 @@ private:
         }
 
         *pl_first_pg = nl_first_pg;
-        *pl_final_pg_rec_cnt = (out_rec_idx) ? out_rec_idx - 1 : 0;
+        *pl_final_pg_rec_cnt = (out_rec_idx) ? out_rec_idx : 0;
 
         // return the number of pages on the newly created level.
         return (out_pnum + out_pg_idx) - nl_first_pg + 1;
@@ -740,7 +741,7 @@ private:
     }
 
     static inline PageNum get_internal_value(const char *buffer) {
-        return *((PageNum *) buffer + key_size);
+        return *((PageNum *) (buffer + key_size));
     }
 
     static inline char *get_page(char *buffer, size_t idx) {
@@ -753,7 +754,7 @@ private:
     }
 
     inline size_t max_leaf_record_idx(PageNum pnum) {
-        return (pnum == this->last_data_page) ? rec_cnt % PAGE_SIZE : (PAGE_SIZE / record_size);
+        return (pnum == this->last_data_page) ? rec_cnt % (PAGE_SIZE / record_size) - 1 : (PAGE_SIZE / record_size) - 1;
     }
 
     static inline char *copy_of(const char *record) {
