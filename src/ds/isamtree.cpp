@@ -365,6 +365,11 @@ PageId ISAMTree::get_upper_bound(const byte *key)
         current_page = search_internal_node_upper(current_page, key);
     }
 
+    // FIXME: This is incorrect. search_internal_node_upper will return the page
+    // after the last page containing the boundary key, so we actually need to
+    // check the returned page to see if it contains the key, and then return
+    // current_page - 1 if it does not.
+
     // It is possible, because the internal records contain max values for each
     // run, that an adjacent page to the one reported above may contain valid
     // keys within the range. This can only occur in this case of the internal
