@@ -126,7 +126,7 @@ public:
             // First the memtable,
             while (run_samples[0] > 0) {
                 size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
-                sample_record = memtable->get_record(idx);
+                sample_record = memtable->get_record_at(idx);
 
                 run_samples[0]--;
 
