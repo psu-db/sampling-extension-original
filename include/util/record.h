@@ -30,6 +30,19 @@ inline static void layout_memtable_record(char* buffer, const char* key, const c
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 1) | (tombstone ? 1 : 0));
 }
 
+/*
+ * Returns a pointer to a cache-aligned copy of the record. The 
+ * freeing of this pointer is the responsibility of the caller.
+ *
+ * Record must point to the beginning of a valid record, or the
+ * returned pointer is undefined.
+ */
+static inline char *copy_of(const char *record) {
+    char *copy = (char *) aligned_alloc(CACHELINE_SIZE, record_size);
+    memcpy(copy, record, record_size);
+    return copy;
+}
+
 inline static const char *get_key(const char *buffer) {
     return buffer;
 }

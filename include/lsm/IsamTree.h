@@ -14,6 +14,7 @@
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
 #include "lsm/InMemRun.h"
+#include "util/internal_record.h"
 
 namespace lsm { 
 
@@ -24,15 +25,6 @@ struct ISAMTreeMetaHeader {
     size_t tombstone_count;
     size_t record_count;
 };
-
-struct ISAMTreeInternalNodeHeader {
-    PageNum next_sibling;
-    PageNum prev_sibling;
-    size_t leaf_rec_cnt; // number of records in leaf nodes under this node
-    size_t internal_rec_cnt; // number of internal records in this node
-};
-
-constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISAMTreeInternalNodeHeader));
 
 const PageNum BTREE_META_PNUM = 1;
 const PageNum BTREE_FIRST_LEAF_PNUM = 2;
@@ -259,19 +251,6 @@ public:
         while (current_page > this->last_data_page) {
             current_page = search_internal_node_upper(current_page, key, buffer);
         }
-
-        // It is possible, because the internal records contain max values for each
-        // run, that an adjacent page to the one reported above may contain valid
-        // keys within the range. This can only occur in this case of the internal
-        // key being equal to the boundary key, and the next page containing
-        // duplicate values of that same key.
-        /*
-        if (current_page < this->last_data_page && current_page != INVALID_PNUM) {
-            if (this->search_leaf_page(current_page + 1, key, buffer) != 0) {
-                current_page = current_page + 1;
-            }
-        }
-        */
 
         // If the key being searched for is the boundary key, search_internal_node_upper
         // will return the page after the page for which it is the boundary key. If the
@@ -736,44 +715,9 @@ private:
     }
 
 
-    static constexpr size_t internal_record_size = key_size + MAXALIGN(sizeof(PageNum));
-
-    static inline void build_internal_record(char *buffer, const char *key, PageNum target_page) {
-        memcpy(buffer, key, key_size);
-        memcpy(buffer + key_size, &target_page, sizeof(PageNum));
-    }
-
-    static inline char *get_internal_record(char *internal_page_buffer, size_t idx) {
-        return internal_page_buffer + ISAMTreeInternalNodeHeaderSize + internal_record_size * idx;
-    }
-
-    static inline const char *get_internal_key(const char *buffer) {
-        return buffer;
-    }
-
-    static inline PageNum get_internal_value(const char *buffer) {
-        return *((PageNum *) (buffer + key_size));
-    }
-
-    static inline char *get_page(char *buffer, size_t idx) {
-        return buffer + (idx * PAGE_SIZE);
-    }
-
-
-    static inline ISAMTreeInternalNodeHeader *get_header(char *buffer, size_t idx=0) {
-        return (ISAMTreeInternalNodeHeader *) get_page(buffer, idx);
-    }
-
     inline size_t max_leaf_record_idx(PageNum pnum) {
         return (pnum == this->last_data_page) ? rec_cnt % (PAGE_SIZE / record_size) - 1 : (PAGE_SIZE / record_size) - 1;
     }
-
-    static inline char *copy_of(const char *record) {
-        char *copy = (char *) aligned_alloc(CACHELINE_SIZE, record_size);
-        memcpy(copy, record, record_size);
-        return copy;
-    }
-
 };
 
 }

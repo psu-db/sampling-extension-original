@@ -54,5 +54,12 @@ TYPEALIGN(uint64_t ALIGNVAL, T LEN) {
 #define MAXALIGN(LEN)           TYPEALIGN(8, (LEN))
 #define CACHELINEALIGN(LEN)     TYPEALIGN(CACHELINE_SIZE, (LEN))
 #define MAXALIGN_OF             8
+
+// Returns a pointer to the idx'th page contained within a multi-page
+// buffer. buffer must be page aligned, and idx must be less than the
+// number of pages within the buffer, or the result is undefined.
+static inline char *get_page(char *buffer, size_t idx) {
+    return buffer + (idx * PAGE_SIZE);
+}
 }
 #endif
