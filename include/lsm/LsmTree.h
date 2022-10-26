@@ -29,13 +29,29 @@ static constexpr bool LSM_LEVELING = false;
 
 class LSMTree {
 public:
-    LSMTree(size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
+    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             gsl_rng *rng) 
-        : active_memtable(0), memory_levels(std::vector<MemoryLevel*>(memory_levels)),
+        : active_memtable(0), memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
+          root_directory(root_dir),
+          memory_level_cnt(memory_levels),
           memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
           memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
           memtable_1_merging(false), memtable_2_merging(false) {}
+
+    ~LSMTree() {
+        delete this->memtable_1;
+        delete this->memtable_2;
+
+        for (size_t i=0; i<this->memory_levels.size(); i++) {
+            delete this->memory_levels[i];
+        }
+
+        for (size_t i=0; i<this->disk_levels.size(); i++) {
+            delete this->disk_levels[i];
+        }
+
+    }
 
     int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
         // NOTE: single-threaded implementation only
@@ -310,23 +326,27 @@ private:
         size_t merge_level_idx;
 
         size_t incoming_rec_cnt = mtable->get_record_count();
-        for (size_t i=0; i<this->memory_levels.size() + this->disk_levels.size(); i++) {
-            if (i < this-> memory_levels.size()) {
-                if (memlevel_can_merge_with(incoming_rec_cnt, i)) {
-                    merge_level_idx = i;
-                    level_found = true;
-                    disk_level = false;
-                    break;
-                }
+        for (size_t i=0; i<this->memory_levels.size(); i++) {
+            if (level_found) break;
 
-                incoming_rec_cnt = this->memory_levels[i]->get_record_cnt();
+            if (memlevel_can_merge_with(incoming_rec_cnt, i)) {
+                merge_level_idx = i;
+                level_found = true;
+                disk_level = false;
             } else {
-                if (disklevel_can_merge_with(incoming_rec_cnt, i - this->memory_level_cnt)) {
-                    merge_level_idx = i;
-                    disk_level = true;
-                    level_found = true;
-                    break;
-                }
+                incoming_rec_cnt = this->memory_levels[i]->get_record_cnt();
+            }
+        }
+
+        for (size_t i=0; i<this->disk_levels.size(); i++) {
+            if (level_found) break;
+
+            if (disklevel_can_merge_with(incoming_rec_cnt, i)) {
+                merge_level_idx = i;
+                level_found = true;
+                disk_level = true;
+            } else {
+                incoming_rec_cnt = this->disk_levels[i]->get_record_cnt();
             }
         }
 
@@ -340,7 +360,7 @@ private:
         static_assert(!LSM_LEVELING);
 
         if (disk_level) {
-            for (size_t i=merge_level_idx; i>0; i++) {
+            for (size_t i=merge_level_idx; i>0; i--) {
                 this->disk_levels[i]->append_merged_runs(this->disk_levels[i-1], rng);
                 delete this->disk_levels[i-1];
                 this->disk_levels[i-1] = new DiskLevel(i - 1 + this->memory_level_cnt, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
@@ -349,8 +369,32 @@ private:
             this->disk_levels[0]->append_merged_runs(this->memory_levels[this->memory_level_cnt - 1], rng);
             delete this->memory_levels[this->memory_level_cnt - 1];
             this->memory_levels[this->memory_level_cnt - 1] = new MemoryLevel(this->memory_level_cnt - 1, (LSM_LEVELING) ? 1 : this->scale_factor);
-            merge_level_idx = this->memory_level_cnt;
+            merge_level_idx = this->memory_level_cnt - 1;
         }
+
+        // If we are merging directly into the first level, and it can support the
+        // merge, then we can just add the mem table.
+        if (merge_level_idx == 0 && this->memory_levels[0]) {
+            if (LSM_LEVELING) {
+                // FIXME: Kludgey implementation due to interface constraints.
+                auto old_level = this->memory_levels[0];
+                auto temp_level = new MemoryLevel(0, 1);
+                temp_level->append_mem_table(mtable, rng);
+                auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
+
+                this->memory_levels[0] = new_level;
+
+                // FIXME: old_level shouldn't necessary be deleted here when
+                // concurrency is in play.
+                delete temp_level;
+                delete old_level;
+            } else {
+                this->memory_levels[0]->append_mem_table(mtable, rng);
+            }
+
+            mtable->truncate();
+            return;
+        } 
 
         for (size_t i=merge_level_idx; i>0; i++) {
             this->memory_levels[i]->append_merged_runs(this->memory_levels[i-1], rng);
@@ -365,6 +409,8 @@ private:
         auto new_level = new MemoryLevel(0, (LSM_LEVELING) ? 1 : this->scale_factor);
         new_level->append_mem_table(mtable, rng);
         this->memory_levels[0] = new_level;
+
+        mtable->truncate();
     }
 
     /*
@@ -392,6 +438,10 @@ private:
 
 
     inline bool memlevel_can_merge_with(size_t incoming_rec_cnt, size_t idx) {
+        if (! this->memory_levels[idx]) {
+            return true;
+        }
+
         if (LSM_LEVELING) {
             if (this->memory_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_rec_cnt(idx)) {
                 return true;
