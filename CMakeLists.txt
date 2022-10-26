@@ -36,6 +36,10 @@ if (tests)
     add_executable(inmemrun_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/inmemrun_tests.cpp)
     target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(inmemrun_tests PUBLIC -g -llib)
+
+    add_executable(lsmtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsmtree_tests.cpp)
+    target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_compile_options(lsmtree_tests PUBLIC -g -llib)
 endif()
 
 

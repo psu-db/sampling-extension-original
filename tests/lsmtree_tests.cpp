@@ -1,0 +1,111 @@
+#include <check.h>
+
+#include "lsm/LsmTree.h"
+
+using namespace lsm;
+
+gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
+
+std::string dir = "./tests/data/lsmtree";
+
+START_TEST(t_create)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    ck_assert_ptr_nonnull(lsm);
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_append)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<100; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+    }
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_append_with_mem_merges)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<300; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+    }
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_append_with_disk_merges)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<1000; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+    }
+
+    delete lsm;
+}
+END_TEST
+
+
+Suite *unit_testing()
+{
+    Suite *unit = suite_create("lsm::LSMTree Unit Testing");
+
+    TCase *create = tcase_create("lsm::LSMTree::constructor Testing");
+    tcase_add_test(create, t_create);
+
+    suite_add_tcase(unit, create);
+
+    TCase *append = tcase_create("lsm::LSMTree::append Testing");
+    tcase_add_test(append, t_append);
+    tcase_add_test(append, t_append_with_mem_merges);
+    tcase_add_test(append, t_append_with_disk_merges);
+
+    suite_add_tcase(unit, append);
+
+    return unit;
+}
+
+int run_unit_tests()
+{
+    int failed = 0;
+    Suite *unit = unit_testing();
+    SRunner *unit_runner = srunner_create(unit);
+
+    srunner_run_all(unit_runner, CK_NORMAL);
+    failed = srunner_ntests_failed(unit_runner);
+    srunner_free(unit_runner);
+
+    return failed;
+}
+
+
+int main() 
+{
+    int unit_failed = run_unit_tests();
+
+    return (unit_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
