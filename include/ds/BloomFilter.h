@@ -51,7 +51,9 @@ public:
         m_bitarray.clear();
     }
 
-    size_t mem_utilization();
+    size_t mem_utilization() {
+        return this->m_bitarray.mem_size();
+    }
 private: 
     size_t m_n_salts;
     size_t m_n_bits;
