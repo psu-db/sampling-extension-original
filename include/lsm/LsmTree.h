@@ -185,8 +185,8 @@ public:
             size_t records_per_page = PAGE_SIZE / record_size;
             PageNum buffered_page = INVALID_PNUM;
             for (size_t i=0; i<disk_ranges.size(); i++) {
-                size_t range_length = (disk_ranges[i].high - disk_ranges[i].low) * records_per_page;
-                size_t level_idx = disk_ranges[i].run_id.level_idx;
+                size_t range_length = (disk_ranges[i].high - disk_ranges[i].low + 1) * records_per_page;
+                size_t level_idx = disk_ranges[i].run_id.level_idx - this->memory_level_cnt;
                 size_t run_idx = disk_ranges[i].run_id.run_idx;
 
                 while (run_samples[i+run_offset] > 0) {

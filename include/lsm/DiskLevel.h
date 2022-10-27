@@ -71,7 +71,7 @@ public:
             }
             assert(high_pos >= low_pos);
             dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
-            rec_cnts.emplace_back((high_pos - low_pos) * (PAGE_SIZE/record_size));
+            rec_cnts.emplace_back((high_pos - low_pos + 1) * (PAGE_SIZE/record_size));
         }
     }
 
