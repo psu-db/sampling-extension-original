@@ -29,6 +29,8 @@ START_TEST(t_append)
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
         ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
     }
 
     delete lsm;
@@ -46,6 +48,8 @@ START_TEST(t_append_with_mem_merges)
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
         ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
     }
 
     delete lsm;
@@ -63,7 +67,132 @@ START_TEST(t_append_with_disk_merges)
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
         ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
     }
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_range_sample_memtable)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<100; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
+    }
+
+    key_type lower_bound = 20;
+    key_type upper_bound = 50;
+
+    char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
+    ck_assert_ptr_nonnull(res);
+
+    for(size_t i=0; i<100; i++) {
+        auto rec = res + (record_size * i);
+        auto s_key = *(key_type*) get_key(rec);
+        auto s_val = *(value_type*) get_val(rec);
+
+        ck_assert_int_le(s_key, upper_bound);
+        ck_assert_int_ge(s_key, lower_bound);
+    }
+
+    free(buf);
+    free(util_buf);
+    delete[] res;
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_range_sample_memlevels)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<300; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
+    }
+
+    key_type lower_bound = 100;
+    key_type upper_bound = 250;
+
+    char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
+    ck_assert_ptr_nonnull(res);
+
+    for(size_t i=0; i<100; i++) {
+        auto rec = res + (record_size * i);
+        auto s_key = *(key_type*) get_key(rec);
+        auto s_val = *(value_type*) get_val(rec);
+
+        ck_assert_int_le(s_key, upper_bound);
+        ck_assert_int_ge(s_key, lower_bound);
+    }
+
+    free(buf);
+    free(util_buf);
+    delete[] res;
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_range_sample_disklevels)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+
+    key_type key = 0;
+    value_type val = 0;
+    for (size_t i=0; i<1000; i++) {
+        const char *key_ptr = (char *) &key;
+        const char *val_ptr = (char *) &val;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        key++;
+        val++;
+    }
+
+    key_type lower_bound = 0;
+    key_type upper_bound = 1000;
+
+    char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
+    ck_assert_ptr_nonnull(res);
+
+    for(size_t i=0; i<100; i++) {
+        auto rec = res + (record_size * i);
+        auto s_key = *(key_type*) get_key(rec);
+        auto s_val = *(value_type*) get_val(rec);
+
+        ck_assert_int_le(s_key, upper_bound);
+        ck_assert_int_ge(s_key, lower_bound);
+    }
+
+    free(buf);
+    free(util_buf);
+    delete[] res;
 
     delete lsm;
 }
@@ -85,6 +214,13 @@ Suite *unit_testing()
     tcase_add_test(append, t_append_with_disk_merges);
 
     suite_add_tcase(unit, append);
+
+    TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
+    tcase_add_test(sampling, t_range_sample_memtable);
+    tcase_add_test(sampling, t_range_sample_memlevels);
+    tcase_add_test(sampling, t_range_sample_disklevels);
+
+    suite_add_tcase(unit, sampling);
 
     return unit;
 }
