@@ -61,6 +61,14 @@ public:
         for (ssize_t i = 0; i < m_run_cnt; ++i) {
             auto low_pos = m_runs[i]->get_lower_bound(low, buffer);
             auto high_pos = m_runs[i]->get_upper_bound(high, buffer);
+
+            // If high is larger than the largest key in the run,
+            // technically no "upper bound" on that key exists.
+            // Instead, the last data page should be used as the
+            // high_pos.
+            if (high_pos == INVALID_PNUM) {
+                high_pos = m_runs[i]->get_last_leaf_pnum();
+            }
             assert(high_pos >= low_pos);
             dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
             rec_cnts.emplace_back((high_pos - low_pos) * (PAGE_SIZE/record_size));

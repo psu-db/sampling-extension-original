@@ -379,6 +379,14 @@ public:
     }
 
     /*
+     * Returns the PageNum corresponding to the final leaf page within the
+     * tree.
+     */
+    inline PageNum get_last_leaf_pnum() {
+        return this->last_data_page;
+    }
+
+    /*
      * Returns a pointer to the file representing this ISAM Tree object.
      */
     inline PagedFile *get_pfile() {
