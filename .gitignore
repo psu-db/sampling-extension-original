@@ -8,9 +8,6 @@ bin/*
 #!tests/*.{cpp,sh}
 tests/data
 
-benchmarks/*
-!benchmarks/*.{cpp,sh}
-
 utilities/*
 
 .vscode

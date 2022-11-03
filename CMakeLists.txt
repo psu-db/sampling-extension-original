@@ -8,6 +8,7 @@ project("lsm_sampling" VERSION 0.1.0)
 
 set(debug True)
 set(tests True)
+set(bench True)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
@@ -40,19 +41,19 @@ if (tests)
     add_executable(lsmtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsmtree_tests.cpp)
     target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(lsmtree_tests PUBLIC -g -llib)
+
 endif()
 
-
-
 # Benchmark build instructions
-#add_executable(pagedfile_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/pagedfile_tests.cpp)
-#target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit)
-
-#set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/bench")
+if (bench)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_CURRENT_SOURCE_DIR}/bin/benchmarks")
+    add_executable(insert_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/insert_bench.cpp)
+    target_link_libraries(insert_bench PUBLIC ${PROJECT_NAME})
+    target_compile_options(insert_bench PUBLIC -llib)
+endif()
 
 target_sources(${PROJECT_NAME} 
     PRIVATE 
-        #${CMAKE_CURRENT_SOURCE_DIR}/src/lsm/IsamTree.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/io/PagedFile.cpp
 )
 
