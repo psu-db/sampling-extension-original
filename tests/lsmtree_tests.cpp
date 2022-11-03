@@ -13,6 +13,8 @@ START_TEST(t_create)
     auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
 
     ck_assert_ptr_nonnull(lsm);
+    ck_assert_int_eq(lsm->get_record_cnt(), 0);
+    ck_assert_int_eq(lsm->get_height(), 1);
 
     delete lsm;
 }
@@ -33,6 +35,9 @@ START_TEST(t_append)
         val++;
     }
 
+    ck_assert_int_eq(lsm->get_height(), 1);
+    ck_assert_int_eq(lsm->get_record_cnt(), 100);
+
     delete lsm;
 }
 END_TEST
@@ -52,6 +57,9 @@ START_TEST(t_append_with_mem_merges)
         val++;
     }
 
+    ck_assert_int_eq(lsm->get_record_cnt(), 300);
+    ck_assert_int_eq(lsm->get_height(), 1);
+
     delete lsm;
 }
 END_TEST
@@ -70,6 +78,9 @@ START_TEST(t_append_with_disk_merges)
         key++;
         val++;
     }
+
+    ck_assert_int_eq(lsm->get_record_cnt(), 1000);
+    ck_assert_int_eq(lsm->get_height(), 3);
 
     delete lsm;
 }
@@ -95,12 +106,12 @@ START_TEST(t_range_sample_memtable)
 
     char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    char sample_set[100*record_size];
 
-    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
-    ck_assert_ptr_nonnull(res);
+    lsm->range_sample(sample_set, (char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
 
     for(size_t i=0; i<100; i++) {
-        auto rec = res + (record_size * i);
+        auto rec = sample_set + (record_size * i);
         auto s_key = *(key_type*) get_key(rec);
         auto s_val = *(value_type*) get_val(rec);
 
@@ -110,7 +121,6 @@ START_TEST(t_range_sample_memtable)
 
     free(buf);
     free(util_buf);
-    delete[] res;
 
     delete lsm;
 }
@@ -137,11 +147,11 @@ START_TEST(t_range_sample_memlevels)
     char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
 
-    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
-    ck_assert_ptr_nonnull(res);
+    char sample_set[100*record_size];
+    lsm->range_sample(sample_set, (char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
 
     for(size_t i=0; i<100; i++) {
-        auto rec = res + (record_size * i);
+        auto rec = sample_set + (record_size * i);
         auto s_key = *(key_type*) get_key(rec);
         auto s_val = *(value_type*) get_val(rec);
 
@@ -151,7 +161,6 @@ START_TEST(t_range_sample_memlevels)
 
     free(buf);
     free(util_buf);
-    delete[] res;
 
     delete lsm;
 }
@@ -178,11 +187,11 @@ START_TEST(t_range_sample_disklevels)
     char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
 
-    auto res = lsm->range_sample((char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
-    ck_assert_ptr_nonnull(res);
+    char sample_set[100*record_size];
+    lsm->range_sample(sample_set, (char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
 
     for(size_t i=0; i<100; i++) {
-        auto rec = res + (record_size * i);
+        auto rec = sample_set + (record_size * i);
         auto s_key = *(key_type*) get_key(rec);
         auto s_val = *(value_type*) get_val(rec);
 
@@ -192,7 +201,6 @@ START_TEST(t_range_sample_disklevels)
 
     free(buf);
     free(util_buf);
-    delete[] res;
 
     delete lsm;
 }

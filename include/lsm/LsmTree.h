@@ -11,8 +11,8 @@
 
 namespace lsm {
 
-thread_local size_t sampling_attempts;
-thread_local size_t sampling_rejections;
+thread_local size_t sampling_attempts = 0;
+thread_local size_t sampling_rejections = 0;
 /*
  * thread_local size_t various_sampling_times go here.
  */
@@ -66,15 +66,12 @@ public:
         return mtable->append(key, val, tombstone);
     }
 
-    char *range_sample(const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // Allocate buffer into which to write the samples
-        char *sample_set = new char[sample_sz * record_size];
         size_t sample_idx = 0;
 
         // Obtain the sampling ranges for each level
-        //std::vector<std::pair<RunId, std::pair<const char *, const char *>>> memory_ranges;
         std::vector<SampleRange> memory_ranges;
-        //std::vector<std::pair<RunId, std::pair<PageNum, PageNum>>> disk_ranges;
         std::vector<SampleRange> disk_ranges;
         std::vector<size_t> record_counts;
 
@@ -201,8 +198,6 @@ public:
             }
 
         } while (sample_idx < sample_sz);
-
-        return sample_set;
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -244,6 +239,30 @@ public:
             size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
             return disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
         }
+    }
+
+
+    size_t get_record_cnt() {
+        // FIXME: need to account for both memtables with concurrency
+        size_t cnt = this->memtable()->get_record_count();
+
+        for (size_t i=0; i<this->memory_levels.size(); i++) {
+            if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_record_cnt();
+        }
+
+        for (size_t i=0; i<this->disk_levels.size(); i++) {
+            if (this->disk_levels[i]) cnt += this->disk_levels[i]->get_record_cnt();
+        }
+
+        return cnt;
+    }
+
+    // FIXME: Technically, this doesn't work properly because the size of the
+    // memory_levels is always memory_level_cnt irrespective of which levels
+    // are populated. But it should be good enough for now--I'll fix this
+    // later.
+    size_t get_height() {
+        return this->memory_levels.size() + this->disk_levels.size();
     }
 
 private:
