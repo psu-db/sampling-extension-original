@@ -52,6 +52,9 @@ if (bench)
     target_compile_options(insert_bench PUBLIC -llib)
 endif()
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
+add_executable(data_generator ${CMAKE_CURRENT_SOURCE_DIR}/src/utilities/data_generator.cpp)
+
 target_sources(${PROJECT_NAME} 
     PRIVATE 
         ${CMAKE_CURRENT_SOURCE_DIR}/src/io/PagedFile.cpp
