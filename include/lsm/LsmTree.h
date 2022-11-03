@@ -373,19 +373,27 @@ private:
             disk_level = this->grow(merge_level_idx);
         }
 
-        // NOTE: This currently will only support tiering. Leveling cannot be
-        // done with the existing Level interface. Additionally, the deletes
-        // will need to be removed for the concurrency implementation.
-        static_assert(!LSM_LEVELING);
-
         if (disk_level) {
             for (size_t i=merge_level_idx; i>0; i--) {
-                this->disk_levels[i]->append_merged_runs(this->disk_levels[i-1], rng);
+                if (LSM_LEVELING) {
+                    auto tmp = this->disk_levels[i];
+                    this->disk_levels[i] = DiskLevel::merge_levels(this->disk_levels[i], this->disk_levels[i-1], rng);
+                    delete tmp;
+                } else {
+                    this->disk_levels[i]->append_merged_runs(this->disk_levels[i-1], rng);
+                }
                 delete this->disk_levels[i-1];
                 this->disk_levels[i-1] = new DiskLevel(i - 1 + this->memory_level_cnt, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
             }
 
-            this->disk_levels[0]->append_merged_runs(this->memory_levels[this->memory_level_cnt - 1], rng);
+            if (LSM_LEVELING) {
+                auto tmp = this->disk_levels[0];
+                this->disk_levels[0] = DiskLevel::merge_levels(this->disk_levels[0], this->memory_levels[this->memory_level_cnt - 1], rng);
+                delete tmp;
+            } else {
+                this->disk_levels[0]->append_merged_runs(this->memory_levels[this->memory_level_cnt - 1], rng);
+            }
+
             delete this->memory_levels[this->memory_level_cnt - 1];
             this->memory_levels[this->memory_level_cnt - 1] = new MemoryLevel(this->memory_level_cnt - 1, (LSM_LEVELING) ? 1 : this->scale_factor);
             merge_level_idx = this->memory_level_cnt - 1;
@@ -416,7 +424,13 @@ private:
         } 
 
         for (size_t i=merge_level_idx; i>0; i++) {
-            this->memory_levels[i]->append_merged_runs(this->memory_levels[i-1], rng);
+            if (LSM_LEVELING) {
+                auto tmp = this->memory_levels[i];
+                this->memory_levels[i] = MemoryLevel::merge_levels(this->memory_levels[i], this->memory_levels[i-1], rng);
+                delete tmp;
+            } else {
+                this->memory_levels[i]->append_merged_runs(this->memory_levels[i-1], rng);
+            }
             delete this->memory_levels[i-1];
             this->memory_levels[i-1] = new MemoryLevel(i-1, (LSM_LEVELING) ? 1 : this->scale_factor);
         }

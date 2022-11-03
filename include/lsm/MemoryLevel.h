@@ -43,7 +43,7 @@ public:
     : m_level_no(level_no), m_run_cnt(0)
     , m_structure(new InternalLevelStructure(run_cap)) {}
 
-    // Create a new memory level sharing the runs and reporposing it as previous level_no + 1
+    // Create a new memory level sharing the runs and repurposing it as previous level_no + 1
     // WARNING: for leveling only.
     MemoryLevel(MemoryLevel* level)
     : m_level_no(level->m_level_no + 1), m_run_cnt(level->m_run_cnt)
@@ -57,7 +57,7 @@ public:
     // WARNING: for leveling only.
     // assuming the base level is the level new level is merging into. (base_level is larger.)
     static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
-        assert(base_level->m_level_no > new_level->m_level_no);
+        assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
         auto res = new MemoryLevel(base_level->m_level_no, 1);
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
@@ -65,7 +65,7 @@ public:
                             BF_HASH_FUNCS, rng);
         InMemRun* runs[2];
         runs[0] = base_level->m_structure->m_runs[0];
-        runs[1] = new_level->m_structure->m_runs[1];
+        runs[1] = new_level->m_structure->m_runs[0];
 
         res->m_structure->m_runs[0] = new InMemRun(runs, 2, res->m_structure->m_bfs[0]);
         return res;

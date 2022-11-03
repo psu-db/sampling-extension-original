@@ -66,7 +66,7 @@ public:
 
         ISAMTree *runs[2] = {
                              base_level->m_runs[0],
-                             new_level->m_runs[1]
+                             new_level->m_runs[0]
                             };
         assert(runs[0]);
         assert(runs[1]);
