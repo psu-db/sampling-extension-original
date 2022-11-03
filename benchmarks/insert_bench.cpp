@@ -25,8 +25,8 @@ static bool next_record(std::fstream *file, char *key, char *val)
         std::getline(line_stream, value_field, '\t');
         std::getline(line_stream, key_field, '\t');
 
-        *((int64_t*) key) = atol(key_field.c_str());
-        *((int64_t*) val) = atol(value_field.c_str());
+        *((lsm::key_type*) key) = atol(key_field.c_str());
+        *((lsm::value_type*) val) = atol(value_field.c_str());
         return true;
     }
 
@@ -53,14 +53,14 @@ static void load_data(std::fstream *file, lsm::LSMTree *lsmtree, size_t count)
 }
 
 
-static std::pair<int64_t, int64_t> sample_range(int64_t min, int64_t max, double selectivity)
+static std::pair<lsm::key_type, lsm::key_type> sample_range(lsm::key_type min, lsm::key_type max, double selectivity)
 {
     size_t range_length = (max - min) * selectivity;
 
-    int64_t max_bottom = max - range_length;
-    int64_t bottom = gsl_rng_uniform_int(g_rng, max_bottom);
+    lsm::key_type max_bottom = max - range_length;
+    lsm::key_type bottom = gsl_rng_uniform_int(g_rng, max_bottom);
 
-    return std::pair<int64_t, int64_t> {bottom, bottom + range_length};
+    return std::pair<lsm::key_type, lsm::key_type> {bottom, bottom + range_length};
 }
 
 
@@ -134,9 +134,11 @@ int main(int argc, char **argv)
 
     std::string root_dir = "benchmarks/data/insert_bench";
 
+    g_rng = gsl_rng_alloc(gsl_rng_mt19937);
+
     // use for selectivity calculations
-    int64_t min_key = 0;
-    int64_t max_key = record_count - 1;
+    lsm::key_type min_key = 0;
+    lsm::key_type max_key = record_count - 1;
 
     // initialize the random number generator
     unsigned int seed = 0;
