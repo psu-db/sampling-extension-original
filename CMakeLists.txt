@@ -42,6 +42,10 @@ if (tests)
     target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(lsmtree_tests PUBLIC -g -llib)
 
+    add_executable(memlevel_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memlevel_tests.cpp)
+    target_link_libraries(memlevel_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_compile_options(memlevel_tests PUBLIC -g -llib)
+
 endif()
 
 # Benchmark build instructions
