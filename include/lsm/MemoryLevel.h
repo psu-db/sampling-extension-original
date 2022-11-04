@@ -59,6 +59,7 @@ public:
     static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
         auto res = new MemoryLevel(base_level->m_level_no, 1);
+        res->m_run_cnt = 1;
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
                             new_level->get_tombstone_count() + base_level->get_tombstone_count(),

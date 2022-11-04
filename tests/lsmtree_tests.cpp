@@ -223,12 +223,12 @@ Suite *unit_testing()
 
     suite_add_tcase(unit, append);
 
-    TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
-    tcase_add_test(sampling, t_range_sample_memtable);
-    tcase_add_test(sampling, t_range_sample_memlevels);
-    tcase_add_test(sampling, t_range_sample_disklevels);
+    //TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
+    //tcase_add_test(sampling, t_range_sample_memtable);
+    //tcase_add_test(sampling, t_range_sample_memlevels);
+    //tcase_add_test(sampling, t_range_sample_disklevels);
 
-    suite_add_tcase(unit, sampling);
+    //suite_add_tcase(unit, sampling);
 
     return unit;
 }

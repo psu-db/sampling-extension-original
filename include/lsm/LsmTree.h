@@ -25,7 +25,7 @@ thread_local size_t sampling_rejections = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 class LSMTree {
 public:
@@ -367,7 +367,7 @@ private:
             } else {
                 incoming_rec_cnt = this->disk_levels[i]->get_record_cnt();
             }
-        }
+        }   
 
         if (!level_found) { 
             disk_level = this->grow(merge_level_idx);
@@ -400,8 +400,9 @@ private:
         }
 
         // If we are merging directly into the first level, and it can support the
-        // merge, then we can just add the mem table.
+        // merge, then we can just add the mem table.   
         if (merge_level_idx == 0 && this->memory_levels[0]) {
+            
             if (LSM_LEVELING) {
                 // FIXME: Kludgey implementation due to interface constraints.
                 auto old_level = this->memory_levels[0];
@@ -421,7 +422,7 @@ private:
 
             mtable->truncate();
             return;
-        } 
+        }
 
         for (size_t i=merge_level_idx; i>0; i++) {
             if (LSM_LEVELING) {
