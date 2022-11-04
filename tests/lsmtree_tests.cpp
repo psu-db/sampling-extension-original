@@ -213,22 +213,20 @@ Suite *unit_testing()
 
     TCase *create = tcase_create("lsm::LSMTree::constructor Testing");
     tcase_add_test(create, t_create);
-
     suite_add_tcase(unit, create);
 
     TCase *append = tcase_create("lsm::LSMTree::append Testing");
     tcase_add_test(append, t_append);
     tcase_add_test(append, t_append_with_mem_merges);
     tcase_add_test(append, t_append_with_disk_merges);
-
     suite_add_tcase(unit, append);
 
-    //TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
-    //tcase_add_test(sampling, t_range_sample_memtable);
-    //tcase_add_test(sampling, t_range_sample_memlevels);
-    //tcase_add_test(sampling, t_range_sample_disklevels);
+    TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
+    tcase_add_test(sampling, t_range_sample_memtable);
+    tcase_add_test(sampling, t_range_sample_memlevels);
+    tcase_add_test(sampling, t_range_sample_disklevels);
 
-    //suite_add_tcase(unit, sampling);
+    suite_add_tcase(unit, sampling);
 
     return unit;
 }

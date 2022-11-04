@@ -58,11 +58,16 @@ public:
         size_t attemp_reccnt = 0;
         
         for (size_t i = 0; i < len; ++i) {
-            assert(runs[i]);
-            auto base = runs[i]->sorted_output();
-            cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size});
-            attemp_reccnt += runs[i]->get_record_count();
-            pq.push(cursors[i].ptr, i);
+            //assert(runs[i]);
+            if (runs[i]) {
+                auto base = runs[i]->sorted_output();
+                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size});
+                attemp_reccnt += runs[i]->get_record_count();
+                pq.push(cursors[i].ptr, i);
+            } else {
+                cursors.emplace_back(Cursor{nullptr, nullptr});
+            }
+            
         }
 
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, attemp_reccnt * record_size);
@@ -126,7 +131,7 @@ public:
             uint8_t ptr_offset = 0;
             const char* sep_key = now;
             char* next = nullptr;
-            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
+            for (size_t i = 0; i < inmem_isam_fanout - 1; ++i) {
                 if (nullptr == *(char**)(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) <= 0) {
                     next = *(char**)child_ptr;
                     break;
@@ -146,12 +151,13 @@ public:
 
     size_t get_upper_bound(const char* key) const {
         char* now = m_root;
+        
         while (!is_leaf(now)) {
             char* child_ptr = now + inmem_isam_node_keyskip;
             uint8_t ptr_offset = 0;
             const char* sep_key = now;
             char* next = nullptr;
-            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
+            for (size_t i = 0; i < inmem_isam_fanout - 1; ++i) {
                 if (nullptr == *(char**)(child_ptr + sizeof(char*)) || key_cmp(key, sep_key) == -1) {
                     next = *(char**)child_ptr;
                     break;
@@ -160,6 +166,7 @@ public:
                 child_ptr += sizeof(char*);
             }
             now = next ? next : *(char**)(now + inmem_isam_node_size - sizeof(char*));
+            
         }
 
         while (now < m_data + m_reccnt * record_size && key_cmp(now, key) <= 0)

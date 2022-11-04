@@ -37,21 +37,25 @@ public:
     static DiskLevel *merge_levels(DiskLevel *base_level, MemoryLevel *new_level, const gsl_rng *rng) {
         assert(base_level->m_level_no > new_level->m_level_no);
         auto res = new DiskLevel(base_level->m_level_no, 1, base_level->m_directory);
+        res->m_run_cnt = 1;
 
         res->m_bfs[0] = new BloomFilter(BF_FPR,
                             new_level->get_tombstone_count() + base_level->get_tombstone_count(),
                             BF_HASH_FUNCS, rng);
+
         ISAMTree *run1 = base_level->m_runs[0];
-        assert(run1);
-        
         InMemRun *run2 = new_level->m_structure->m_runs[0];
         assert(run2);
 
-
         res->m_pfiles[0] = PagedFile::create(base_level->get_fname(0));
         assert(res->m_pfiles[0]);
-
-        res->m_runs[0] = new ISAMTree(res->m_pfiles[0], rng, res->m_bfs[0], &run2, 1, &run1, 1);
+        
+        if (run1) {
+            res->m_runs[0] = new ISAMTree(res->m_pfiles[0], rng, res->m_bfs[0], &run2, 1, &run1, 1);
+        } else {
+            res->m_runs[0] = new ISAMTree(res->m_pfiles[0], rng, res->m_bfs[0], &run2, 1, nullptr, 0);
+        }
+        
         return res;
     }
 
@@ -68,8 +72,8 @@ public:
                              base_level->m_runs[0],
                              new_level->m_runs[0]
                             };
-        assert(runs[0]);
-        assert(runs[1]);
+        //assert(runs[0]);
+        //assert(runs[1]);
 
         res->m_pfiles[0] = PagedFile::create(base_level->get_fname(0));
         assert(res->m_pfiles[0]);

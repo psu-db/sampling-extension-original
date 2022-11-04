@@ -369,7 +369,7 @@ private:
             }
         }   
 
-        if (!level_found) { 
+        if (!level_found) {
             disk_level = this->grow(merge_level_idx);
         }
 
