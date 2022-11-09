@@ -494,7 +494,7 @@ private:
      */
     inline bool disklevel_can_merge_with(size_t incoming_rec_cnt, size_t idx) {
         if (LSM_LEVELING) {
-            if (this->disk_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_rec_cnt(idx)) {
+            if (this->disk_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_rec_cnt(this->memory_level_cnt + idx)) {
                 return true;
             }
 
