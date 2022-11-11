@@ -587,7 +587,7 @@ private:
 
             for (size_t in_pg_idx = 0; in_pg_idx < in_pgs; in_pg_idx++) {
                 // Get the key of the last record in this leaf page
-                size_t last_record = (in_pnum < pl_last_pg) ? pl_recs_per_pg - 1 : (*pl_final_pg_rec_cnt) - 1;
+                size_t last_record = (in_pnum < pl_last_pg || *pl_final_pg_rec_cnt == 0) ? pl_recs_per_pg - 1 : (*pl_final_pg_rec_cnt) - 1;
 
                 const char *key = (first_level) ? get_key(get_record(get_page(in_buffer, in_pg_idx), last_record))
                                                 : get_internal_key(get_internal_record(get_page(in_buffer, in_pg_idx), last_record));
@@ -703,7 +703,7 @@ private:
                 return cur_pnum;
             }
 
-            return cur_pnum + full_leaf_pages - (last_leaf_rec_cnt == 0);
+            return cur_pnum + full_leaf_pages - (*last_leaf_rec_cnt == 0);
         }
 
         assert(false);
@@ -724,7 +724,15 @@ private:
 
 
     inline size_t max_leaf_record_idx(PageNum pnum) {
-        return (pnum == this->last_data_page) ? rec_cnt % (PAGE_SIZE / record_size) - 1 : (PAGE_SIZE / record_size) - 1;
+        if (pnum == this->last_data_page) {
+            size_t excess_records = rec_cnt % (PAGE_SIZE) / record_size;
+
+            if (excess_records > 0) {
+                return excess_records - 1;
+            }
+        }
+
+        return (PAGE_SIZE/record_size) - 1;
     }
 };
 
