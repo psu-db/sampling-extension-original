@@ -103,16 +103,23 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char sample_set[sample_size*lsm::record_size];
 
+    auto sample_start = std::chrono::high_resolution_clock::now();
     for (size_t i=0; i<samples; i++) {
         auto range = sample_range(min_key, max_key, selectivity);
 
         tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, sample_size, buffer1, buffer2, g_rng);
     }
+    auto sample_stop = std::chrono::high_resolution_clock::now();
 
-    fprintf(stdout, "%ld %ld\n", lsm::sampling_attempts, lsm::sampling_rejections);
+    auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / sample_size;
+
+    fprintf(stdout, "%ld %ld %ld %ld %ld\n", tree->get_record_cnt(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
 
     lsm::sampling_rejections = 0;
     lsm::sampling_attempts = 0;
+
+    free(buffer1);
+    free(buffer2);
 
     return !out_of_data;
 }
