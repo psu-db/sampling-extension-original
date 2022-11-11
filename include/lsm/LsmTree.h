@@ -31,7 +31,7 @@ class LSMTree {
 public:
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             gsl_rng *rng) 
-        : active_memtable(0), memory_levels(memory_levels, 0),
+        : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
           root_directory(root_dir),
           memory_level_cnt(memory_levels),
@@ -257,10 +257,6 @@ public:
         return cnt;
     }
 
-    // FIXME: Technically, this doesn't work properly because the size of the
-    // memory_levels is always memory_level_cnt irrespective of which levels
-    // are populated. But it should be good enough for now--I'll fix this
-    // later.
     size_t get_height() {
         return this->memory_levels.size() + this->disk_levels.size();
     }
@@ -319,7 +315,7 @@ private:
         size_t new_run_cnt = (LSM_LEVELING) ? 1 : this->scale_factor;
 
         // Determine where to insert the new level
-        if (this->memory_levels.size() < this->memory_level_cnt - 1) {
+        if (this->memory_levels.size() < this->memory_level_cnt) {
             new_level_idx = this->memory_levels.size();
             this->memory_levels.emplace_back(new MemoryLevel(new_level_idx, new_run_cnt));
             new_disk_level = false;
@@ -353,7 +349,11 @@ private:
                 level_found = true;
                 disk_level = false;
             } else {
-                incoming_rec_cnt = this->memory_levels[i]->get_record_cnt();
+                if (!this->memory_levels[i]) {
+                    incoming_rec_cnt = mtable->get_record_count();
+                } else {
+                    incoming_rec_cnt = this->memory_levels[i]->get_record_cnt();
+                }
             }
         }
 
@@ -424,7 +424,7 @@ private:
             return;
         }
 
-        for (size_t i=merge_level_idx; i>0; i++) {
+        for (size_t i=merge_level_idx; i>0; i--) {
             if (LSM_LEVELING) {
                 auto tmp = this->memory_levels[i];
                 this->memory_levels[i] = MemoryLevel::merge_levels(this->memory_levels[i], this->memory_levels[i-1], rng);
@@ -473,7 +473,7 @@ private:
 
     inline bool memlevel_can_merge_with(size_t incoming_rec_cnt, size_t idx) {
         if (! this->memory_levels[idx]) {
-            return true;
+            return false;
         }
 
         if (LSM_LEVELING) {

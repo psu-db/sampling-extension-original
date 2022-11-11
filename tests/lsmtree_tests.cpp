@@ -14,7 +14,7 @@ START_TEST(t_create)
 
     ck_assert_ptr_nonnull(lsm);
     ck_assert_int_eq(lsm->get_record_cnt(), 0);
-    ck_assert_int_eq(lsm->get_height(), 1);
+    ck_assert_int_eq(lsm->get_height(), 0);
 
     delete lsm;
 }
@@ -35,7 +35,7 @@ START_TEST(t_append)
         val++;
     }
 
-    ck_assert_int_eq(lsm->get_height(), 1);
+    ck_assert_int_eq(lsm->get_height(), 0);
     ck_assert_int_eq(lsm->get_record_cnt(), 100);
 
     delete lsm;
