@@ -569,6 +569,7 @@ private:
         // The first internal node has no previous prev_sibling
         get_header(out_buffer)->prev_sibling = INVALID_PNUM;
         get_header(out_buffer)->leaf_rec_cnt = 0;
+        get_header(out_buffer)->internal_rec_cnt = 0;
 
         size_t total_records = 0;
 
@@ -640,6 +641,7 @@ private:
                   get_header(out_buffer, out_pg_idx)->prev_sibling = out_pnum + out_pg_idx - 1;
                   get_header(out_buffer, out_pg_idx)->next_sibling = INVALID_PNUM;
                   get_header(out_buffer, out_pg_idx)->leaf_rec_cnt = 0;
+                  get_header(out_buffer, out_pg_idx)->internal_rec_cnt = 0;
                 }
             }
         } while (in_pnum <= pl_last_pg);
