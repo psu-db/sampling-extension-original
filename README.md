@@ -63,11 +63,11 @@ Once the data has been generated, the benchmark can be run,
 $ bin/benchmarks/insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels>
 ```
 use the same filename and record count parameters that were used to generate
-the dataset. Note that memory_levels must be at least 1.
+the dataset. Note that `memory_levels` must be at least 1.
 
 The code being benchmarked isn't really instrumented yet. Fine grained
-instrumentation can be added directly into LSMTree::range_sample, using
-thread_local variables in LsmTree.h to communicate the results, in the same
+instrumentation can be added directly into `LSMTree::range_sample`, using
+`thread_local` variables in LsmTree.h to communicate the results, in the same
 manner as is done with the attempt and rejection counters.
 
 Changing the LSM Tree from tiering to leveling can be done by changing
