@@ -138,7 +138,7 @@ public:
 
     bool tombstone_check(size_t run_stop, const char* key, const char* val, char *buffer) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_runs[i] && m_runs[i]->check_tombstone(key, val, buffer))
+            if (m_runs[i] && m_bfs[i]->lookup(key, key_size) && m_runs[i]->check_tombstone(key, val, buffer))
                 return true;
         }
         return false;
