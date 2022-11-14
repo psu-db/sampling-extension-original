@@ -9,6 +9,8 @@
 #include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
 
+#include "util/timer.h"
+
 namespace lsm {
 
 thread_local size_t sampling_attempts = 0;
@@ -16,6 +18,14 @@ thread_local size_t sampling_rejections = 0;
 /*
  * thread_local size_t various_sampling_times go here.
  */
+thread_local size_t sample_range_time = 0;
+thread_local size_t alias_time = 0;
+thread_local size_t alias_query_time = 0;
+thread_local size_t rejection_check_time = 0;
+thread_local size_t memtable_sample_time = 0;
+thread_local size_t memlevel_sample_time = 0;
+thread_local size_t disklevel_sample_time = 0;
+
 
 /*
  * LSM Tree configuration global variables
@@ -25,7 +35,7 @@ thread_local size_t sampling_rejections = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 class LSMTree {
 public:
@@ -67,6 +77,8 @@ public:
     }
 
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+        TIMER_INIT();
+
         // Allocate buffer into which to write the samples
         size_t sample_idx = 0;
 
@@ -80,6 +92,8 @@ public:
         while (!memtable) {
             memtable = this->memtable();
         }
+
+        TIMER_START();
 
         size_t memtable_cutoff = memtable->get_record_count() - 1;
         record_counts.push_back(memtable_cutoff + 1);
@@ -96,6 +110,10 @@ public:
             }
         }
 
+        TIMER_STOP();
+        sample_range_time += TIMER_RESULT();
+
+        TIMER_START();
         size_t total_records = std::accumulate(record_counts.begin(), record_counts.end(), 0);
 
         std::vector<double> weights(record_counts.size());
@@ -104,6 +122,9 @@ public:
         }
 
         auto alias = Alias(weights);
+
+        TIMER_STOP();
+        alias_time += TIMER_RESULT();
 
         // For implementation convenience, we'll treat the very
         // first sampling pass as though it were a sampling
@@ -125,9 +146,12 @@ public:
             // pre-calculate the random numbers. If a sample rejects,
             // we'll track that and redo the rejections in bulk, until
             // there are no further rejections.
+            TIMER_START();
             for (size_t i=0; i<rejections; i++) {
                 run_samples[alias.get(rng)] += 1;
             }
+            TIMER_STOP();
+            alias_query_time += TIMER_RESULT();
 
             // reset rejection counter to begin tracking for next
             // sampling pass
@@ -138,8 +162,11 @@ public:
 
             // First the memtable,
             while (run_samples[0] > 0) {
+                TIMER_START();
                 size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
                 sample_record = memtable->get_record_at(idx);
+                TIMER_STOP();
+                memtable_sample_time += TIMER_RESULT();
 
                 run_samples[0]--;
 
@@ -147,6 +174,7 @@ public:
                     rejections++;
                 }
             }
+
 
             // Next the in-memory runs
             // QUESTION: can we assume that the memory page size is a multiple of the record length?
@@ -158,9 +186,12 @@ public:
                 size_t range_length = memory_ranges[i].high - memory_ranges[i].low;
                 auto run_id = memory_ranges[i].run_id;
                 while (run_samples[i+run_offset] > 0) {
+                    TIMER_START();
                     size_t idx = gsl_rng_uniform_int(rng, range_length);
                     sample_record = memory_levels[run_id.level_idx]->get_record_at(run_id.run_idx, idx + memory_ranges[i].low);
                     run_samples[i+run_offset]--;
+                    TIMER_STOP();
+                    memlevel_sample_time += TIMER_RESULT();
 
                     if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
@@ -187,16 +218,18 @@ public:
                 size_t run_idx = disk_ranges[i].run_id.run_idx;
 
                 while (run_samples[i+run_offset] > 0) {
+                    TIMER_START();
                     size_t idx = gsl_rng_uniform_int(rng, range_length);
                     sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].low, idx, buffer, buffered_page);
                     run_samples[i+run_offset]--;
+                    TIMER_STOP();
+                    disklevel_sample_time += TIMER_RESULT();
 
                     if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
                         rejections++;
                     }
                 }
             }
-
         } while (sample_idx < sample_sz);
     }
 
@@ -296,11 +329,16 @@ private:
 
     inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
                               char *sample_buffer, size_t &sample_idx, MemTable *memtable, size_t memtable_cutoff) {
+        TIMER_INIT();
+        TIMER_START();
         sampling_attempts++;
         if (!record || rejection(record, rid, lower_key, upper_key, io_buffer, memtable, memtable_cutoff)) {
             sampling_rejections++;
             return false;
         }
+        TIMER_STOP();
+        rejection_check_time += TIMER_RESULT();
+
 
         memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
         return true;
