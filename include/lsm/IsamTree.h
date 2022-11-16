@@ -32,6 +32,8 @@ const PageNum BTREE_FIRST_LEAF_PNUM = 2;
 const size_t ISAM_INIT_BUFFER_SIZE = 64; // measured in pages
 const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
 
+thread_local size_t cancelations = 0;
+
 // Convert an index into the runs array to the
 // corresponding index into the cursor array
 #define RCUR(i) (tree_cnt + (i))
@@ -109,6 +111,7 @@ public:
                 
                 // pop the next two records from the queue and discard them
                 pq.pop(); pq.pop();
+                cancelations++;
 
                 auto iter = (cur.version >= tree_cnt) ? nullptr : isam_iters[cur.version];
                 if (advance_cursor(cursors[cur.version], iter)) {
