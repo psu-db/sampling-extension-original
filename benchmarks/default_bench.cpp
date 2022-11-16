@@ -111,7 +111,6 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t deletes = inserts * delete_prop;
     std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> del_vec;
     std::sample(to_delete->begin(), to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
-    size_t j=0;
 
     size_t applied_deletes = 0;
     while (inserted_records < inserts && !out_of_data) {
@@ -146,10 +145,9 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<inserted_from_batch; i++) {
-            if (j<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                tree->append(del_vec[j].first.get(), del_vec[j].second.get(), true, g_rng); 
-                to_delete->erase(del_vec[j]);
-                j++;
+            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
+                tree->append(del_vec[applied_deletes].first.get(), del_vec[applied_deletes].second.get(), true, g_rng); 
+                to_delete->erase(del_vec[applied_deletes]);
                 applied_deletes++;
                 i--;
             } else {
@@ -161,7 +159,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
         insert_times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(insert_stop - insert_start).count());
     }
 
-    size_t per_insert = std::accumulate(insert_times.begin(), insert_times.end(), decltype(insert_times)::value_type(0)) / inserts;
+    size_t per_insert = std::accumulate(insert_times.begin(), insert_times.end(), decltype(insert_times)::value_type(0)) / (inserts + applied_deletes);
 
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
@@ -177,9 +175,8 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / samples;
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld\n", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
-    fprintf(stdout, "\t%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
-    fprintf(stdout, "\t\t%ld\t%ld\t%ld\n", applied_deletes, lsm::mrun_cancelations, lsm::cancelations);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
 
     reset_lsm_perf_metrics();
 
@@ -193,7 +190,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 int main(int argc, char **argv)
 {
     if (argc < 8) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion>\n");
+        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion>\n"); 
         exit(EXIT_FAILURE);
     }
 
