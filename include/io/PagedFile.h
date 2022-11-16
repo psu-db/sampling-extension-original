@@ -24,7 +24,7 @@
 #include "util/types.h"
 #include "util/base.h"
 
-//#define PF_COUNT_IO
+#define PF_COUNT_IO
 
 #ifdef PF_COUNT_IO
     #define INC_READ() lsm::pf_read_cnt++
