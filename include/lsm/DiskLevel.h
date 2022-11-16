@@ -113,6 +113,13 @@ public:
     void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high, char *buffer) {
         for (ssize_t i = 0; i < m_run_cnt; ++i) {
             auto low_pos = m_runs[i]->get_lower_bound(low, buffer);
+
+            // If the low position is invalid, then there are no elements
+            // on this level within the specified sample range.
+            if (low_pos == INVALID_PNUM) {
+                continue;
+            }
+
             auto high_pos = m_runs[i]->get_upper_bound(high, buffer);
 
             // If high is larger than the largest key in the run,
