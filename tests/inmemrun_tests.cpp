@@ -23,7 +23,7 @@ static MemTable *create_test_memtable(size_t cnt)
 }
 
 
-static MemTable *create_double_seq_memtable(size_t cnt) 
+static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false) 
 {
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
@@ -31,14 +31,14 @@ static MemTable *create_double_seq_memtable(size_t cnt)
         key_type key = i;
         value_type val = i;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append((char*) &key, (char *) &val, ts);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
         value_type val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append((char*) &key, (char *) &val, ts);
     }
 
     return mtable;
@@ -182,6 +182,42 @@ START_TEST(t_get_upper_bound_index)
     delete run;
 }
 
+
+START_TEST(t_full_cancelation)
+{
+    size_t n = 100;
+    auto mtable = create_double_seq_memtable(n, false);
+    auto mtable_ts = create_double_seq_memtable(n, true);
+    BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+
+    InMemRun* run = new InMemRun(mtable, bf1);
+    InMemRun* run_ts = new InMemRun(mtable_ts, bf2);
+
+    ck_assert_int_eq(run->get_record_count(), n);
+    ck_assert_int_eq(run->get_tombstone_count(), 0);
+    ck_assert_int_eq(run_ts->get_record_count(), n);
+    ck_assert_int_eq(run_ts->get_tombstone_count(), n);
+
+    InMemRun* runs[] = {run, run_ts};
+
+    InMemRun* merged = new InMemRun(runs, 2, bf3);
+
+    ck_assert_int_eq(merged->get_tombstone_count(), 0);
+    ck_assert_int_eq(merged->get_record_count(), 0);
+
+    delete mtable;
+    delete mtable_ts;
+    delete bf1;
+    delete bf2;
+    delete bf3;
+    delete run;
+    delete run_ts;
+    delete merged;
+}
+END_TEST
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("InMemRun Unit Testing");
@@ -198,6 +234,9 @@ Suite *unit_testing()
     tcase_set_timeout(bounds, 100);   
     suite_add_tcase(unit, bounds);
 
+    TCase *tombstone = tcase_create("lsm::InMemRun::tombstone cancellation Testing");
+    tcase_add_test(tombstone, t_full_cancelation);
+    suite_add_tcase(unit, tombstone);
     return unit;
 }
 

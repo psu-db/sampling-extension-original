@@ -17,10 +17,12 @@ constexpr size_t inmem_isam_fanout = inmem_isam_node_size / (key_size + sizeof(c
 constexpr size_t inmem_isam_leaf_fanout = inmem_isam_node_size / record_size;
 constexpr size_t inmem_isam_node_keyskip = key_size * inmem_isam_fanout;
 
+thread_local size_t mrun_cancelations = 0;
+
 class InMemRun {
 public:
     InMemRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, mem_table->get_record_count() * record_size);
         //memset(m_data, 0, mem_table->get_record_count() * record_size);
         size_t offset = 0;
@@ -31,6 +33,7 @@ public:
             if (!is_tombstone(base) && (base + record_size < stop)
                 && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
                 base += record_size * 2;
+                mrun_cancelations++;
             } else {
                 //Masking off the ts.
                 *((rec_hdr*)get_hdr(base)) &= 1;
@@ -45,11 +48,13 @@ public:
             }
         }
 
-        build_internal_levels();
+        if (m_reccnt > 0) {
+            build_internal_levels();
+        }
     }
 
     InMemRun(InMemRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -99,7 +104,9 @@ public:
             }
         }
 
-        build_internal_levels();
+        if (m_reccnt > 0) {
+            build_internal_levels();
+        }
     }
 
     ~InMemRun() {
