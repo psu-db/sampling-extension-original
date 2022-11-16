@@ -290,6 +290,22 @@ public:
         return cnt;
     }
 
+
+    size_t get_tombstone_cnt() {
+        // FIXME: need to account for both memtables with concurrency
+        size_t cnt = this->memtable()->get_tombstone_count();
+
+        for (size_t i=0; i<this->memory_levels.size(); i++) {
+            if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_tombstone_count();
+        }
+
+        for (size_t i=0; i<this->disk_levels.size(); i++) {
+            if (this->disk_levels[i]) cnt += this->disk_levels[i]->get_tombstone_count();
+        }
+
+        return cnt;
+    }
+
     size_t get_height() {
         return this->memory_levels.size() + this->disk_levels.size();
     }
