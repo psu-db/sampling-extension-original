@@ -57,7 +57,7 @@ static void load_data(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, d
 
         lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
 
-        if (gsl_rng_uniform(g_rng) < delete_prop) {
+        if (gsl_rng_uniform(g_rng) < std::max(delete_prop, .25)) {
             auto del_key_buf = new char[lsm::key_size]();
             auto del_val_buf = new char[lsm::value_size]();
             memcpy(del_key_buf, key_buf.get(), lsm::key_size);
@@ -108,6 +108,12 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t inserted_records = 0;
     std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> to_insert(insert_batch_size);
 
+    size_t deletes = inserts * delete_prop;
+    std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> del_vec;
+    std::sample(to_delete->begin(), to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
+    size_t j=0;
+
+    size_t applied_deletes = 0;
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<insert_batch_size; i++) {
@@ -140,7 +146,15 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<inserted_from_batch; i++) {
-            tree->append(to_insert[i].first.get(), to_insert[i].second.get(), false, g_rng);
+            if (j<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
+                tree->append(del_vec[j].first.get(), del_vec[j].second.get(), true, g_rng); 
+                to_delete->erase(del_vec[j]);
+                j++;
+                applied_deletes++;
+                i--;
+            } else {
+                tree->append(to_insert[i].first.get(), to_insert[i].second.get(), false, g_rng);
+            }
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
 
@@ -148,15 +162,6 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     }
 
     size_t per_insert = std::accumulate(insert_times.begin(), insert_times.end(), decltype(insert_times)::value_type(0)) / inserts;
-
-    size_t deletes = inserts * delete_prop;
-    std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> del_vec;
-    std::sample(to_delete->begin(), to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
-
-    for (auto rec : del_vec) {
-        tree->append(rec.first.get(), rec.second.get(), true, g_rng);
-        to_delete->erase(rec);
-    }
 
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
@@ -172,8 +177,9 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / samples;
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld\n", tree->get_record_cnt(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
-    fprintf(stdout, "\t%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld\n", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
+    fprintf(stdout, "\t%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
+    fprintf(stdout, "\t\t%ld\t%ld\t%ld\n", applied_deletes, lsm::mrun_cancelations, lsm::cancelations);
 
     reset_lsm_perf_metrics();
 
@@ -218,7 +224,7 @@ int main(int argc, char **argv)
     }
     gsl_rng_set(g_rng, seed);
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, 10*1024, scale_factor, memory_levels,  g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, 10*1024*1024, scale_factor, memory_levels,  g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
