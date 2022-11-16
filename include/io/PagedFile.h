@@ -24,7 +24,24 @@
 #include "util/types.h"
 #include "util/base.h"
 
+//#define PF_COUNT_IO
+
+#ifdef PF_COUNT_IO
+    #define INC_READ() lsm::pf_read_cnt++
+    #define INC_WRITE() lsm::pf_write_cnt++
+    #define RESET_IO_CNT() \
+        lsm::pf_read_cnt = 0; \
+        lsm::pf_write_cnt = 0
+#else
+    #define INC_READ() do {} while (0)
+    #define INC_WRITE() do {} while (0)
+    #define RESET_IO_CNT() do {} while (0)
+#endif
+
 namespace lsm {
+
+extern thread_local size_t pf_read_cnt;
+extern thread_local size_t pf_write_cnt;
 
 class PagedFileIterator;
 

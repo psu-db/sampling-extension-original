@@ -9,6 +9,9 @@
 
 namespace lsm {
 
+thread_local size_t pf_read_cnt = 0;
+thread_local size_t pf_write_cnt = 0;
+
 PagedFile *PagedFile::create(const std::string fname, bool new_file)
 {
 //    auto flags = O_RDWR | O_DIRECT;
@@ -197,6 +200,9 @@ int PagedFile::raw_read(char *buffer, off_t amount, off_t offset)
     if (pread(this->fd, buffer, amount, offset) != amount) {
         return 0;
     }
+
+    INC_READ();
+
     return 1;
 }
 
@@ -220,6 +226,8 @@ int PagedFile::raw_readv(std::vector<char *> buffers, off_t buffer_size, off_t i
         return 0;
     }
 
+    INC_READ();
+
     delete[] iov;
 
     return 1;
@@ -235,6 +243,8 @@ int PagedFile::raw_write(const char *buffer, off_t amount, off_t offset)
     if (pwrite(this->fd, buffer, amount, offset) != amount) {
         return 0;
     }
+
+    INC_WRITE();
 
     return 1;
 }
