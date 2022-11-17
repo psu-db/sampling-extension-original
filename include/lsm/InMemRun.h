@@ -197,6 +197,10 @@ public:
         }
         return record_match(ptr, key, val, true);
     }
+
+    size_t get_memory_utilization() {
+        return m_reccnt * record_size + m_internal_node_cnt * inmem_isam_node_size;
+    }
     
 private:
     void build_internal_levels() {
@@ -209,6 +213,7 @@ private:
         } while (level_node_cnt > 1);
 
         m_isam_nodes = (char*)std::aligned_alloc(CACHELINE_SIZE, node_cnt * inmem_isam_node_size);
+        m_internal_node_cnt = node_cnt;
         memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
 
         char* current_node = m_isam_nodes;
@@ -263,6 +268,7 @@ private:
     char* m_root;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
+    size_t m_internal_node_cnt;
 };
 
 }

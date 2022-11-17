@@ -85,7 +85,15 @@ public:
 
 
     const char *get_record_at(size_t idx) {
-        return this->m_data + (record_size * idx);
+        return m_data + (record_size * idx);
+    }
+
+    size_t get_memory_utilization() {
+        return m_buffersize;
+    }
+
+    size_t get_aux_memory_utilization() {
+        return m_tombstone_filter->get_memory_utilization();
     }
 
 private:

@@ -142,6 +142,28 @@ public:
         return res;
     }
 
+    size_t get_aux_memory_utilization() {
+        size_t cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_bfs[i]) {
+                cnt += m_structure->m_bfs[i]->get_memory_utilization();
+            }
+        }
+
+        return cnt;
+    }
+
+    size_t get_memory_utilization() {
+        size_t cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_runs[i]) {
+                cnt += m_structure->m_runs[i]->get_memory_utilization();
+            }
+        }
+
+        return cnt;
+    }
+
 private:
     ssize_t m_level_no;
     

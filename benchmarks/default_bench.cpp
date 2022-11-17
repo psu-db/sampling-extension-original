@@ -175,7 +175,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / samples;
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), tree->get_memory_utilization(), tree->get_aux_memory_utilization(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
     fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
 
     reset_lsm_perf_metrics();
