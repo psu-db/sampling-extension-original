@@ -155,6 +155,10 @@ int PagedFile::write_pages(PageNum first_page, size_t page_cnt, const char *buff
 
 int PagedFile::remove_file()
 {
+    if (this->file_open) {
+        close(this->fd);
+    }
+
     if (unlink(this->fname.c_str())) {
         return 0;
     }
