@@ -77,9 +77,8 @@ static void free_isam(ISAMTree *tree, BloomFilter *filter, MemTable *tbl)
 {
     if (tree) {
         auto file = tree->get_pfile();
-        file->remove_file();
-        delete file;
         delete tree;
+        delete file;
     }
 
     if (filter) {
