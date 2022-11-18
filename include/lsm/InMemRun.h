@@ -23,8 +23,11 @@ class InMemRun {
 public:
     InMemRun(MemTable* mem_table, BloomFilter* bf)
     :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, mem_table->get_record_count() * record_size);
-        //memset(m_data, 0, mem_table->get_record_count() * record_size);
+
+        size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
+        assert(alloc_size % CACHELINE_SIZE == 0);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+
         size_t offset = 0;
         m_reccnt = 0;
         auto base = mem_table->sorted_output();
@@ -66,23 +69,25 @@ public:
             //assert(runs[i]);
             if (runs[i]) {
                 auto base = runs[i]->sorted_output();
-                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size});
+                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size, 0, runs[i]->get_record_count()});
                 attemp_reccnt += runs[i]->get_record_count();
                 pq.push(cursors[i].ptr, i);
             } else {
-                cursors.emplace_back(Cursor{nullptr, nullptr});
+                cursors.emplace_back(Cursor{nullptr, nullptr, 0, 0});
             }
-            
         }
 
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, attemp_reccnt * record_size);
+        size_t alloc_size = (attemp_reccnt * record_size) + (CACHELINE_SIZE - (attemp_reccnt * record_size) % CACHELINE_SIZE);
+        assert(alloc_size % CACHELINE_SIZE == 0);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+
         size_t offset = 0;
         
         while (pq.size()) {
             auto now = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
             if (!is_tombstone(now.data) && next.data != nullptr &&
-                !key_cmp(get_key(now.data), get_key(next.data)) && is_tombstone(next.data)) {
+                !record_cmp(now.data, next.data) && is_tombstone(next.data)) {
                 
                 pq.pop(); pq.pop();
                 auto& cursor1 = cursors[now.version];
@@ -212,7 +217,10 @@ private:
             node_cnt += level_node_cnt;
         } while (level_node_cnt > 1);
 
-        m_isam_nodes = (char*)std::aligned_alloc(CACHELINE_SIZE, node_cnt * inmem_isam_node_size);
+        size_t alloc_size = (node_cnt * inmem_isam_node_size) + (CACHELINE_SIZE - (node_cnt * inmem_isam_node_size) % CACHELINE_SIZE);
+        assert(alloc_size % CACHELINE_SIZE == 0);
+
+        m_isam_nodes = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
         m_internal_node_cnt = node_cnt;
         memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
 
