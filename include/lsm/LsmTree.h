@@ -335,6 +335,51 @@ public:
         return cnt;
     }
 
+    /*
+     * Flattens the entire LSM structure into a single ISAM Tree object
+     * and return a pointer to it. Will be used as a simple baseline for
+     * performance comparisons.
+     */
+    ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
+        auto mem_level = new MemoryLevel(-1, 1);
+        mem_level->append_mem_table(this->memtable(), rng);
+
+        std::vector<InMemRun *> runs;
+        std::vector<ISAMTree *> trees;
+
+        size_t memlevels = 0;
+        size_t disklevels = 0;
+
+
+        for (int i=this->memory_levels.size()-1; i>=0; i--) {
+            if (memory_levels[i]) {
+                for (int j=memory_levels[i]->get_run_count()-1; j>=0; j--) {
+                    runs.push_back(memory_levels[i]->get_run(j));
+                }
+            }
+        }
+
+        runs.push_back(mem_level->get_run(0));
+
+        for (int i=disk_levels.size()-1; i>=0; i--) {
+            if (disk_levels[i]) {
+                for (int j=disk_levels[i]->get_run_count()-1; j>=0; j--) {
+                    trees.push_back(disk_levels[i]->get_run(j));
+                }
+            }
+        }
+
+        auto pfile = PagedFile::create(root_directory + "flattened_tree.dat");
+        auto bf = new BloomFilter(0, BF_HASH_FUNCS, rng);
+
+        auto flat = new ISAMTree(pfile, rng, bf, runs.data(), runs.size(), trees.data(), trees.size());
+
+        delete mem_level;
+        delete bf;
+
+        return flat;
+    }
+
 private:
     MemTable *memtable_1;
     MemTable *memtable_2;

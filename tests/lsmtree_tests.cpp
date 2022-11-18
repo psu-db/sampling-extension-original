@@ -1,4 +1,6 @@
 #include <check.h>
+#include <set>
+#include <random>
 
 #include "lsm/LsmTree.h"
 
@@ -207,6 +209,82 @@ START_TEST(t_range_sample_disklevels)
 END_TEST
 
 
+START_TEST(t_flat_isam)
+{
+    size_t reccnt = 100000;
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+
+    std::set<std::pair<key_type, value_type>> records; 
+    std::set<std::pair<key_type, value_type>> to_delete;
+    std::set<std::pair<key_type, value_type>> deleted;
+
+    while (records.size() < reccnt) {
+        key_type key = rand();
+        value_type val = rand();
+
+        if (records.find({key, val}) != records.end()) continue;
+
+        records.insert({key, val});
+    }
+
+    size_t deletes = 0;
+    for (auto rec : records) {
+        const char *key_ptr = (char *) &rec.first;
+        const char *val_ptr = (char *) &rec.second;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+
+         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
+            std::vector<std::pair<key_type, value_type>> del_vec;
+            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
+
+            for (size_t i=0; i<del_vec.size(); i++) {
+                const char *d_key_ptr = (char *) &del_vec[i].first;
+                const char *d_val_ptr = (char *) &del_vec[i].second;
+                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                deletes++;
+                to_delete.erase(del_vec[i]);
+                deleted.insert(del_vec[i]);
+            }
+        }
+
+        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
+            to_delete.insert(rec);
+        }
+    }
+
+    auto flat = lsm->get_flat_isam_tree(g_rng);
+
+    ck_assert_int_eq(flat->get_record_count(), reccnt - deletes);
+    ck_assert_int_eq(flat->get_tombstone_count(), 0);
+
+    auto iter = flat->start_scan();
+
+    size_t recs = 0;
+    key_type prev_key = 0;
+    while (iter->next()) {
+        auto pg = iter->get_item();
+        for (size_t i=0; i<PAGE_SIZE/record_size; i++) {
+            if (recs >= flat->get_record_count()) break;
+            recs++;
+
+            auto rec = pg + (i * record_size);
+            auto k = *(key_type*) get_key(rec);
+            auto r = *(value_type*) get_val(rec);
+            ck_assert_int_ge(k, prev_key);
+            prev_key = k;
+        }
+    }
+
+    auto pfile = flat->get_pfile();
+
+    delete iter;
+    delete flat;
+    delete lsm;
+    delete pfile;
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("lsm::LSMTree Unit Testing");
@@ -227,6 +305,11 @@ Suite *unit_testing()
     tcase_add_test(sampling, t_range_sample_disklevels);
 
     suite_add_tcase(unit, sampling);
+
+    TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
+    tcase_add_test(flat, t_flat_isam);
+
+    suite_add_tcase(unit, flat);
 
     return unit;
 }
