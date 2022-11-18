@@ -164,6 +164,19 @@ public:
         return cnt;
     }
 
+    double get_tombstone_prop() {
+        size_t tscnt = 0;
+        size_t reccnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_runs[i]) {
+                tscnt += m_structure->m_runs[i]->get_tombstone_count();
+                reccnt += m_structure->m_runs[i]->get_record_count();
+            }
+        }
+
+        return (double) tscnt / (double) (tscnt + reccnt);
+    }
+
 private:
     ssize_t m_level_no;
     

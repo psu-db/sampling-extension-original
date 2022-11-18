@@ -10,7 +10,7 @@ std::string dir = "./tests/data/lsmtree";
 
 START_TEST(t_create)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     ck_assert_ptr_nonnull(lsm);
     ck_assert_int_eq(lsm->get_record_cnt(), 0);
@@ -23,7 +23,7 @@ END_TEST
 
 START_TEST(t_append)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -45,7 +45,7 @@ END_TEST
 
 START_TEST(t_append_with_mem_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -67,7 +67,7 @@ END_TEST
 
 START_TEST(t_append_with_disk_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -89,7 +89,7 @@ END_TEST
 
 START_TEST(t_range_sample_memtable)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -129,7 +129,7 @@ END_TEST
 
 START_TEST(t_range_sample_memlevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -169,7 +169,7 @@ END_TEST
 
 START_TEST(t_range_sample_disklevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;

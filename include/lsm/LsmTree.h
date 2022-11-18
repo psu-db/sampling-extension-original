@@ -35,14 +35,15 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 class LSMTree {
 public:
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
-            gsl_rng *rng) 
+            double max_tombstone_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
+          max_tombstone_prop(max_tombstone_prop),
           root_directory(root_dir),
           memory_level_cnt(memory_levels),
           memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
@@ -342,6 +343,7 @@ private:
     std::atomic<bool> memtable_2_merging;
 
     size_t scale_factor;
+    double max_tombstone_prop;
 
     std::vector<MemoryLevel *> memory_levels;
     size_t memory_level_cnt;
