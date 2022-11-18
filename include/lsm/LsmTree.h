@@ -336,6 +336,53 @@ public:
     }
 
     /*
+     * Flattens the entire LSM structure into a single in-memory sorted
+     * array and return a pointer to it. Will be used as a simple baseline
+     * for performance comparisons.
+     *
+     * len will be updated to hold the number of records within the tree.
+     *
+     * It is the caller's responsibility to manage the memory of the returned
+     * object. It should be released with free().
+     *
+     * NOTE: If an interface to create InMemRun objects using ISAM Trees were
+     * added, this could be implemented just like get_flat_isam_tree and return
+     * one of those. But as it stands, this seems the most straightforward way
+     * to get a static in-memory structure.
+     */
+    char *get_sorted_array(size_t *len, gsl_rng *rng)
+    {
+        // flatten into an ISAM Tree to get a contiguous run of all
+        // the records, and cancel out all tombstones.
+        auto tree = this->get_flat_isam_tree(rng);
+        size_t alloc_sz = tree->get_record_count() * record_size + (CACHELINE_SIZE - tree->get_record_count() * record_size % CACHELINE_SIZE);
+        char *array = (char *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
+
+        assert(tree->get_tombstone_count() == 0);
+
+        *len = tree->get_record_count();
+
+        auto iter = tree->start_scan();
+        size_t offset = 0;
+        while (iter->next() && offset < tree->get_record_count()) {
+            auto pg = iter->get_item();
+            for (size_t i=0; i<PAGE_SIZE/record_size; i++) {
+                memcpy(array + offset*record_size, pg + i*record_size, record_size);
+                offset++;
+
+                if (offset >= tree->get_record_count()) break;
+            }
+        }
+
+        auto pfile = tree->get_pfile();
+        delete iter;
+        delete tree;
+        delete pfile;
+
+        return array;
+    }
+
+    /*
      * Flattens the entire LSM structure into a single ISAM Tree object
      * and return a pointer to it. Will be used as a simple baseline for
      * performance comparisons.
