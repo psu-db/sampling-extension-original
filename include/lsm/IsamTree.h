@@ -718,7 +718,7 @@ private:
 
     inline size_t max_leaf_record_idx(PageNum pnum) {
         if (pnum == this->last_data_page) {
-            size_t excess_records = rec_cnt % (PAGE_SIZE) / record_size;
+            size_t excess_records = rec_cnt % (PAGE_SIZE / record_size);
 
             if (excess_records > 0) {
                 return excess_records - 1;
