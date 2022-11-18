@@ -35,7 +35,7 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 class LSMTree {
 public:
@@ -394,13 +394,10 @@ public:
         std::vector<InMemRun *> runs;
         std::vector<ISAMTree *> trees;
 
-        size_t memlevels = 0;
-        size_t disklevels = 0;
 
-
-        for (int i=this->memory_levels.size()-1; i>=0; i--) {
+        for (int i=memory_levels.size() - 1; i>= 0; i--) {
             if (memory_levels[i]) {
-                for (int j=memory_levels[i]->get_run_count()-1; j>=0; j--) {
+                for (int j=0; j<memory_levels[i]->get_run_count(); j++) {
                     runs.push_back(memory_levels[i]->get_run(j));
                 }
             }
@@ -408,9 +405,9 @@ public:
 
         runs.push_back(mem_level->get_run(0));
 
-        for (int i=disk_levels.size()-1; i>=0; i--) {
+        for (int i=disk_levels.size() - 1; i >= 0; i--) {
             if (disk_levels[i]) {
-                for (int j=disk_levels[i]->get_run_count()-1; j>=0; j--) {
+                for (int j=0; j<disk_levels[i]->get_run_count(); j++) {
                     trees.push_back(disk_levels[i]->get_run(j));
                 }
             }
@@ -489,10 +486,17 @@ private:
         // Determine where to insert the new level
         if (this->memory_levels.size() < this->memory_level_cnt) {
             new_level_idx = this->memory_levels.size();
+
+            if (new_level_idx > 0) {
+                assert(this->memory_levels[new_level_idx-1]->get_run(0)->get_tombstone_count() == 0);
+            }
             this->memory_levels.emplace_back(new MemoryLevel(new_level_idx, new_run_cnt));
             new_disk_level = false;
         } else {
             new_level_idx = this->disk_levels.size();
+            if (new_level_idx > 0) {
+                assert(this->disk_levels[new_level_idx-1]->get_run(0)->get_tombstone_count() == 0);
+            }
             this->disk_levels.emplace_back(new DiskLevel(this->memory_levels.size() + new_level_idx, new_run_cnt, this->root_directory));
             new_disk_level = true;
         }
