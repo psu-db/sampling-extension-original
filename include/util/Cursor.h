@@ -9,6 +9,8 @@ namespace lsm {
 struct Cursor {
     const char *ptr;
     const char *end;
+    size_t cur_rec_idx;
+    size_t rec_cnt;
 };
 
 /*
@@ -23,6 +25,10 @@ struct Cursor {
  */
 inline bool advance_cursor(Cursor &cur, PagedFileIterator *iter = nullptr) {
     cur.ptr += record_size;
+    cur.cur_rec_idx++;
+
+    if (cur.cur_rec_idx >= cur.rec_cnt) return false;
+
     if (cur.ptr >= cur.end) {
         if (iter && iter->next()) {
             cur.ptr = iter->get_item();

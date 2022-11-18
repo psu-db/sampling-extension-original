@@ -61,7 +61,7 @@ public:
             assert(isam_iters[i]->next());
             const char *start = isam_iters[i]->get_item();
             const char *end = start + ISAM_RECORDS_PER_LEAF * record_size;
-            cursors[TCUR(i)] = Cursor{start, end};
+            cursors[TCUR(i)] = Cursor{start, end, 0, trees[i]->get_record_count()};
             pq.push(cursors[TCUR(i)].ptr, TCUR(i));
 
             incoming_record_cnt += trees[i]->get_record_count();
@@ -73,7 +73,7 @@ public:
             assert(runs[i]);
             const char *start = runs[i]->sorted_output();
             const char *end = start + runs[i]->get_record_count() * record_size;
-            cursors[RCUR(i)] = Cursor{start, end};
+            cursors[RCUR(i)] = Cursor{start, end, 0, runs[i]->get_record_count()};
             pq.push(cursors[RCUR(i)].ptr, RCUR(i));
 
             incoming_record_cnt += runs[i]->get_record_count();
@@ -93,12 +93,6 @@ public:
         this->rec_cnt = 0;
         this->tombstone_cnt = 0;
 
-        size_t tree_rec_cnts[tree_cnt];
-        for (size_t i=0; i<tree_cnt; i++) {
-            tree_rec_cnts[i] = 0;
-        }
-
-
         while (pq.size()) {
             auto cur = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
@@ -116,6 +110,7 @@ public:
                 auto iter = (cur.version >= tree_cnt) ? nullptr : isam_iters[cur.version];
                 if (advance_cursor(cursors[cur.version], iter)) {
                     pq.push(cursors[cur.version].ptr, cur.version);
+
                 }
 
                 iter = (next.version >= tree_cnt ? nullptr : isam_iters[next.version]);
@@ -138,14 +133,7 @@ public:
             auto iter = (cur.version >= tree_cnt) ? nullptr : isam_iters[cur.version];
 
             if (advance_cursor(cursors[cur.version], iter)) {
-                if (cur.version < tree_cnt) {
-                    tree_rec_cnts[cur.version]++;
-                    if (tree_rec_cnts[cur.version] < trees[cur.version]->get_record_count()) {
-                        pq.push(cursors[cur.version].ptr, cur.version);
-                    }
-                } else {
                     pq.push(cursors[cur.version].ptr, cur.version);
-                }
             }
 
             if (output_idx >= ISAM_INIT_BUFFER_SIZE * ISAM_RECORDS_PER_LEAF) {
