@@ -35,7 +35,7 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 typedef ssize_t level_index;
 
@@ -498,25 +498,19 @@ private:
     }
 
     inline void merge_memtable_into_l0(MemTable *mtable, gsl_rng *rng) {
-        if (this->memory_levels[0]) {
-            if (LSM_LEVELING) {
-                // FIXME: Kludgey implementation due to interface constraints.
-                auto old_level = this->memory_levels[0];
-                auto temp_level = new MemoryLevel(0, 1);
-                temp_level->append_mem_table(mtable, rng);
-                auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
+        assert(this->memory_levels[0]);
+        if (LSM_LEVELING) {
+            // FIXME: Kludgey implementation due to interface constraints.
+            auto old_level = this->memory_levels[0];
+            auto temp_level = new MemoryLevel(0, 1);
+            temp_level->append_mem_table(mtable, rng);
+            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
 
-                this->memory_levels[0] = new_level;
-                delete temp_level;
-                this->mark_as_unused(old_level);
-            } else {
-                this->memory_levels[0]->append_mem_table(mtable, rng);
-            }
-
-        } else { 
-            auto new_level = new MemoryLevel(0, (LSM_LEVELING) ? 1 : this->scale_factor);
-            new_level->append_mem_table(mtable, rng);
             this->memory_levels[0] = new_level;
+            delete temp_level;
+            this->mark_as_unused(old_level);
+        } else {
+            this->memory_levels[0]->append_mem_table(mtable, rng);
         }
     }
 
