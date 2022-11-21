@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug False)
+set(debug false)
 set(tests True)
 set(bench True)
 
@@ -28,6 +28,7 @@ add_library(${PROJECT_NAME} STATIC)
 if (tests) 
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/tests")
 
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/lsmtree")
     add_executable(pagedfile_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/pagedfile_tests.cpp)
     target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(pagedfile_tests PUBLIC -llib)
