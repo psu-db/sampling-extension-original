@@ -442,7 +442,6 @@ private:
     std::vector<DiskLevel *> disk_levels;
 
     level_index last_level_idx;
-    double tombstone_prop;
 
     // The directory containing all of the backing files
     // for this LSM Tree.
@@ -504,7 +503,7 @@ private:
                 assert(this->disk_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
             this->disk_levels.emplace_back(new DiskLevel(new_idx, new_run_cnt, this->root_directory));
-        }
+        } 
 
         this->last_level_idx++;
         return new_idx;
@@ -677,9 +676,9 @@ private:
         bool disk_level;
         size_t level_idx = this->decode_level_index(idx, &disk_level);
 
-        if (disk_level && this->disk_levels[level_idx]->get_tombstone_prop() > this->tombstone_prop) {
+        if (disk_level && this->disk_levels[level_idx]->get_tombstone_prop() > this->max_tombstone_prop) {
             this->merge_down(idx, rng);
-        } else if (!disk_level && this->memory_levels[level_idx]->get_tombstone_prop() > this->tombstone_prop) {
+        } else if (!disk_level && this->memory_levels[level_idx]->get_tombstone_prop() > this->max_tombstone_prop) {
             this->merge_down(idx, rng);
         }
 
