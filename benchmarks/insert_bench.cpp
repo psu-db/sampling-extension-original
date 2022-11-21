@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     }
     gsl_rng_set(g_rng, seed);
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, 100, scale_factor, memory_levels,  g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, 100, scale_factor, memory_levels, 1.0, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

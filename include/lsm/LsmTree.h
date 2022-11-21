@@ -493,14 +493,14 @@ private:
         size_t new_run_cnt = (LSM_LEVELING) ? 1 : this->scale_factor;
         if (this->memory_levels.size() < this->memory_level_cnt) {
             new_idx = this->memory_levels.size();
-            if (this->memory_levels.size() > 0) {
+            if (new_idx > 0) {
                 assert(this->memory_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
             this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt));
         } else {
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
-                assert(this->disk_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
+                assert(this->disk_levels[new_idx - this->memory_levels.size() - 1]->get_run(0)->get_tombstone_count() == 0);
             }
             this->disk_levels.emplace_back(new DiskLevel(new_idx, new_run_cnt, this->root_directory));
         } 
