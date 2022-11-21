@@ -427,6 +427,23 @@ public:
         return flat;
     }
 
+
+    bool validate_tombstone_proportion() {
+        for (size_t i=0; i<this->memory_levels.size(); i++) {
+            if (this->memory_levels[i] && this->memory_levels[i]->get_tombstone_prop() > this->max_tombstone_prop) {
+                return false;
+            }
+        }
+
+        for (size_t i=0; i<this->disk_levels.size(); i++) {
+            if (this->disk_levels[i] && this->disk_levels[i]->get_tombstone_prop() > this->max_tombstone_prop) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 private:
     MemTable *memtable_1;
     MemTable *memtable_2;

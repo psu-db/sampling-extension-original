@@ -346,6 +346,59 @@ START_TEST(t_flat_isam)
 END_TEST
 
 
+START_TEST(t_tombstone_merging_01)
+{
+    size_t reccnt = 100000;
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
+
+    std::set<std::pair<key_type, value_type>> records; 
+    std::set<std::pair<key_type, value_type>> to_delete;
+    std::set<std::pair<key_type, value_type>> deleted;
+
+    while (records.size() < reccnt) {
+        key_type key = rand();
+        value_type val = rand();
+
+        if (records.find({key, val}) != records.end()) continue;
+
+        records.insert({key, val});
+    }
+
+    size_t deletes = 0;
+    size_t cnt=0;
+    for (auto rec : records) {
+        const char *key_ptr = (char *) &rec.first;
+        const char *val_ptr = (char *) &rec.second;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+
+         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
+            std::vector<std::pair<key_type, value_type>> del_vec;
+            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
+
+            for (size_t i=0; i<del_vec.size(); i++) {
+                const char *d_key_ptr = (char *) &del_vec[i].first;
+                const char *d_val_ptr = (char *) &del_vec[i].second;
+                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                deletes++;
+                to_delete.erase(del_vec[i]);
+                deleted.insert(del_vec[i]);
+            }
+        }
+
+        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
+            to_delete.insert(rec);
+        }
+
+        ck_assert(lsm->validate_tombstone_proportion());
+    }
+
+    ck_assert(lsm->validate_tombstone_proportion());
+
+    delete lsm;
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("lsm::LSMTree Unit Testing");
@@ -372,6 +425,12 @@ Suite *unit_testing()
     tcase_add_test(flat, t_sorted_array);
 
     suite_add_tcase(unit, flat);
+
+
+    TCase *ts = tcase_create("lsm::LSMTree::tombstone_compaction Testing");
+    tcase_add_test(ts, t_tombstone_merging_01);
+    tcase_set_timeout(ts, 500);
+    suite_add_tcase(unit, ts);
 
     return unit;
 }
