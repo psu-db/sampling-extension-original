@@ -442,6 +442,7 @@ private:
     std::vector<DiskLevel *> disk_levels;
 
     level_index last_level_idx;
+    double tombstone_prop;
 
     // The directory containing all of the backing files
     // for this LSM Tree.
@@ -514,18 +515,13 @@ private:
     // merges to make room for it.
     inline void merge_memtable(gsl_rng *rng) {
         auto mtable = this->memtable();
-        level_index merge_base_level = this->find_mergable_level(-1, mtable);
-        if (merge_base_level == -1) {
-            merge_base_level = this->grow();
-        }
 
-        for (level_index i=merge_base_level; i>0; i--) {
-            this->merge_levels(i, i-1, rng);
-            this->enforce_tombstone_maximum(i);
+        if (!this->can_merge_with(0, mtable->get_record_count())) {
+            this->merge_down(0, rng);
         }
 
         this->merge_memtable_into_l0(mtable, rng);
-        this->enforce_tombstone_maximum(0);
+        this->enforce_tombstone_maximum(0, rng);
 
         mtable->truncate();
         return;
@@ -537,14 +533,31 @@ private:
      * routine will recursively perform any necessary merges to make room for the 
      * specified level.
      */
-    //inline void merge_down(level_index idx);
+    inline void merge_down(level_index idx, gsl_rng *rng) {
+        level_index merge_base_level = this->find_mergable_level(idx);
+        if (merge_base_level == -1) {
+            merge_base_level = this->grow();
+        }
+
+        for (level_index i=merge_base_level; i>idx; i--) {
+            this->merge_levels(i, i-1, rng);
+            this->enforce_tombstone_maximum(i, rng);
+        }
+
+        return;
+    }
 
     /*
      * Find the first level below the level indicated by idx that
      * is capable of sustaining a merge operation and return its
-     * level index. If no such level exists, returns -1.
+     * level index. If no such level exists, returns -1. Also
+     * returns -1 if idx==0, and no such level exists, to simplify
+     * the logic of the first merge.
      */
-    inline level_index find_mergable_level(level_index idx, MemTable *mtable) {
+    inline level_index find_mergable_level(level_index idx, MemTable *mtable=nullptr) {
+
+        if (idx == 0 && this->memory_levels.size() == 0) return -1;
+
         bool level_found = false;
         bool disk_level;
         level_index merge_level_idx;
@@ -660,7 +673,16 @@ private:
      * if the limit is exceeded, forcibly merge levels until all
      * levels below idx are below the limit.
      */
-    inline void enforce_tombstone_maximum(level_index idx) {
+    inline void enforce_tombstone_maximum(level_index idx, gsl_rng *rng) {
+        bool disk_level;
+        size_t level_idx = this->decode_level_index(idx, &disk_level);
+
+        if (disk_level && this->disk_levels[level_idx]->get_tombstone_prop() > this->tombstone_prop) {
+            this->merge_down(idx, rng);
+        } else if (!disk_level && this->memory_levels[level_idx]->get_tombstone_prop() > this->tombstone_prop) {
+            this->merge_down(idx, rng);
+        }
+
         return;
     }
 
@@ -713,7 +735,7 @@ private:
             }
         } 
 
-        if (! this->memory_levels[vector_index]) {
+        if (vector_index >= this->memory_levels.size() || !this->memory_levels[vector_index]) {
             return false;
         }
 
