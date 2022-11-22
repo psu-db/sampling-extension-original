@@ -693,9 +693,9 @@ private:
         bool disk_level;
         size_t level_idx = this->decode_level_index(idx, &disk_level);
 
-        if (disk_level && this->disk_levels[level_idx]->get_tombstone_prop() > this->max_tombstone_prop) {
+        if (((double) disk_level && this->disk_levels[level_idx]->get_tombstone_count() / (double) this->calc_level_record_capacity(idx)) > this->max_tombstone_prop) {
             this->merge_down(idx, rng);
-        } else if (!disk_level && this->memory_levels[level_idx]->get_tombstone_prop() > this->max_tombstone_prop) {
+        } else if (!disk_level && ((double) this->memory_levels[level_idx]->get_tombstone_count() / (double) this->calc_level_record_capacity(idx)) > this->max_tombstone_prop) {
             this->merge_down(idx, rng);
         }
 
