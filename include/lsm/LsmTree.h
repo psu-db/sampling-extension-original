@@ -15,6 +15,10 @@ namespace lsm {
 
 thread_local size_t sampling_attempts = 0;
 thread_local size_t sampling_rejections = 0;
+thread_local size_t deletion_rejections = 0;
+thread_local size_t bounds_rejections = 0;
+thread_local size_t tombstone_rejections = 0;
+
 /*
  * thread_local size_t various_sampling_times go here.
  */
@@ -137,6 +141,9 @@ public:
         size_t rejections = sample_sz;
         sampling_attempts = 0;
         sampling_rejections = 0;
+        tombstone_rejections = 0;
+        bounds_rejections = 0;
+        deletion_rejections = 0;
 
         std::vector<size_t> run_samples(record_counts.size(), 0);
 
@@ -475,7 +482,18 @@ private:
     }
 
     inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
-        return is_tombstone(record) || key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0 || this->is_deleted(record, rid, buffer, memtable, memtable_cutoff);
+        if (is_tombstone(record)) {
+            tombstone_rejections++;
+            return true;
+        } else if (key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0) {
+            bounds_rejections++;
+            return true;
+        } else if (this->is_deleted(record, rid, buffer, memtable, memtable_cutoff)) {
+            deletion_rejections++;
+            return true;
+        }
+
+        return false;
     }
 
     inline size_t rid_to_disk(RunId rid) {

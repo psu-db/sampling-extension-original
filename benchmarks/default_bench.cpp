@@ -57,7 +57,7 @@ static void load_data(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, d
 
         lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
 
-        if (gsl_rng_uniform(g_rng) < std::max(delete_prop, .25)) {
+        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
             auto del_key_buf = new char[lsm::key_size]();
             auto del_val_buf = new char[lsm::value_size]();
             memcpy(del_key_buf, key_buf.get(), lsm::key_size);
@@ -88,8 +88,10 @@ static void reset_lsm_perf_metrics() {
     lsm::disklevel_sample_time = 0;
     lsm::rejection_check_time = 0;
 
-    lsm::sampling_rejections = 0;
-    lsm::sampling_attempts = 0;
+    /*
+     * rejection counters are zeroed automatically by the
+     * sampling function itself.
+     */
 
     RESET_IO_CNT(); 
 }
@@ -138,7 +140,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
             inserted_from_batch++;
             to_insert[i] = {std::shared_ptr<char[]>(key_buf), std::shared_ptr<char[]>(val_buf)};
 
-            if (gsl_rng_uniform(g_rng) < delete_prop) {
+            if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
                 to_delete->insert(to_insert[i]);
             }
         }
@@ -175,7 +177,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / samples;
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), tree->get_memory_utilization(), tree->get_aux_memory_utilization(), lsm::sampling_attempts, lsm::sampling_rejections, per_insert, sample_time);
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), tree->get_memory_utilization(), tree->get_aux_memory_utilization(), lsm::sampling_attempts, lsm::sampling_rejections, lsm::bounds_rejections, lsm::tombstone_rejections, lsm::deletion_rejections, per_insert, sample_time);
     fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
 
     reset_lsm_perf_metrics();
