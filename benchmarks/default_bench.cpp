@@ -189,8 +189,8 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
 int main(int argc, char **argv)
 {
-    if (argc < 8) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion>\n"); 
+    if (argc < 9) {
+        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion> <max_delete_proportion>\n");
         exit(EXIT_FAILURE);
     }
 
@@ -201,8 +201,9 @@ int main(int argc, char **argv)
     double selectivity = atof(argv[5]);
     size_t memory_levels = atol(argv[6]);
     double delete_prop = atof(argv[7]);
+    double max_delete_prop = atof(argv[8]);
 
-    std::string root_dir = "benchmarks/data/insert_bench";
+    std::string root_dir = "benchmarks/data/default_bench";
 
     g_rng = gsl_rng_alloc(gsl_rng_mt19937);
     to_delete = new std::set<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>>();
@@ -221,7 +222,7 @@ int main(int argc, char **argv)
     }
     gsl_rng_set(g_rng, seed);
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, 10*1024*1024, scale_factor, memory_levels, 1.0, g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
