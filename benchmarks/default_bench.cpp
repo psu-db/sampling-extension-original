@@ -145,7 +145,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<inserted_from_batch; i++) {
-            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
+            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop && del_vec[applied_deletes].first.get() != nullptr) {
                 tree->append(del_vec[applied_deletes].first.get(), del_vec[applied_deletes].second.get(), true, g_rng); 
                 to_delete->erase(del_vec[applied_deletes]);
                 applied_deletes++;
@@ -190,7 +190,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 int main(int argc, char **argv)
 {
     if (argc < 9) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion> <max_delete_proportion>\n");
+        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <selectivity> <memory_levels> <delete_proportion> <max_delete_proportion> [insert_batch_proportion]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -202,6 +202,7 @@ int main(int argc, char **argv)
     size_t memory_levels = atol(argv[6]);
     double delete_prop = atof(argv[7]);
     double max_delete_prop = atof(argv[8]);
+    double insert_batch = (argc == 10) ? atof(argv[9]) : 0.1;
 
     std::string root_dir = "benchmarks/data/default_bench";
 
@@ -229,16 +230,26 @@ int main(int argc, char **argv)
 
     // warm up the tree with initial_insertions number of initially inserted
     // records
-    size_t initial_insertions = .1 * record_count;
+    size_t initial_insertions = insert_batch * record_count;
     load_data(&datafile, &sampling_lsm, initial_insertions, delete_prop);
 
     size_t sample_size = 1000;
     size_t samples = 1000;
-    size_t inserts = .1 * record_count;
+    size_t inserts = insert_batch * record_count;
+
+    size_t total_inserts = initial_insertions;
 
     while (benchmark(&sampling_lsm, &datafile, inserts, samples,
                      sample_size, min_key, max_key, selectivity, delete_prop)) {
-            ;
+            total_inserts += inserts;
+
+            if (total_inserts + inserts > record_count) {
+                inserts = record_count - total_inserts;
+            }
+
+            if (total_inserts >= record_count) {
+                break;
+            }
         }
 
     delete to_delete;
