@@ -19,19 +19,23 @@ public:
     , m_runs(new ISAMTree*[run_cap]{nullptr})
     , m_bfs(new BloomFilter*[run_cap]{nullptr})
     , m_pfiles(new PagedFile*[run_cap]{nullptr})
+    , m_owns(new bool[run_cap]{true})
     , m_directory(root_directory)
     , m_version(version) {}
 
     ~DiskLevel() {
         for (size_t i = 0; i < m_run_cap; ++i) {
-            if (m_runs[i]) delete m_runs[i];
-            if (m_bfs[i]) delete m_bfs[i];
-            if (m_pfiles[i]) delete m_pfiles[i];
+            if (m_owns[i]) {
+                if (m_runs[i]) delete m_runs[i];
+                if (m_bfs[i]) delete m_bfs[i];
+                if (m_pfiles[i]) delete m_pfiles[i];
+            }
         }
 
         delete[] m_runs;
         delete[] m_bfs;
         delete[] m_pfiles;
+        delete[] m_owns;
     }
 
     static DiskLevel *merge_levels(DiskLevel *base_level, MemoryLevel *new_level, const gsl_rng *rng) {
@@ -89,12 +93,19 @@ public:
 
     void append_merged_runs(DiskLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_run_cap);
-        m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
+        if (level->get_run_count() == 1) {
+            m_bfs[m_run_cnt] = level->m_bfs[0];
+            m_pfiles[m_run_cnt] = level->m_pfiles[0];
+            m_runs[m_run_cnt] = level->m_runs[0];
+            level->release_ownership(0);
+        } else {
+            m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
 
-        m_pfiles[m_run_cnt] = PagedFile::create(this->get_fname(m_run_cnt), true);
-        assert(m_pfiles[m_run_cnt]);
+            m_pfiles[m_run_cnt] = PagedFile::create(this->get_fname(m_run_cnt), true);
+            assert(m_pfiles[m_run_cnt]);
 
-        m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], nullptr, 0, level->m_runs, level->m_run_cnt);
+            m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], nullptr, 0, level->m_runs, level->m_run_cnt);
+        }
         ++m_run_cnt;
     }
 
@@ -213,10 +224,17 @@ private:
     BloomFilter** m_bfs;
     PagedFile** m_pfiles;
     std::string m_directory;
+    bool *m_owns;
+
 
     std::string get_fname(size_t idx) {
         return m_directory + "/level" + std::to_string(m_level_no)
             + "_run" + std::to_string(idx) + "-" + std::to_string(m_version + 1) + ".dat";
+    }
+
+    void release_ownership(size_t idx) {
+        assert(idx < m_run_cnt);
+        m_owns[idx] = false;
     }
 };
 
