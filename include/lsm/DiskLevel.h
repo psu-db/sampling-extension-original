@@ -106,6 +106,7 @@ public:
 
             m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], nullptr, 0, level->m_runs, level->m_run_cnt);
         }
+        m_owns[m_run_cnt] = true;
         ++m_run_cnt;
     }
 
