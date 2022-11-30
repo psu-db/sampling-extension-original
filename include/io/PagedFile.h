@@ -134,6 +134,8 @@ public:
 
     std::string get_fname();
 
+    void rename_file(std::string fname);
+
     ~PagedFile();
 
 private:

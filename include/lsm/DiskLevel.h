@@ -52,6 +52,7 @@ public:
         assert(run2);
 
         res->m_pfiles[0] = PagedFile::create(base_level->get_fname(0));
+        res->m_owns[0] = true;
         assert(res->m_pfiles[0]);
         
         res->m_runs[0] = (run1) ? new ISAMTree(res->m_pfiles[0], rng, res->m_bfs[0], &run2, 1, &run1, 1)
@@ -64,11 +65,20 @@ public:
     static DiskLevel *merge_levels(DiskLevel *base_level, DiskLevel *new_level, const gsl_rng *rng) {
         assert(base_level->m_level_no > new_level->m_level_no);
 
-        if (new_level->get_run_count() == 0) {
-            fprintf(stderr, "here!\n");
-        }
-
         auto res = new DiskLevel(base_level->m_level_no, 1, base_level->m_directory, base_level->m_version+1);
+
+        // If the base level is empty, we can simply shift the new
+        // level into it without rebuilding the level
+        if (base_level->get_run_count() == 0) {
+            res->m_bfs[0] = new_level->m_bfs[0];
+            res->m_pfiles[0] = new_level->m_pfiles[0];
+            res->m_pfiles[0]->rename_file(base_level->get_fname(0));
+            res->m_runs[0] = new_level->m_runs[0];
+            res->m_owns[0] = true;
+            res->m_run_cnt = 1;
+            new_level->release_ownership(0);
+            return res;
+        }
 
         res->m_bfs[0] = new BloomFilter(BF_FPR,
                             new_level->get_tombstone_count() + base_level->get_tombstone_count(),
@@ -93,9 +103,14 @@ public:
 
     void append_merged_runs(DiskLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_run_cap);
+
+        // If the level being appended only has one run in it, we can 
+        // simply move the contents of that level into this one without
+        // running the merge process
         if (level->get_run_count() == 1) {
             m_bfs[m_run_cnt] = level->m_bfs[0];
             m_pfiles[m_run_cnt] = level->m_pfiles[0];
+            m_pfiles[m_run_cnt]->rename_file(this->get_fname(m_run_cnt));
             m_runs[m_run_cnt] = level->m_runs[0];
             level->release_ownership(0);
         } else {
@@ -118,6 +133,7 @@ public:
         assert(m_pfiles[m_run_cnt]);
 
         m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], rng, m_bfs[m_run_cnt], level->m_structure->m_runs, level->m_run_cnt, nullptr, 0);
+        m_owns[m_run_cnt] = true;
         ++m_run_cnt;
     }
 
@@ -236,6 +252,10 @@ private:
     void release_ownership(size_t idx) {
         assert(idx < m_run_cnt);
         m_owns[idx] = false;
+        m_run_cnt--;
+        m_bfs[idx] = nullptr;
+        m_runs[idx] = nullptr;
+        m_pfiles[idx] = nullptr;
     }
 };
 

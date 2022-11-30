@@ -39,7 +39,7 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 typedef ssize_t level_index;
 
@@ -436,15 +436,22 @@ public:
 
 
     bool validate_tombstone_proportion() {
+        long double ts_prop;
         for (size_t i=0; i<this->memory_levels.size(); i++) {
-            if (this->memory_levels[i] && this->memory_levels[i]->get_tombstone_prop() > this->max_tombstone_prop) {
-                return false;
+            if (this->memory_levels[i]) {
+                ts_prop = (long double) this->memory_levels[i]->get_tombstone_count() / (long double) this->calc_level_record_capacity(i);
+                if (ts_prop > (long double) this->max_tombstone_prop) {
+                    return false;
+                }
             }
         }
 
         for (size_t i=0; i<this->disk_levels.size(); i++) {
-            if (this->disk_levels[i] && this->disk_levels[i]->get_tombstone_prop() > this->max_tombstone_prop) {
-                return false;
+            if (this->disk_levels[i]) {
+                ts_prop = (long double) this->disk_levels[i]->get_tombstone_count() / (long double) this->calc_level_record_capacity(this->memory_levels.size() + i);
+                if (ts_prop > (long double) this->max_tombstone_prop) {
+                    return false;
+                }
             }
         }
 
@@ -535,7 +542,7 @@ private:
         } else {
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
-                assert(this->disk_levels[new_idx - this->memory_levels.size() - 1]->get_run(0)->get_tombstone_count() == 0);
+                assert(this->disk_levels[this->disk_levels.size() - 1]->get_run(0)->get_tombstone_count() == 0);
             }
             this->disk_levels.emplace_back(new DiskLevel(new_idx, new_run_cnt, this->root_directory));
         } 
@@ -711,9 +718,10 @@ private:
         bool disk_level;
         size_t level_idx = this->decode_level_index(idx, &disk_level);
 
-        if (((double) disk_level && this->disk_levels[level_idx]->get_tombstone_count() / (double) this->calc_level_record_capacity(idx)) > this->max_tombstone_prop) {
-            this->merge_down(idx, rng);
-        } else if (!disk_level && ((double) this->memory_levels[level_idx]->get_tombstone_count() / (double) this->calc_level_record_capacity(idx)) > this->max_tombstone_prop) {
+        long double ts_prop = (disk_level) ? (long double) this->disk_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx)
+                                           : (long double) this->memory_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
+
+        if (ts_prop > (long double) this->max_tombstone_prop) {
             this->merge_down(idx, rng);
         }
 
@@ -793,11 +801,10 @@ private:
      */
     inline ssize_t decode_level_index(level_index idx, bool *disk_level) {
         *disk_level = false;
+
         if (idx < 0) return -1;
 
-        if (idx < this->memory_level_cnt) {
-            return idx;
-        } 
+        if (idx < this->memory_level_cnt) return idx;
 
         *disk_level = true;
         return idx - this->memory_level_cnt;

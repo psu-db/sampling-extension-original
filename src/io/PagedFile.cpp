@@ -293,6 +293,16 @@ std::string PagedFile::get_fname()
     return this->fname;
 }
 
+void PagedFile::rename_file(std::string new_fname)
+{
+    if(rename(this->fname.c_str(), new_fname.c_str())) {
+        fprintf(stderr, "%s -> %s\n", this->fname.c_str(), new_fname.c_str());
+        perror("IN RENAME:");
+        assert(false);
+    }
+
+    this->fname = new_fname;
+}
 
 off_t PagedFile::get_file_size() const
 {
