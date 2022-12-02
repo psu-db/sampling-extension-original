@@ -5,8 +5,11 @@ import numpy as np
 
 def main():
     data = np.loadtxt(sys.argv[1], delimiter=",", dtype=np.longlong) 
-    percentile = float(sys.argv[2])
-    print(np.percentile(data, percentile))
+    print(np.min(data), end=" ")
+    for i in range(2, len(sys.argv)):
+        percentile = float(sys.argv[i])
+        print(np.percentile(data, percentile), end=" ")
+    print(np.max(data))
 
 if __name__ == '__main__':
     main()
