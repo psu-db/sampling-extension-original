@@ -15,6 +15,7 @@ namespace lsm {
 struct wirs_node {
     struct wirs_node *left, *right;
     key_type low, high;
+    double weight;
     Alias alias;
 };
 
@@ -23,7 +24,7 @@ thread_local size_t mrun_cancelations = 0;
 class WIRSRun {
 public:
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0) {
 
         size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
@@ -58,7 +59,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -146,13 +147,66 @@ public:
     }
 
     void get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, gsl_rng *rng) {
-        
+        // low - high -> decompose to a set of nodes.
+        // Build Alias across the decomposed nodes.
+        std::vector<struct wirs_node*> nodes;
+        decompose_node(m_root, lower_key, upper_key, nodes);
+        double tot_weight = 0.0;
+        std::vector<double> weights;
+        for (const auto& node: nodes) {
+            tot_weight += node->weight;
+            weights.emplace_back(node->weight);
+        }
+
+        assert(tot_weight > 0.0);
+        for (auto& w: weights) w /= tot_weight;
+
+        Alias top_level_alias(weights);
+        // k -> sampling: three levels. 1. select a node -> select a fat point -> select a record.
+        size_t cnt = 0;
+        do {
+            // first level....
+            auto node = nodes[top_level_alias.get(rng)];
+            // second level...
+            auto fat_point = node->alias.get(rng);
+            // third level...
+            size_t rec_offset = m_alias[fat_point].get(rng);
+            auto record = m_data + rec_offset * record_size;
+            if (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0) {
+                memcpy(sample_set + cnt * record_size, record, record_size);
+                ++cnt;
+            }
+        } while (cnt < sample_sz);
     }
     
 private:
+    bool covered_by(struct wirs_node* node, const char* lower_key, const char* upper_key) {
+        auto low_index = node->low * m_group_size;
+        auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
+        return key_cmp(lower_key, get_key(m_data + low_index * record_size)) == -1 &&
+               key_cmp(get_key(m_data + high_index * record_size), upper_key) == -1;
+    }
+
+    bool intersects(struct wirs_node* node, const char* lower_key, const char* upper_key) {
+        auto low_index = node->low * m_group_size;
+        auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
+        return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 ||
+               key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
+    }
+
+    void decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
+        if (node == nullptr) return;
+        else if (covered_by(node, lower_key, upper_key)) {
+            output.emplace_back(node);
+        } else {
+            if (node->left && intersects(node->left, lower_key, upper_key)) decompose_node(node->left, lower_key, upper_key, output);
+            if (node->right && intersects(node->right, lower_key, upper_key)) decompose_node(node->right, lower_key, upper_key, output);
+        }
+    }
+
     struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
         if (low == high) {
-            return new wirs_node{nullptr, nullptr, low, high, Alias({1.0})};
+            return new wirs_node{nullptr, nullptr, low, high, weights[low], Alias({1.0})};
         } else if (low > high) return nullptr;
         std::vector<double> node_weights;
         double sum = 0.0;
@@ -169,12 +223,12 @@ private:
         size_t mid = (low + high) / 2;
         return new wirs_node{construct_wirs_node(weights, low, mid),
                              construct_wirs_node(weights, mid + 1, high),
-                             low, high, Alias(node_weights)};
+                             low, high, sum, Alias(node_weights)};
     }
 
     void build_wirs_structure() {
-        size_t group_size = std::ceil(std::log(m_reccnt));
-        size_t n_groups = std::ceil(m_reccnt / group_size);
+        m_group_size = std::ceil(std::log(m_reccnt));
+        size_t n_groups = std::ceil(m_reccnt / m_group_size);
         
         // Fat point construction + low level alias....
         double sum_weight = 0.0;
@@ -185,7 +239,7 @@ private:
         while (i < m_reccnt) {
             double group_weight = 0.0;
             group_norm_weight.clear();
-            for (size_t k = 0; k < group_size && i < m_reccnt; ++k, ++i) {
+            for (size_t k = 0; k < m_group_size && i < m_reccnt; ++k, ++i) {
                 auto w = get_weight(m_data + record_size * i);
                 group_norm_weight.emplace_back(w);
                 group_weight += w;
@@ -212,6 +266,7 @@ private:
     wirs_node* m_root;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
+    size_t m_group_size;
 };
 
 }
