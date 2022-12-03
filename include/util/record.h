@@ -14,20 +14,23 @@ constexpr static size_t value_size = sizeof(value_type);
 constexpr static size_t header_size = sizeof(rec_hdr);
 
 // Layout ==> key | value | flags (each part padded to 8.)
-constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size;
+// Adding one more thing -> weight.
+constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size + sizeof(double);
 
-inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone) {
+inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone, double weight = 1.0) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= tombstone;
+    *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
-inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts) {
+inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, double weight = 1.0) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 1) | (tombstone ? 1 : 0));
+    *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
 /*
@@ -61,6 +64,10 @@ inline static const char* get_hdr(const char *buffer) {
 
 inline static bool is_tombstone(const char *buffer) {
     return *((rec_hdr *)get_hdr(buffer)) & 1;
+}
+
+inline static double get_weight(const char* buffer) {
+    return *(double*)(get_hdr(buffer) + header_size);
 }
 
 static int record_match(const char* rec, const char* key, const char* value, bool tombstone) {
