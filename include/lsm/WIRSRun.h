@@ -168,9 +168,9 @@ public:
             // first level....
             auto node = nodes[top_level_alias.get(rng)];
             // second level...
-            auto fat_point = node->alias.get(rng);
+            auto fat_point = node->low + node->alias.get(rng);
             // third level...
-            size_t rec_offset = m_alias[fat_point].get(rng);
+            size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
             auto record = m_data + rec_offset * record_size;
             if (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0) {
                 memcpy(sample_set + cnt * record_size, record, record_size);
@@ -260,7 +260,6 @@ private:
         m_root = construct_wirs_node(weights, 0, n_groups);
     }
 
-    // Members: sorted data, internal ISAM levels, reccnt;
     char* m_data;
     std::vector<Alias> m_alias;
     wirs_node* m_root;
