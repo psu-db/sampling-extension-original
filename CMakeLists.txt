@@ -67,6 +67,12 @@ if (bench)
     target_link_libraries(default_bench PUBLIC ${PROJECT_NAME})
     target_compile_options(default_bench PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/default_bench")
+
+
+    add_executable(btree_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_bench.cpp)
+    target_link_libraries(btree_bench PUBLIC ${PROJECT_NAME})
+    target_compile_options(btree_bench PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_bench")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
