@@ -68,6 +68,10 @@ if (bench)
     target_compile_options(default_bench PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/default_bench")
 
+    add_executable(sample_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/sample_bench.cpp)
+    target_link_libraries(sample_bench PUBLIC ${PROJECT_NAME})
+    target_compile_options(sample_bench PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/sample_bench")
 
     add_executable(btree_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_bench.cpp)
     target_link_libraries(btree_bench PUBLIC ${PROJECT_NAME})
