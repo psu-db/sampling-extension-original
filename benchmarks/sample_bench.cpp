@@ -101,6 +101,9 @@ static void benchmark(lsm::LSMTree *tree, size_t n, size_t k, size_t sample_atte
     // Average the latency over all the iterations
     double avg_latency = (double) total_latency.count() / sample_attempts;
 
+    free(buffer1);
+    free(buffer2);
+
     // Print the average latency to stdout
     printf("%.0lf\n", avg_latency);
 }
