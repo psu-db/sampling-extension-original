@@ -188,7 +188,7 @@ static void benchmark(char *data, size_t n, size_t k, size_t sample_attempts, si
 
 int main(int argc, char **argv)
 {
-    if (argc < 8) {
+    if (argc < 4) {
         fprintf(stderr, "Usage: static_bench <filename> <record_count> <selectivity>\n");
         exit(EXIT_FAILURE);
     }

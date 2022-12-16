@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug false)
+set(debug False)
 set(tests True)
 set(bench True)
 
@@ -77,6 +77,12 @@ if (bench)
     target_link_libraries(btree_bench PUBLIC ${PROJECT_NAME})
     target_compile_options(btree_bench PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_bench")
+    
+
+    add_executable(static_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_bench.cpp)
+    target_link_libraries(static_bench PUBLIC ${PROJECT_NAME})
+    target_compile_options(static_bench PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_bench")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
