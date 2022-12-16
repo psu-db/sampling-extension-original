@@ -81,6 +81,9 @@ static void build_tree(TreeMap *tree, std::fstream *file) {
 
 static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts, size_t min, size_t max, double selectivity)
 {
+    std::vector<lsm::key_type> sample;
+    sample.reserve(k);
+
     // Start the high-resolution clock
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -89,9 +92,6 @@ static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts,
     {
         // Lower and upper bounds for the sample
         auto range = sample_range(min, max, selectivity);
-
-        std::vector<lsm::key_type> sample;
-        sample.reserve(k);
         tree->range_sample(range.first, range.second, k, sample, g_rng);
     }
 
