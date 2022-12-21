@@ -1,100 +1,6 @@
 #define ENABLE_TIMER
 
-#include "lsm/LsmTree.h"
-
-#include <cstdlib>
-#include <cstdio>
-#include <chrono>
-#include <algorithm>
-#include <numeric>
-#include <memory>
-
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <unordered_set>
-#include <set>
-#include <string>
-#include <random>
-
-gsl_rng *g_rng;
-
-static std::set<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> *to_delete;
-
-static bool next_record(std::fstream *file, char *key, char *val)
-{
-    std::string line;
-    if (std::getline(*file, line, '\n')) {
-        std::stringstream line_stream(line);
-        std::string key_field;
-        std::string value_field;
-
-        std::getline(line_stream, value_field, '\t');
-        std::getline(line_stream, key_field, '\t');
-
-        *((lsm::key_type*) key) = atol(key_field.c_str());
-        *((lsm::value_type*) val) = atol(value_field.c_str());
-        return true;
-    }
-
-    key = nullptr;
-    val = nullptr;
-    return false;
-}
-
-
-static void load_data(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
-{
-    std::string line;
-
-    auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    auto val_buf = std::make_unique<char[]>(lsm::value_size);
-    
-    for (size_t i=0; i<count; i++) {
-        if (!next_record(file, key_buf.get(), val_buf.get())) {
-            break;
-        }
-
-        lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
-
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
-        }
-    }
-}
-
-
-static std::pair<lsm::key_type, lsm::key_type> sample_range(lsm::key_type min, lsm::key_type max, double selectivity)
-{
-    size_t range_length = (max - min) * selectivity;
-
-    lsm::key_type max_bottom = max - range_length;
-    lsm::key_type bottom = gsl_rng_uniform_int(g_rng, max_bottom);
-
-    return std::pair<lsm::key_type, lsm::key_type> {bottom, bottom + range_length};
-}
-
-
-static void reset_lsm_perf_metrics() {
-    lsm::sample_range_time = 0;
-    lsm::alias_time = 0;
-    lsm::alias_query_time = 0;
-    lsm::memtable_sample_time = 0;
-    lsm::memlevel_sample_time = 0;
-    lsm::disklevel_sample_time = 0;
-    lsm::rejection_check_time = 0;
-
-    /*
-     * rejection counters are zeroed automatically by the
-     * sampling function itself.
-     */
-
-    RESET_IO_CNT(); 
-}
+#include "bench.h"
 
 static bool benchmark(lsm::LSMTree *tree, std::fstream *file, 
                       size_t inserts, double delete_prop) {
@@ -106,40 +12,35 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     bool out_of_data = false;
 
     size_t inserted_records = 0;
-    std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> to_insert(insert_batch_size);
+    std::vector<shared_record> to_insert(insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
-    std::vector<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>> del_vec;
-    std::sample(to_delete->begin(), to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
+    std::vector<shared_record> del_vec;
+    std::sample(g_to_delete->begin(), g_to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
 
     size_t applied_deletes = 0;
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<insert_batch_size; i++) {
-            auto key_buf = new char[lsm::key_size]();
-            auto val_buf = new char[lsm::value_size]();
-            if (!next_record(file, key_buf, val_buf)) {
+            auto rec = create_shared_record();
+            if (!next_record(file, rec.first.get(), rec.second.get())) {
                     // If no new records were loaded, there's no reason to duplicate
                     // the last round of sampling.
                     if (i == 0) {
-                        delete[] key_buf;
-                        delete[] val_buf;
                         return false;
                     }
 
                     // Otherwise, we'll mark that we've reached the end, and sample one
                     // last time before ending.
                     out_of_data = true;
-                    delete[] key_buf;
-                    delete[] val_buf;
                     break;
                 }
             inserted_records++;
             inserted_from_batch++;
-            to_insert[i] = {std::shared_ptr<char[]>(key_buf), std::shared_ptr<char[]>(val_buf)};
+            to_insert[i] = {rec.first, rec.second};
 
             if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-                to_delete->insert(to_insert[i]);
+                g_to_delete->insert({rec.first, rec.second});
             }
         }
 
@@ -147,7 +48,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
         for (size_t i=0; i<inserted_from_batch; i++) {
             if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop && del_vec[applied_deletes].first.get() != nullptr) {
                 tree->append(del_vec[applied_deletes].first.get(), del_vec[applied_deletes].second.get(), true, g_rng); 
-                to_delete->erase(del_vec[applied_deletes]);
+                g_to_delete->erase(del_vec[applied_deletes]);
                 applied_deletes++;
                 i--;
             } else {
@@ -189,22 +90,11 @@ int main(int argc, char **argv)
 
     std::string root_dir = "benchmarks/data/default_bench";
 
-    g_rng = gsl_rng_alloc(gsl_rng_mt19937);
-    to_delete = new std::set<std::pair<std::shared_ptr<char[]>, std::shared_ptr<char[]>>>();
+    init_bench_env(true);
 
     // use for selectivity calculations
     lsm::key_type min_key = 0;
     lsm::key_type max_key = record_count - 1;
-
-    // initialize the random number generator
-    unsigned int seed = 0;
-    {
-        std::fstream urandom;
-        urandom.open("/dev/urandom", std::ios::in|std::ios::binary);
-        urandom.read((char *) &seed, sizeof(seed));
-        urandom.close();
-    }
-    gsl_rng_set(g_rng, seed);
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, g_rng);
 
@@ -214,24 +104,24 @@ int main(int argc, char **argv)
     // warm up the tree with initial_insertions number of initially inserted
     // records
     size_t initial_insertions = insert_batch * record_count;
-    load_data(&datafile, &sampling_lsm, initial_insertions, delete_prop);
+    warmup(&datafile, &sampling_lsm, initial_insertions, delete_prop);
 
     size_t inserts = insert_batch * record_count;
 
     size_t total_inserts = initial_insertions;
 
     while (benchmark(&sampling_lsm, &datafile, inserts, delete_prop)) {
-            total_inserts += inserts;
+        total_inserts += inserts;
 
-            if (total_inserts + inserts > record_count) {
-                inserts = record_count - total_inserts;
-            }
-
-            if (total_inserts >= record_count) {
-                break;
-            }
+        if (total_inserts + inserts > record_count) {
+            inserts = record_count - total_inserts;
         }
 
-    delete to_delete;
+        if (total_inserts >= record_count) {
+            break;
+        }
+    }
+
+    delete_bench_env();
     exit(EXIT_SUCCESS);
 }
