@@ -29,10 +29,31 @@ struct btree_key_extract {
 };
 typedef tlx::BTree<lsm::key_type, btree_record, btree_key_extract> TreeMap;
 
+btree_record shared_to_btree(shared_record *rec) {
+    lsm::key_type key = *(lsm::key_type*) rec->first.get(); 
+    lsm::value_type val = *(lsm::value_type*) rec->second.get();
+
+    return {key, val};
+}
+
+
+btree_record to_btree(record *rec) {
+    lsm::key_type key = *(lsm::key_type*) rec->first; 
+    lsm::value_type val = *(lsm::value_type*) rec->second;
+
+    return {key, val};
+}
+
 static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
+
+typedef enum Operation {
+    READ,
+    WRITE,
+    DELETE
+} Operation;
 
 
 static unsigned int get_random_seed()
@@ -112,6 +133,28 @@ static bool next_record(std::fstream *file, char *key, char *val)
 }
 
 
+static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n, double del_prop) {
+    for (size_t i=0; i<n; i++) {
+        auto rec = create_shared_record();
+        if (!next_record(file, rec.first.get(), rec.second.get())) {
+            if (i == 0) {
+                return false;
+            }
+
+            break;
+        }
+
+        vec.push_back({rec.first, rec.second});
+
+        if (gsl_rng_uniform(g_rng) < del_prop + .15) {
+            g_to_delete->insert({rec.first, rec.second});
+        }
+    }
+
+    return true;
+}
+
+
 static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
 {
     std::string line;
@@ -125,6 +168,34 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
         }
 
         lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
+
+        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
+            auto del_key_buf = new char[lsm::key_size]();
+            auto del_val_buf = new char[lsm::value_size]();
+            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
+            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
+            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        }
+    }
+}
+
+
+static void warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop)
+{
+    std::string line;
+
+    auto key_buf = std::make_unique<char[]>(lsm::key_size);
+    auto val_buf = std::make_unique<char[]>(lsm::value_size);
+    
+    for (size_t i=0; i<count; i++) {
+        if (!next_record(file, key_buf.get(), val_buf.get())) {
+            break;
+        }
+
+        lsm::key_type key = *(lsm::key_type*) key_buf.get();
+        lsm::value_type val = *(lsm::value_type*) val_buf.get();
+        auto res = btree->insert({key, val});
+        assert(res.second);
 
         if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
             auto del_key_buf = new char[lsm::key_size]();

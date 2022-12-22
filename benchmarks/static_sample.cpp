@@ -6,11 +6,11 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 {
     char *result = (char*)malloc(k * lsm::record_size);
 
-    int start = 0, end = 0;
+    size_t start = 0, end = 0;
 
-    int low = 0, high = n - 1;
+    size_t low = 0, high = n - 1;
     while (low <= high) {
-        int mid = (low + high) / 2;
+        size_t mid = (low + high) / 2;
 
         const char *key = lsm::get_key(data + mid * lsm::record_size);
 
@@ -24,7 +24,7 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 
     low = 0, high = n - 1;
     while (low <= high) {
-        int mid = (low + high) / 2;
+        size_t mid = (low + high) / 2;
 
         const char *key = lsm::get_key(data + mid * lsm::record_size);
 
@@ -36,8 +36,8 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 
     end = high;
 
-    for (int i = 0; i < k; i++) {
-        int idx = gsl_rng_uniform_int(g_rng, end - start + 1) + start;
+    for (size_t i = 0; i < k; i++) {
+        size_t idx = gsl_rng_uniform_int(g_rng, end - start + 1) + start;
         memcpy(result + i * lsm::record_size, data + idx * lsm::record_size, lsm::record_size);
     }
 
