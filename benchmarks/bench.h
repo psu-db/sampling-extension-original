@@ -180,6 +180,46 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 }
 
 
+static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop) {
+    std::string line;
+
+    auto key_buf = std::make_unique<char[]>(lsm::key_size);
+    auto val_buf = std::make_unique<char[]>(lsm::value_size);
+    
+    for (size_t i=0; i<count; i++) {
+        if (!next_record(file, key_buf.get(), val_buf.get())) {
+            return false;
+        }
+
+        lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
+
+        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
+            auto del_key_buf = new char[lsm::key_size]();
+            auto del_val_buf = new char[lsm::value_size]();
+            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
+            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
+            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        }
+
+        if (gsl_rng_uniform(g_rng) < delete_prop) {
+            std::vector<shared_record> del_vec;
+            std::sample(g_to_delete->begin(), g_to_delete->end(), 
+                        std::back_inserter(del_vec), 1, 
+                        std::mt19937{std::random_device{}()});
+
+            if (del_vec.size() == 0) {
+                continue;
+            }
+
+            lsmtree->append(del_vec[0].first.get(), del_vec[0].second.get(), true, g_rng); 
+            g_to_delete->erase(del_vec[i]);
+        }
+    }
+
+    return true;
+}
+
+
 static void warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop)
 {
     std::string line;

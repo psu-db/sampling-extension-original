@@ -17,8 +17,12 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t insert_cnt;
     size_t delete_cnt;
 
+    size_t operation_cnt = 200;
+
+    size_t reccnt = tree->get_record_cnt();
+
     size_t ops = 0;
-    while (ops < 100000) {
+    while (ops < operation_cnt) {
         double op = gsl_rng_uniform(g_rng);
         Operation operation;
 
@@ -84,7 +88,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t avg_sample_tput = (double) (1.0 / (double) avg_sample_latency) * 1e9;
     size_t avg_delete_tput = (double) (1.0 / (double) avg_delete_latency) * 1e9;
 
-    fprintf(stdout, "%ld %ld %ld\n", avg_sample_latency, avg_insert_latency, avg_delete_tput);
+    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_latency, avg_insert_latency, avg_delete_tput);
 
     free(buffer1);
     free(buffer2);
@@ -121,7 +125,15 @@ int main(int argc, char **argv)
     double warmup_prop = 0.1;
     warmup(&datafile, &sampling_tree, record_count * warmup_prop, del_prop); 
 
-    size_t n;
+    double phase_insert_prop = .1;
+    size_t phase_insert_cnt = phase_insert_prop * record_count;
+
+    bool records_to_insert = true;
+    while (records_to_insert) {
+        benchmark(&sampling_tree, &datafile, sample_size, 10000, min_key, max_key, selectivity, write_prop, del_prop);
+        records_to_insert = insert_to(&datafile, &sampling_tree, phase_insert_cnt, del_prop);
+    }
+
     benchmark(&sampling_tree, &datafile, sample_size, 10000, min_key, max_key, selectivity, write_prop, del_prop);
 
     delete_bench_env();
