@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug False)
+set(debug false)
 set(tests True)
 set(bench True)
 
@@ -83,10 +83,10 @@ if (bench)
     target_compile_options(lsm_mixed PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
 
-    add_executable(btree_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_mixed.cpp)
-    target_link_libraries(btree_mixed PUBLIC ${PROJECT_NAME})
-    target_compile_options(btree_mixed PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_mixed")
+    #add_executable(btree_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_mixed.cpp)
+    #target_link_libraries(btree_mixed PUBLIC ${PROJECT_NAME})
+    #target_compile_options(btree_mixed PUBLIC -llib)
+    #file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_mixed")
 
     add_executable(static_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_sample.cpp)
     target_link_libraries(static_sample PUBLIC ${PROJECT_NAME})

@@ -212,7 +212,7 @@ static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, d
             }
 
             lsmtree->append(del_vec[0].first.get(), del_vec[0].second.get(), true, g_rng); 
-            g_to_delete->erase(del_vec[i]);
+            g_to_delete->erase(del_vec[0]);
         }
     }
 

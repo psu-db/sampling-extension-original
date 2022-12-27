@@ -13,11 +13,11 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     unsigned long total_insert_time = 0;
     unsigned long total_delete_time = 0;
 
-    size_t sample_cnt;
-    size_t insert_cnt;
-    size_t delete_cnt;
+    size_t sample_cnt = 0;
+    size_t insert_cnt = 0;
+    size_t delete_cnt = 0;
 
-    size_t operation_cnt = 200;
+    size_t operation_cnt = 1000;
 
     size_t reccnt = tree->get_record_cnt();
 
@@ -69,7 +69,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             //sample
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
-            for (int i=0; i<trial_cnt; i++) {
+            for (int i=0; i<trial_cnt/10; i++) {
                 auto range = get_key_range(min, max, selectivity);
                 tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
             }
@@ -80,13 +80,13 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
         }
     }
 
-    size_t avg_insert_latency = total_insert_time / insert_cnt;
-    size_t avg_sample_latency = total_sample_time / sample_cnt;
-    size_t avg_delete_latency = total_delete_time / delete_cnt;
+    size_t avg_insert_latency = (insert_cnt) ? total_insert_time / insert_cnt : 0;
+    size_t avg_sample_latency = (sample_cnt) ? total_sample_time / sample_cnt : 0;
+    size_t avg_delete_latency = (delete_cnt) ? total_delete_time / delete_cnt : 0;
 
-    size_t avg_insert_tput = (double) (1.0 / (double) avg_insert_latency) * 1e9;
-    size_t avg_sample_tput = (double) (1.0 / (double) avg_sample_latency) * 1e9;
-    size_t avg_delete_tput = (double) (1.0 / (double) avg_delete_latency) * 1e9;
+    size_t avg_insert_tput = (avg_insert_latency) ? (double) (1.0 / (double) avg_insert_latency) * 1e9 : 0;
+    size_t avg_sample_tput = (avg_sample_latency) ? (double) (1.0 / (double) avg_sample_latency) * 1e9 : 0;
+    size_t avg_delete_tput = (avg_delete_latency) ? (double) (1.0 / (double) avg_delete_latency) * 1e9 : 0;;
 
     fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_latency, avg_insert_latency, avg_delete_tput);
 
