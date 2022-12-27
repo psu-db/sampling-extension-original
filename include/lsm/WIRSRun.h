@@ -24,7 +24,7 @@ thread_local size_t mrun_cancelations = 0;
 class WIRSRun {
 public:
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
 
         size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
@@ -59,7 +59,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -182,6 +182,47 @@ public:
             }
         } while (cnt < sample_sz);
     }
+
+    size_t get_lower_bound(const char *key) const {
+        size_t min = 0;
+        size_t max = m_reccnt - 1;
+
+        const char * record_key;
+        while (min < max) {
+            size_t mid = (min + max) / 2;
+            record_key = get_key(m_data + (mid * record_size));
+
+            if (key_cmp(key, record_key) > 0) {
+                min = mid + 1;
+            } else {
+                max = mid;
+            }
+        }
+
+        return min;
+    }
+
+    bool check_tombstone(const char* key, const char* val) const {
+        size_t idx = get_lower_bound(key);
+        if (idx >= m_reccnt) {
+            return false;
+        }
+
+        auto ptr = m_data + (get_lower_bound(key) * record_size);
+
+        char buf[record_size];
+        layout_record(buf, key, val, false, 0.0);
+        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
+            ptr += record_size;
+        }
+
+        return record_match(ptr, key, val, true);
+    }
+
+
+    size_t get_memory_utilization() {
+        return 0;
+    }
     
 private:
     bool covered_by(struct wirs_node* node, const char* lower_key, const char* upper_key) {
@@ -242,7 +283,7 @@ private:
 
     void build_wirs_structure() {
         m_group_size = std::ceil(std::log(m_reccnt));
-        size_t n_groups = std::ceil(m_reccnt / m_group_size);
+        size_t n_groups = std::ceil((double) m_reccnt / (double) m_group_size);
         
         // Fat point construction + low level alias....
         double sum_weight = 0.0;
@@ -271,7 +312,7 @@ private:
 
         assert(weights.size() == n_groups);
 
-        m_root = construct_wirs_node(weights, 0, n_groups);
+        m_root = construct_wirs_node(weights, 0, n_groups-1);
     }
 
     char* m_data;

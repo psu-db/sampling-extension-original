@@ -5,7 +5,7 @@
 
 #include "util/types.h"
 #include "util/bf_config.h"
-#include "lsm/InMemRun.h"
+#include "lsm/WIRSRun.h"
 #include "ds/BloomFilter.h"
 
 namespace lsm {
@@ -20,7 +20,7 @@ private:
     struct InternalLevelStructure {
         InternalLevelStructure(size_t cap)
         : m_cap(cap)
-        , m_runs(new InMemRun*[cap]{nullptr})
+        , m_runs(new WIRSRun*[cap]{nullptr})
         , m_bfs(new BloomFilter*[cap]{nullptr}) {} 
 
         ~InternalLevelStructure() {
@@ -34,7 +34,7 @@ private:
         }
 
         size_t m_cap;
-        InMemRun** m_runs;
+        WIRSRun** m_runs;
         BloomFilter** m_bfs;
     };
 
@@ -64,37 +64,31 @@ public:
             new BloomFilter(BF_FPR,
                             new_level->get_tombstone_count() + base_level->get_tombstone_count(),
                             BF_HASH_FUNCS, rng);
-        InMemRun* runs[2];
+        WIRSRun* runs[2];
         runs[0] = base_level->m_structure->m_runs[0];
         runs[1] = new_level->m_structure->m_runs[0];
 
-        res->m_structure->m_runs[0] = new InMemRun(runs, 2, res->m_structure->m_bfs[0]);
+        res->m_structure->m_runs[0] = new WIRSRun(runs, 2, res->m_structure->m_bfs[0]);
         return res;
     }
 
     void append_mem_table(MemTable* memtable, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, memtable->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new InMemRun(memtable, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new WIRSRun(memtable, m_structure->m_bfs[m_run_cnt]);
         ++m_run_cnt;
     }
 
     void append_merged_runs(MemoryLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new InMemRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new WIRSRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt]);
         ++m_run_cnt;
     }
 
     // Append the sample range in-order.....
     void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high) {
-        for (ssize_t i = 0; i < m_run_cnt; ++i) {
-            auto low_pos = m_structure->m_runs[i]->get_lower_bound(low);
-            auto high_pos = m_structure->m_runs[i]->get_upper_bound(high);
-            assert(high_pos >= low_pos);
-            dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
-            rec_cnts.emplace_back(high_pos - low_pos);
-        }
+
     }
 
     bool bf_rejection_check(size_t run_stop, const char* key) {
@@ -117,7 +111,7 @@ public:
         return m_structure->m_runs[run_no]->get_record_at(idx);
     }
     
-    InMemRun* get_run(size_t idx) {
+    WIRSRun* get_run(size_t idx) {
         return m_structure->m_runs[idx];
     }
 

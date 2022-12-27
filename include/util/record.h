@@ -8,16 +8,18 @@ namespace lsm {
 typedef uint32_t rec_hdr;
 typedef uint64_t key_type;
 typedef uint32_t value_type;
+typedef double   weight_type;
 
 constexpr static size_t key_size = sizeof(key_type);
 constexpr static size_t value_size = sizeof(value_type);
 constexpr static size_t header_size = sizeof(rec_hdr);
+constexpr static size_t weight_size = sizeof(weight_type);
 
 // Layout ==> key | value | flags (each part padded to 8.)
 // Adding one more thing -> weight.
-constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size + sizeof(double);
+constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size + weight_size;
 
-inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone, double weight = 1.0) {
+inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone, weight_type weight = 1.0) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
@@ -25,7 +27,7 @@ inline static void layout_record(char* buffer, const char* key, const char* valu
     *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
-inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, double weight = 1.0) {
+inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, weight_type weight = 1.0) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);

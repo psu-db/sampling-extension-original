@@ -1,6 +1,6 @@
 #include <check.h>
 
-#include "lsm/InMemRun.h"
+#include "lsm/WIRSRun.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
 
