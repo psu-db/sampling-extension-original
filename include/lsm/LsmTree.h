@@ -3,11 +3,12 @@
 #include <atomic>
 #include <numeric>
 
-#include "lsm/IsamTree.h"
 #include "lsm/MemTable.h"
 #include "lsm/MemoryLevel.h"
 #include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
+#include "lsm/WIRSIsamTree.h"
+
 
 #include "util/timer.h"
 
@@ -39,7 +40,7 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 typedef ssize_t level_index;
 
@@ -71,7 +72,7 @@ public:
 
     }
 
-    int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
+    int append(const char *key, const char *val, double weight, bool tombstone, gsl_rng *rng) {
         // NOTE: single-threaded implementation only
         MemTable *mtable;
         while (!(mtable = this->memtable()))
@@ -81,7 +82,7 @@ public:
             this->merge_memtable(rng);
         }
 
-        return mtable->append(key, val, tombstone);
+        return mtable->append(key, val, weight, tombstone);
     }
 
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {

@@ -12,7 +12,8 @@ std::string dir = "./tests/data/lsmtree";
 
 START_TEST(t_create)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+
 
     ck_assert_ptr_nonnull(lsm);
     ck_assert_int_eq(lsm->get_record_cnt(), 0);
@@ -25,14 +26,14 @@ END_TEST
 
 START_TEST(t_append)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<100; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -47,14 +48,14 @@ END_TEST
 
 START_TEST(t_append_with_mem_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<300; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -69,14 +70,14 @@ END_TEST
 
 START_TEST(t_append_with_disk_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<1000; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -91,14 +92,14 @@ END_TEST
 
 START_TEST(t_range_sample_memtable)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<100; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -131,14 +132,14 @@ END_TEST
 
 START_TEST(t_range_sample_memlevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<300; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -171,14 +172,14 @@ END_TEST
 
 START_TEST(t_range_sample_disklevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     key_type key = 0;
     value_type val = 0;
     for (size_t i=0; i<1000; i++) {
         const char *key_ptr = (char *) &key;
         const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -212,7 +213,7 @@ END_TEST
 START_TEST(t_sorted_array)
 {
     size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
@@ -231,7 +232,7 @@ START_TEST(t_sorted_array)
     for (auto rec : records) {
         const char *key_ptr = (char *) &rec.first;
         const char *val_ptr = (char *) &rec.second;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
 
          if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
             std::vector<std::pair<key_type, value_type>> del_vec;
@@ -240,7 +241,7 @@ START_TEST(t_sorted_array)
             for (size_t i=0; i<del_vec.size(); i++) {
                 const char *d_key_ptr = (char *) &del_vec[i].first;
                 const char *d_val_ptr = (char *) &del_vec[i].second;
-                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
                 deletes++;
                 to_delete.erase(del_vec[i]);
                 deleted.insert(del_vec[i]);
@@ -273,7 +274,7 @@ END_TEST
 START_TEST(t_flat_isam)
 {
     size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
@@ -292,7 +293,7 @@ START_TEST(t_flat_isam)
     for (auto rec : records) {
         const char *key_ptr = (char *) &rec.first;
         const char *val_ptr = (char *) &rec.second;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
 
          if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
             std::vector<std::pair<key_type, value_type>> del_vec;
@@ -301,7 +302,7 @@ START_TEST(t_flat_isam)
             for (size_t i=0; i<del_vec.size(); i++) {
                 const char *d_key_ptr = (char *) &del_vec[i].first;
                 const char *d_val_ptr = (char *) &del_vec[i].second;
-                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
                 deletes++;
                 to_delete.erase(del_vec[i]);
                 deleted.insert(del_vec[i]);
@@ -349,7 +350,7 @@ END_TEST
 START_TEST(t_tombstone_merging_01)
 {
     size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
@@ -369,7 +370,7 @@ START_TEST(t_tombstone_merging_01)
     for (auto rec : records) {
         const char *key_ptr = (char *) &rec.first;
         const char *val_ptr = (char *) &rec.second;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
 
          if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
             std::vector<std::pair<key_type, value_type>> del_vec;
@@ -378,7 +379,7 @@ START_TEST(t_tombstone_merging_01)
             for (size_t i=0; i<del_vec.size(); i++) {
                 const char *d_key_ptr = (char *) &del_vec[i].first;
                 const char *d_val_ptr = (char *) &del_vec[i].second;
-                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
                 deletes++;
                 to_delete.erase(del_vec[i]);
                 deleted.insert(del_vec[i]);
@@ -420,11 +421,11 @@ Suite *unit_testing()
 
     suite_add_tcase(unit, sampling);
 
-    TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
-    tcase_add_test(flat, t_flat_isam);
-    tcase_add_test(flat, t_sorted_array);
+    //TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
+    //tcase_add_test(flat, t_flat_isam);
+    //tcase_add_test(flat, t_sorted_array);
 
-    suite_add_tcase(unit, flat);
+    //suite_add_tcase(unit, flat);
 
 
     TCase *ts = tcase_create("lsm::LSMTree::tombstone_compaction Testing");
