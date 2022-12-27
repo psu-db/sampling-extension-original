@@ -87,8 +87,16 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high) {
-
+    void get_run_weights(std::vector<double>& weights, std::vector<WIRSRun *> &runs, const char* low, const char* high) {
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_runs[i]) {
+                double weight = m_structure->m_runs[i]->get_sample_weight(low, high);
+                if (weight > 0) {
+                    runs.push_back(m_structure->m_runs[i]);
+                    weights.push_back(weight);
+                }
+            }
+        }
     }
 
     bool bf_rejection_check(size_t run_stop, const char* key) {

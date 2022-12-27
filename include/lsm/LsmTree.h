@@ -9,7 +9,6 @@
 #include "ds/Alias.h"
 #include "lsm/WIRSIsamTree.h"
 
-
 #include "util/timer.h"
 
 namespace lsm {
@@ -86,161 +85,51 @@ public:
     }
 
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
-        TIMER_INIT();
+        // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
-        // Allocate buffer into which to write the samples
-        size_t sample_idx = 0;
+        // TODO: deal with memtable
+        double memtable_weight = 0;
 
-        // Obtain the sampling ranges for each level
-        std::vector<SampleRange> memory_ranges;
-        std::vector<SampleRange> disk_ranges;
-        std::vector<size_t> record_counts;
+        // Get the run weights for each level. Index 0 is the memtable,
+        // represented by nullptr.
+        std::vector<WIRSRun *> runs;
+        runs.push_back(nullptr);
 
-        MemTable *memtable = nullptr;
-
-        while (!memtable) {
-            memtable = this->memtable();
-        }
-
-        TIMER_START();
-
-        size_t memtable_cutoff = memtable->get_record_count() - 1;
-        record_counts.push_back(memtable_cutoff + 1);
+        std::vector<double> run_weights;
+        run_weights.push_back(memtable_weight);
 
         for (auto &level : this->memory_levels) {
-            if (level) {
-                level->get_sample_ranges(memory_ranges, record_counts, lower_key, upper_key);
-            }
+            level->get_run_weights(run_weights, runs, lower_key, upper_key);
         }
 
-        for (auto &level : this->disk_levels) {
-            if (level) {
-                level->get_sample_ranges(disk_ranges, record_counts, lower_key, upper_key, buffer);
-            }
-        }
+        // Construct alias structure
+        auto alias = Alias(run_weights);
 
-        TIMER_STOP();
-        sample_range_time += TIMER_RESULT();
+        std::vector<size_t> run_samples(run_weights.size(), 0);
 
-        TIMER_START();
-        size_t total_records = std::accumulate(record_counts.begin(), record_counts.end(), 0);
-
-        std::vector<double> weights(record_counts.size());
-        for (size_t i=0; i < record_counts.size(); i++) {
-            weights[i] = (double) record_counts[i] / (double) total_records;
-        }
-
-        auto alias = Alias(weights);
-
-        TIMER_STOP();
-        alias_time += TIMER_RESULT();
-
-        // For implementation convenience, we'll treat the very
-        // first sampling pass as though it were a sampling
-        // pass following one in which every single sample
-        // was rejected
         size_t rejections = sample_sz;
-        sampling_attempts = 0;
-        sampling_rejections = 0;
-        tombstone_rejections = 0;
-        bounds_rejections = 0;
-        deletion_rejections = 0;
-
-        std::vector<size_t> run_samples(record_counts.size(), 0);
+        size_t sample_idx = 0;
 
         do {
-            // This *should* be fully reset to 0 at the end of each loop
-            // iteration.
-            for (size_t i=0; i<run_samples.size(); i++) {
-                assert(run_samples[i] == 0);
-            }
-
-            // pre-calculate the random numbers. If a sample rejects,
-            // we'll track that and redo the rejections in bulk, until
-            // there are no further rejections.
-            TIMER_START();
             for (size_t i=0; i<rejections; i++) {
                 run_samples[alias.get(rng)] += 1;
             }
-            TIMER_STOP();
-            alias_query_time += TIMER_RESULT();
 
-            // reset rejection counter to begin tracking for next
-            // sampling pass
             rejections = 0;
-            const char *sample_record;
 
-            // We will draw the records from the runs in order
-
-            // First the memtable,
+            /*
             while (run_samples[0] > 0) {
-                TIMER_START();
-                size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
-                sample_record = memtable->get_record_at(idx);
-                TIMER_STOP();
-                memtable_sample_time += TIMER_RESULT();
-
-                run_samples[0]--;
-
-                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
-                    rejections++;
-                }
+                // sample from memtable
             }
+            */
 
 
-            // Next the in-memory runs
-            // QUESTION: can we assume that the memory page size is a multiple of the record length?
-            // If so, we can do this. Otherwise, we'll need to do a double roll to get a leaf page
-            // first, or use an interface like I have for the ISAM tree for getting a record based
-            // on an index offset and a starting page.
-            size_t run_offset = 1; // skip the memtable
-            for (size_t i=0; i<memory_ranges.size(); i++) {
-                size_t range_length = memory_ranges[i].high - memory_ranges[i].low;
-                auto run_id = memory_ranges[i].run_id;
-                while (run_samples[i+run_offset] > 0) {
-                    TIMER_START();
-                    size_t idx = gsl_rng_uniform_int(rng, range_length);
-                    sample_record = memory_levels[run_id.level_idx]->get_record_at(run_id.run_idx, idx + memory_ranges[i].low);
-                    run_samples[i+run_offset]--;
-                    TIMER_STOP();
-                    memlevel_sample_time += TIMER_RESULT();
-
-                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
-                        rejections++;
-                    }
-                }
-
-            }
-
-            // Finally, the ISAM Trees
-            // NOTE: this setup is not leveraging rolling all the pages first,
-            // and then batching the IO operations so that each duplicate page
-            // is sampled multiple times in a row. This could be done at the
-            // cost of space, by tracking each page and the number of times it
-            // is sampled, or at the cost of time, by sorting. In either case,
-            // we'd need to double the number of random numbers rolled--as we'd
-            // need to roll the pages, and then the record index within each
-            // page
-            run_offset = 1 + memory_ranges.size(); // Skip the memtable and the memory levels
-            size_t records_per_page = PAGE_SIZE / record_size;
-            PageNum buffered_page = INVALID_PNUM;
-            for (size_t i=0; i<disk_ranges.size(); i++) {
-                size_t range_length = (disk_ranges[i].high - disk_ranges[i].low + 1) * records_per_page;
-                size_t level_idx = disk_ranges[i].run_id.level_idx - this->memory_level_cnt;
-                size_t run_idx = disk_ranges[i].run_id.run_idx;
-
-                while (run_samples[i+run_offset] > 0) {
-                    TIMER_START();
-                    size_t idx = gsl_rng_uniform_int(rng, range_length);
-                    sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].low, idx, buffer, buffered_page);
-                    run_samples[i+run_offset]--;
-                    TIMER_STOP();
-                    disklevel_sample_time += TIMER_RESULT();
-
-                    if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff)) {
-                        rejections++;
-                    }
-                }
+            for (size_t i=1; i<run_samples.size(); i++) {
+                // sample from each WIRS level
+                auto sampled = runs[i]->get_samples(sample_set + sample_idx, lower_key, upper_key, run_samples[i], rng) ;
+                sample_idx += sampled;
+                rejections += run_samples[i] - sampled;
+                run_samples[i] = 0;
             }
         } while (sample_idx < sample_sz);
     }
@@ -346,97 +235,7 @@ public:
         return cnt;
     }
 
-    /*
-     * Flattens the entire LSM structure into a single in-memory sorted
-     * array and return a pointer to it. Will be used as a simple baseline
-     * for performance comparisons.
-     *
-     * len will be updated to hold the number of records within the tree.
-     *
-     * It is the caller's responsibility to manage the memory of the returned
-     * object. It should be released with free().
-     *
-     * NOTE: If an interface to create InMemRun objects using ISAM Trees were
-     * added, this could be implemented just like get_flat_isam_tree and return
-     * one of those. But as it stands, this seems the most straightforward way
-     * to get a static in-memory structure.
-     */
-    char *get_sorted_array(size_t *len, gsl_rng *rng)
-    {
-        // flatten into an ISAM Tree to get a contiguous run of all
-        // the records, and cancel out all tombstones.
-        auto tree = this->get_flat_isam_tree(rng);
-        size_t alloc_sz = tree->get_record_count() * record_size + (CACHELINE_SIZE - tree->get_record_count() * record_size % CACHELINE_SIZE);
-        char *array = (char *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
-
-        assert(tree->get_tombstone_count() == 0);
-
-        *len = tree->get_record_count();
-
-        auto iter = tree->start_scan();
-        size_t offset = 0;
-        while (iter->next() && offset < tree->get_record_count()) {
-            auto pg = iter->get_item();
-            for (size_t i=0; i<PAGE_SIZE/record_size; i++) {
-                memcpy(array + offset*record_size, pg + i*record_size, record_size);
-                offset++;
-
-                if (offset >= tree->get_record_count()) break;
-            }
-        }
-
-        auto pfile = tree->get_pfile();
-        delete iter;
-        delete tree;
-        delete pfile;
-
-        return array;
-    }
-
-    /*
-     * Flattens the entire LSM structure into a single ISAM Tree object
-     * and return a pointer to it. Will be used as a simple baseline for
-     * performance comparisons.
-     */
-    ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
-        auto mem_level = new MemoryLevel(-1, 1);
-        mem_level->append_mem_table(this->memtable(), rng);
-
-        std::vector<InMemRun *> runs;
-        std::vector<ISAMTree *> trees;
-
-
-        for (int i=memory_levels.size() - 1; i>= 0; i--) {
-            if (memory_levels[i]) {
-                for (int j=0; j<memory_levels[i]->get_run_count(); j++) {
-                    runs.push_back(memory_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        runs.push_back(mem_level->get_run(0));
-
-        for (int i=disk_levels.size() - 1; i >= 0; i--) {
-            if (disk_levels[i]) {
-                for (int j=0; j<disk_levels[i]->get_run_count(); j++) {
-                    trees.push_back(disk_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        auto pfile = PagedFile::create(root_directory + "flattened_tree.dat");
-        auto bf = new BloomFilter(0, BF_HASH_FUNCS, rng);
-
-        auto flat = new ISAMTree(pfile, rng, bf, runs.data(), runs.size(), trees.data(), trees.size());
-
-        delete mem_level;
-        delete bf;
-
-        return flat;
-    }
-
-
-    bool validate_tombstone_proportion() {
+   bool validate_tombstone_proportion() {
         long double ts_prop;
         for (size_t i=0; i<this->memory_levels.size(); i++) {
             if (this->memory_levels[i]) {

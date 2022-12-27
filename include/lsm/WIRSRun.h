@@ -19,7 +19,7 @@ struct wirs_node {
     Alias alias;
 };
 
-thread_local size_t mrun_cancelations = 0;
+thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
 public:
@@ -38,7 +38,7 @@ public:
             if (!is_tombstone(base) && (base + record_size < stop)
                 && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
                 base += record_size * 2;
-                mrun_cancelations++;
+                m_wirsrun_cancelations++;
             } else {
                 //Masking off the ts.
                 *((rec_hdr*)get_hdr(base)) &= 1;
@@ -150,7 +150,8 @@ public:
         return get_sample_weight_internal(m_root, lower_key, upper_key);
    }
 
-    void get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, gsl_rng *rng) {
+    // returns the number of records sampled
+    size_t get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, gsl_rng *rng) {
         // low - high -> decompose to a set of nodes.
         // Build Alias across the decomposed nodes.
         std::vector<struct wirs_node*> nodes;
@@ -168,7 +169,9 @@ public:
         Alias top_level_alias(weights);
         // k -> sampling: three levels. 1. select a node -> select a fat point -> select a record.
         size_t cnt = 0;
+        size_t attempts = 0;
         do {
+            ++attempts;
             // first level....
             auto node = nodes[top_level_alias.get(rng)];
             // second level...
@@ -180,7 +183,9 @@ public:
                 memcpy(sample_set + cnt * record_size, record, record_size);
                 ++cnt;
             }
-        } while (cnt < sample_sz);
+        } while (attempts < sample_sz);
+
+        return cnt;
     }
 
     size_t get_lower_bound(const char *key) const {
