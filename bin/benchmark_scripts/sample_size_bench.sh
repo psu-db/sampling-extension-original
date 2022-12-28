@@ -24,7 +24,7 @@ fi
 if [[ $# == 4 ]]; then
     reccnt=$4
 else
-    reccnt=$(wc -l data_file)
+    reccnt=$(wc -l $data_file | cut -d' ' -f1)
 fi
 
 selectivities=(.001 .005 .01 .05 .1)
