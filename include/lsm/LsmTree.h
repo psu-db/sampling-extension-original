@@ -87,8 +87,11 @@ public:
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
+        auto mtable = this->memtable();
         // TODO: deal with memtable
-        double memtable_weight = 0;
+        Alias *memtable_alias;
+        std::vector<char *> memtable_records;
+        double memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias);
 
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
@@ -117,21 +120,26 @@ public:
 
             rejections = 0;
 
-            /*
             while (run_samples[0] > 0) {
-                // sample from memtable
+                auto rec = memtable_records[memtable_alias->get(rng)];
+                if (!mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                    memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                } else {
+                    rejections++;
+                }
+                run_samples[0]--;
             }
-            */
-
 
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
-                auto sampled = runs[i]->get_samples(sample_set + sample_idx, lower_key, upper_key, run_samples[i], rng) ;
+                auto sampled = runs[i]->get_samples(sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], rng) ;
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
             }
         } while (sample_idx < sample_sz);
+
+        delete memtable_alias;
     }
 
     // Checks the tree and memtable for a tombstone corresponding to

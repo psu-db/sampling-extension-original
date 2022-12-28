@@ -3,12 +3,15 @@
 #include <cstdlib>
 #include <atomic>
 #include <cassert>
+#include <numeric>
 
 #include "util/base.h"
 #include "ds/BloomFilter.h"
 #include "util/record.h"
+#include "ds/Alias.h"
 
 namespace lsm {
+
 
 class MemTable {
 public:
@@ -95,6 +98,25 @@ public:
 
     size_t get_aux_memory_utilization() {
         return m_tombstone_filter->get_memory_utilization();
+    }
+
+
+    double get_sample_range(const char *lower, const char *upper, std::vector<char *> &records, Alias **alias) {
+        std::vector<double> weights; 
+
+        records.clear();
+        for (size_t i=0; i<std::atomic_load(&m_reccnt); i++) {
+            char *rec = m_data + (i * record_size);
+
+            if (key_cmp(get_key(rec), lower) >= 0 && key_cmp(get_key(rec), upper) <= 0 && !is_tombstone(rec)) {
+                weights.push_back(get_weight(rec));
+                records.push_back(rec);
+            }
+        }
+
+        *alias = new Alias(weights);
+
+        return std::accumulate(weights.begin(), weights.end(), 0);
     }
 
 private:

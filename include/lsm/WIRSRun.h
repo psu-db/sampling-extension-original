@@ -114,7 +114,7 @@ public:
         if (m_reccnt > 0) {
             build_wirs_structure();
         }
-    }
+   }
 
     ~WIRSRun() {
         if (m_data) free(m_data);

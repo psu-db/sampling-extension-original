@@ -136,7 +136,6 @@ START_TEST(t_range_sample_memlevels)
         auto s_key = *(key_type*) get_key(rec);
         auto s_val = *(value_type*) get_val(rec);
 
-        fprintf(stderr, "%ld %d\n", s_key, s_val);
         ck_assert_int_le(s_key, upper_bound);
         ck_assert_int_ge(s_key, lower_bound);
     }
