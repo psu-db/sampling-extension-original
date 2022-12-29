@@ -10,6 +10,37 @@
 
 using namespace lsm;
 
+MemTable *create_mtable(gsl_rng **rng) {
+    *rng = gsl_rng_alloc(gsl_rng_mt19937);
+    auto mtable = new MemTable(100, true, 50, *rng);
+
+    key_type key = 0;
+    value_type val = 5;
+    size_t ts_cnt = 0;
+
+    for (size_t i=0; i<100; i++) {
+        bool ts = false;
+        if (i % 2 == 0) {
+            ts_cnt++;
+            ts=true;
+        }
+
+        ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, ts), 1);
+        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
+
+        key++;
+        val++;
+
+        ck_assert_int_eq(mtable->get_record_count(), i+1);
+        ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
+    }
+
+    ck_assert_int_eq(mtable->is_full(), 1);
+    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 0);
+
+    return mtable;
+}
+
 START_TEST(t_create)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
@@ -106,33 +137,17 @@ END_TEST
 
 START_TEST(t_truncate)
 {
-    auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, rng);
+    gsl_rng *rng;
+    auto mtable = create_mtable(&rng);
 
-    key_type key = 0;
-    value_type val = 5;
-    size_t ts_cnt = 0;
+    key_type key = 4;
+    value_type val = 2;
+    
+    // truncating without first initiating a merge should fail
+    ck_assert_int_eq(mtable->truncate(), 0);
 
-    for (size_t i=0; i<100; i++) {
-        bool ts = false;
-        if (i % 2 == 0) {
-            ts_cnt++;
-            ts=true;
-        }
-
-        ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, ts), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
-
-        key++;
-        val++;
-
-        ck_assert_int_eq(mtable->get_record_count(), i+1);
-        ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
-    }
-
-    ck_assert_int_eq(mtable->is_full(), 1);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 0);
-
+    // After initiating a merge, truncation should work.
+    ck_assert_ptr_nonnull(mtable->start_merge());
     ck_assert_int_eq(mtable->truncate(), 1);
 
     ck_assert_int_eq(mtable->is_full(), 0);
@@ -140,9 +155,11 @@ START_TEST(t_truncate)
     ck_assert_int_eq(mtable->get_tombstone_count(), 0);
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
 
+    // Should be unable to truncate without initialing another merge
+    ck_assert_int_eq(mtable->truncate(), 0);
+
     delete mtable;
     gsl_rng_free(rng);
-
 }
 END_TEST
 
@@ -174,7 +191,6 @@ START_TEST(t_sorted_output)
     mtable->append((char *) &keys[cnt-1], (char*) &val, true);
 
 
-    size_t ts_found = 0;
     key_type ts_key = keys[cnt-1];
     char *sorted_records = mtable->sorted_output();
     std::sort(keys.begin(), keys.end());
@@ -182,14 +198,6 @@ START_TEST(t_sorted_output)
     for (size_t i=0; i<cnt; i++) {
         key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
         ck_assert_int_eq(*table_key, keys[i]);
-
-        // Verify that the tombstones sort before the non-tombstones
-        if (*table_key == ts_key) {
-            ts_found += is_tombstone(sorted_records + i*record_size);
-            if (!is_tombstone(sorted_records + i*record_size)) {
-                ck_assert_int_eq(ts_found, 2);
-            }
-        }
     }
 
     delete mtable;
@@ -251,6 +259,89 @@ START_TEST(t_multithreaded_insert)
 END_TEST
 
 
+START_TEST(t_defer_truncate)
+{
+    gsl_rng *rng;
+    auto mtable = create_mtable(&rng);
+
+    // Truncate should return success when executed against a pinned
+    // memtable
+    ck_assert_int_eq(mtable->pin(), 1);
+    ck_assert_ptr_nonnull(mtable->start_merge());
+    ck_assert_int_eq(mtable->truncate(), 1);
+
+    key_type key = 5;
+    value_type val = 2;
+    // But the memtable should not actually be truncated yet
+    ck_assert_int_eq(mtable->get_record_count(), 100);
+    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val), 0);
+
+    // after releasing the pin, the table should be truncated
+    ck_assert_int_eq(mtable->unpin(), 1);
+    ck_assert_int_eq(mtable->get_record_count(), 0);
+
+    delete mtable;
+    gsl_rng_free(rng);
+}
+END_TEST
+
+
+START_TEST(t_pin) 
+{
+    gsl_rng *rng;
+    auto mtable = create_mtable(&rng);
+
+    ck_assert_int_eq(mtable->pin(), 1);
+    
+    // Cannot add more pins once a merge starts (should use
+    // other table, if possible).
+    ck_assert_ptr_nonnull(mtable->start_merge());
+    ck_assert_int_eq(mtable->pin(), 0);
+
+    // Should be able to pin again following the end of a merge
+    ck_assert_int_eq(mtable->unpin(), 1);
+    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->pin(), 1);
+
+    ck_assert_int_eq(mtable->unpin(), 1);
+
+    delete mtable;
+    gsl_rng_free(rng);
+}
+END_TEST
+
+
+START_TEST(t_start_merge) 
+{
+    gsl_rng *rng;
+    auto mtable = create_mtable(&rng);
+
+    // should be able to initiate a merge
+    ck_assert_ptr_nonnull(mtable->start_merge());
+
+    // however, cannot initiate another one while the
+    // first is ongoing
+    ck_assert_ptr_null(mtable->start_merge());
+
+    // Truncation allows a new merge to start
+    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_ptr_nonnull(mtable->start_merge());
+    ck_assert_int_eq(mtable->truncate(), 1);
+
+    // Merges are still blocked following a deferred
+    // truncation
+    mtable->pin();
+    ck_assert_ptr_nonnull(mtable->start_merge());
+    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_ptr_null(mtable->start_merge());
+    mtable->unpin();
+
+    delete mtable;
+    gsl_rng_free(rng);
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("MemTable Unit Testing");
@@ -267,17 +358,27 @@ Suite *unit_testing()
 
     suite_add_tcase(unit, append);
 
+    TCase *pin = tcase_create("lsm::MemTable::pin Testing");
+    tcase_add_test(pin, t_pin);
+
+    suite_add_tcase(unit, pin);
 
     TCase *truncate = tcase_create("lsm::MemTable::truncate Testing");
     tcase_add_test(truncate, t_truncate);
+    tcase_add_test(truncate, t_defer_truncate);
 
     suite_add_tcase(unit, truncate);
-
 
     TCase *sorted_out = tcase_create("lsm::MemTable::sorted_output");
     tcase_add_test(sorted_out, t_sorted_output);
 
     suite_add_tcase(unit, sorted_out);
+
+
+    TCase *merge = tcase_create("lsm::MemTable::start_merge");
+    tcase_add_test(merge, t_start_merge);
+
+    suite_add_tcase(unit, merge);
 
     return unit;
 }
