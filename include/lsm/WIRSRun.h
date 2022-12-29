@@ -12,6 +12,9 @@
 
 namespace lsm {
 
+struct sample_state;
+bool check_deleted(char *record, sample_state *state);
+
 struct wirs_node {
     struct wirs_node *left, *right;
     key_type low, high;
@@ -151,7 +154,7 @@ public:
    }
 
     // returns the number of records sampled
-    size_t get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, gsl_rng *rng) {
+    size_t get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         // low - high -> decompose to a set of nodes.
         // Build Alias across the decomposed nodes.
         std::vector<struct wirs_node*> nodes;
@@ -179,7 +182,7 @@ public:
             // third level...
             size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
             auto record = m_data + rec_offset * record_size;
-            if (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0) {
+            if (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state)) {
                 memcpy(sample_set + cnt * record_size, record, record_size);
                 ++cnt;
             }

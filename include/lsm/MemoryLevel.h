@@ -87,12 +87,12 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_run_weights(std::vector<double>& weights, std::vector<WIRSRun *> &runs, const char* low, const char* high) {
+    void get_run_weights(std::vector<double>& weights, std::vector<std::pair<RunId, WIRSRun *>> &runs, const char* low, const char* high) {
         for (size_t i=0; i<m_run_cnt; i++) {
             if (m_structure->m_runs[i]) {
                 double weight = m_structure->m_runs[i]->get_sample_weight(low, high);
                 if (weight > 0) {
-                    runs.push_back(m_structure->m_runs[i]);
+                    runs.push_back({{m_level_no, (ssize_t) i}, m_structure->m_runs[i]});
                     weights.push_back(weight);
                 }
             }

@@ -43,7 +43,19 @@ static constexpr bool LSM_LEVELING = true;
 
 typedef ssize_t level_index;
 
+class LSMTree;
+struct sample_state {
+    LSMTree *tree; 
+    RunId rid;
+    char *buff;
+    MemTable *memtable;
+    size_t mtable_cutoff;
+};
+
+
 class LSMTree {
+    friend bool check_deleted();
+
 public:
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             double max_tombstone_prop, gsl_rng *rng) 
@@ -91,12 +103,13 @@ public:
         // TODO: deal with memtable
         Alias *memtable_alias;
         std::vector<char *> memtable_records;
-        double memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias);
+        size_t mtable_cutoff = 0;
+        double memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias, &mtable_cutoff);
 
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
-        std::vector<WIRSRun *> runs;
-        runs.push_back(nullptr);
+        std::vector<std::pair<RunId, WIRSRun *>> runs;
+        runs.push_back({{-1, -1}, nullptr});
 
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
@@ -112,6 +125,12 @@ public:
 
         size_t rejections = sample_sz;
         size_t sample_idx = 0;
+
+        sample_state state;
+        state.tree = this;
+        state.buff = buffer;
+        state.memtable = mtable;
+        state.mtable_cutoff = mtable_cutoff;
 
         do {
             for (size_t i=0; i<rejections; i++) {
@@ -132,7 +151,8 @@ public:
 
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
-                auto sampled = runs[i]->get_samples(sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], rng) ;
+                state.rid = runs[i].first;
+                auto sampled = runs[i].second->get_samples(sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], &state, rng) ;
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
@@ -619,4 +639,11 @@ private:
     }
 
 };
+
+
+bool check_deleted(char *record, sample_state *state) {
+    return state->tree->is_deleted(record, state->rid, state->buff, state->memtable, state->mtable_cutoff);
 }
+
+}
+
