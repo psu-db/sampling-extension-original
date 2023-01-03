@@ -109,14 +109,18 @@ public:
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
         std::vector<std::pair<RunId, WIRSRun *>> runs;
+        std::vector<WIRSRunState*> states;
         runs.push_back({{-1, -1}, nullptr});
 
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
 
         for (auto &level : this->memory_levels) {
-            level->get_run_weights(run_weights, runs, lower_key, upper_key);
+            level->get_run_weights(run_weights, runs, states, lower_key, upper_key);
         }
+
+        double tot_weight = std::accumulate(run_weights.begin(), run_weights.end(), 0);
+        for (auto& w: run_weights) w /= tot_weight;
 
         // Construct alias structure
         auto alias = Alias(run_weights);
@@ -152,7 +156,7 @@ public:
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
                 state.rid = runs[i].first;
-                auto sampled = runs[i].second->get_samples(sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], &state, rng) ;
+                auto sampled = runs[i].second->get_samples(states[i], sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], &state, rng) ;
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
@@ -160,6 +164,7 @@ public:
         } while (sample_idx < sample_sz);
 
         delete memtable_alias;
+        for (auto& x: states) delete x;
     }
 
     // Checks the tree and memtable for a tombstone corresponding to

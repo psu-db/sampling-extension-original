@@ -22,6 +22,12 @@ struct wirs_node {
     Alias alias;
 };
 
+struct WIRSRunState {
+    double tot_weight;
+    std::vector<wirs_node*> nodes;
+    Alias top_level_alias;
+};
+
 thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
@@ -149,34 +155,32 @@ public:
         return m_data + idx * record_size;
     }
 
-   double get_sample_weight(const char* lower_key, const char* upper_key) {
-        return get_sample_weight_internal(m_root, lower_key, upper_key);
-   }
+    // double get_sample_weight(const char* lower_key, const char* upper_key) {
+    //     return get_sample_weight_internal(m_root, lower_key, upper_key);
+    // }
 
-    // returns the number of records sampled
-    size_t get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
-        // low - high -> decompose to a set of nodes.
-        // Build Alias across the decomposed nodes.
+    WIRSRunState* get_sample_run_state(const char* lower_key, const char* upper_key) {
         std::vector<struct wirs_node*> nodes;
-        decompose_node(m_root, lower_key, upper_key, nodes);
-        double tot_weight = 0.0;
+        double tot_weight = decompose_node(m_root, lower_key, upper_key, nodes);
+        
+        assert(tot_weight > 0.0);
         std::vector<double> weights;
         for (const auto& node: nodes) {
-            tot_weight += node->weight;
-            weights.emplace_back(node->weight);
+            weights.emplace_back(node->weight / tot_weight);
         }
 
-        assert(tot_weight > 0.0);
-        for (auto& w: weights) w /= tot_weight;
+        return new WIRSRunState{tot_weight, std::move(nodes), Alias(weights)};
+    }
 
-        Alias top_level_alias(weights);
+    // returns the number of records sampled
+    size_t get_samples(WIRSRunState* run_state, char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         // k -> sampling: three levels. 1. select a node -> select a fat point -> select a record.
         size_t cnt = 0;
         size_t attempts = 0;
         do {
             ++attempts;
             // first level....
-            auto node = nodes[top_level_alias.get(rng)];
+            auto node = run_state->nodes[run_state->top_level_alias.get(rng)];
             // second level...
             auto fat_point = node->low + node->alias.get(rng);
             // third level...
@@ -247,25 +251,28 @@ private:
                key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
     }
 
-    void decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
-        if (node == nullptr) return;
+    double decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
+        if (node == nullptr) return 0.0;
         else if (covered_by(node, lower_key, upper_key)) {
             output.emplace_back(node);
-        } else {
-            if (node->left && intersects(node->left, lower_key, upper_key)) decompose_node(node->left, lower_key, upper_key, output);
-            if (node->right && intersects(node->right, lower_key, upper_key)) decompose_node(node->right, lower_key, upper_key, output);
+            return node->weight;
         }
-    }
-
-    double get_sample_weight_internal(struct wirs_node* node, const char* lower_key, const char* upper_key) {
-        if (node == nullptr) return 0.0;
-        else if (covered_by(node, lower_key, upper_key)) return node->weight;
 
         double ans = 0.0;
-        if (node->left && intersects(node->left, lower_key, upper_key)) ans += get_sample_weight_internal(node->left, lower_key, upper_key);
-        if (node->right && intersects(node->right, lower_key, upper_key)) ans += get_sample_weight_internal(node->right, lower_key, upper_key);
+        if (node->left && intersects(node->left, lower_key, upper_key)) ans += decompose_node(node->left, lower_key, upper_key, output);
+        if (node->right && intersects(node->right, lower_key, upper_key)) ans += decompose_node(node->right, lower_key, upper_key, output);
         return ans;
     }
+
+    // double get_sample_weight_internal(struct wirs_node* node, const char* lower_key, const char* upper_key) {
+    //     if (node == nullptr) return 0.0;
+    //     else if (covered_by(node, lower_key, upper_key)) return node->weight;
+
+    //     double ans = 0.0;
+    //     if (node->left && intersects(node->left, lower_key, upper_key)) ans += get_sample_weight_internal(node->left, lower_key, upper_key);
+    //     if (node->right && intersects(node->right, lower_key, upper_key)) ans += get_sample_weight_internal(node->right, lower_key, upper_key);
+    //     return ans;
+    // }
 
     struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
         if (low == high) {
