@@ -143,12 +143,13 @@ START_TEST(t_truncate)
     key_type key = 4;
     value_type val = 2;
     
+    bool trunc_stat;
     // truncating without first initiating a merge should fail
-    ck_assert_int_eq(mtable->truncate(), 0);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 0);
 
     // After initiating a merge, truncation should work.
     ck_assert_ptr_nonnull(mtable->start_merge());
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
 
     ck_assert_int_eq(mtable->is_full(), 0);
     ck_assert_int_eq(mtable->get_record_count(), 0);
@@ -156,7 +157,7 @@ START_TEST(t_truncate)
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
 
     // Should be unable to truncate without initialing another merge
-    ck_assert_int_eq(mtable->truncate(), 0);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 0);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -264,11 +265,13 @@ START_TEST(t_defer_truncate)
     gsl_rng *rng;
     auto mtable = create_mtable(&rng);
 
+    bool trunc_stat;
     // Truncate should return success when executed against a pinned
     // memtable
     ck_assert_int_eq(mtable->pin(), 1);
     ck_assert_ptr_nonnull(mtable->start_merge());
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
+    ck_assert_int_eq(trunc_stat, false);
 
     key_type key = 5;
     value_type val = 2;
@@ -278,6 +281,7 @@ START_TEST(t_defer_truncate)
 
     // after releasing the pin, the table should be truncated
     ck_assert_int_eq(mtable->unpin(), 1);
+    ck_assert_int_eq(trunc_stat, true);
     ck_assert_int_eq(mtable->get_record_count(), 0);
 
     delete mtable;
@@ -298,9 +302,11 @@ START_TEST(t_pin)
     ck_assert_ptr_nonnull(mtable->start_merge());
     ck_assert_int_eq(mtable->pin(), 0);
 
+    bool trunc_stat = false;
     // Should be able to pin again following the end of a merge
     ck_assert_int_eq(mtable->unpin(), 1);
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
+    ck_assert_int_eq(trunc_stat, true);
     ck_assert_int_eq(mtable->pin(), 1);
 
     ck_assert_int_eq(mtable->unpin(), 1);
@@ -323,18 +329,24 @@ START_TEST(t_start_merge)
     // first is ongoing
     ck_assert_ptr_null(mtable->start_merge());
 
+    bool trunc_stat = false;
     // Truncation allows a new merge to start
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
+    ck_assert_int_eq(trunc_stat, true);
+
     ck_assert_ptr_nonnull(mtable->start_merge());
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
+    ck_assert_int_eq(trunc_stat, true);
 
     // Merges are still blocked following a deferred
     // truncation
     mtable->pin();
     ck_assert_ptr_nonnull(mtable->start_merge());
-    ck_assert_int_eq(mtable->truncate(), 1);
+    ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
+    ck_assert_int_eq(trunc_stat, false);
     ck_assert_ptr_null(mtable->start_merge());
     mtable->unpin();
+    ck_assert_int_eq(trunc_stat, true);
 
     delete mtable;
     gsl_rng_free(rng);

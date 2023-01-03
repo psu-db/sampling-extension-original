@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug False)
+set(debug true)
 set(tests True)
 set(bench True)
 
@@ -16,10 +16,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 if (debug) 
     add_compile_options(-g -O0)
     add_compile_options(-fsanitize=address)
+    add_compile_options(-march=native)
     add_link_options(-fsanitize=address)
+    add_link_options(-latomic)
 else()
     add_compile_options(-O3)
+    add_compile_options(-march=native)
+    add_link_options(-latomic)
 endif()
+
 
 
 add_library(${PROJECT_NAME} STATIC)

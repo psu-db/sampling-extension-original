@@ -62,10 +62,26 @@ struct RunId {
 
 const RunId INVALID_RID = {-1, -1};
 
+typedef enum RunType {
+    DISK,
+    MEM
+} RunType;
+
 struct SampleRange {
     RunId run_id;
     size_t low;
     size_t high;
+    void *run_ptr;
+    RunType type;
+};
+
+template<class T>
+struct tagged_ptr {
+    T *m_ptr;
+    size_t m_tag;
+
+    T *operator->() {return m_ptr;}
+    T *get() { return m_ptr; }
 };
 
 }
