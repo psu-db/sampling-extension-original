@@ -21,7 +21,8 @@ private:
         InternalLevelStructure(size_t cap)
         : m_cap(cap)
         , m_runs(new InMemRun*[cap]{nullptr})
-        , m_bfs(new BloomFilter*[cap]{nullptr}) {} 
+        , m_bfs(new BloomFilter*[cap]{nullptr})
+        {} 
 
         ~InternalLevelStructure() {
             for (size_t i = 0; i < m_cap; ++i) {
@@ -41,7 +42,10 @@ private:
 public:
     MemoryLevel(ssize_t level_no, size_t run_cap)
     : m_level_no(level_no), m_run_cnt(0)
-    , m_structure(new InternalLevelStructure(run_cap)) {}
+    , m_structure(new InternalLevelStructure(run_cap)) 
+    , m_refcnt(0)
+    , m_unused(false)
+    {}
 
     // Create a new memory level sharing the runs and repurposing it as previous level_no + 1
     // WARNING: for leveling only.
@@ -177,12 +181,46 @@ public:
         return (double) tscnt / (double) (tscnt + reccnt);
     }
 
+    void mark_unused() {
+        std::atomic_store(&m_unused, true);
+        if (std::atomic_load(&m_refcnt) == 0) {
+            delete this;
+        }
+    }
+
+    bool pin() {
+        if (std::atomic_load(&m_unused)) {
+            return false;
+        }
+
+        std::atomic_fetch_add(&m_refcnt, 1);
+        return true;
+    }
+
+    bool unpin() {
+        if (std::atomic_load(&m_refcnt) == 0) {
+            return false;
+        }
+
+        std::atomic_fetch_add(&m_refcnt, -1);
+        if (std::atomic_load(&m_refcnt) == 0 && std::atomic_load(&m_unused)) {
+            delete this;
+        }
+
+        return true;
+    }
 private:
     ssize_t m_level_no;
     
     size_t m_run_cnt;
     size_t m_run_size_cap;
+
+    std::atomic_uint64_t m_refcnt;
+    std::atomic_bool m_unused;
+
     std::shared_ptr<InternalLevelStructure> m_structure;
 };
+
+typedef std::shared_ptr<MemoryLevel> memory_level_ptr;
 
 }

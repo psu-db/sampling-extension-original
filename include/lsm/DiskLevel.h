@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <memory>
 
 #include "util/types.h"
 #include "util/bf_config.h"
@@ -15,13 +16,14 @@ namespace lsm {
 class DiskLevel {
 public:
     DiskLevel(ssize_t level_no, size_t run_cap, std::string root_directory, size_t version=0)
-    : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
+    : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0), m_refcnt(0)
     , m_runs(new ISAMTree*[run_cap]{nullptr})
     , m_bfs(new BloomFilter*[run_cap]{nullptr})
     , m_pfiles(new PagedFile*[run_cap]{nullptr})
     , m_owns(new bool[run_cap]{true})
     , m_directory(root_directory)
-    , m_version(version) {}
+    , m_version(version)
+    , m_unused(false) {}
 
     ~DiskLevel() {
         for (size_t i = 0; i < m_run_cap; ++i) {
@@ -232,6 +234,35 @@ public:
         return (double) tscnt / (double) (tscnt + reccnt);
     }
 
+    void mark_unused() {
+        std::atomic_store(&m_unused, true);
+        if (std::atomic_load(&m_refcnt) == 0) {
+            delete this;
+        }
+    }
+
+    bool pin() {
+        if (std::atomic_load(&m_unused)) {
+            return false;
+        }
+
+        std::atomic_fetch_add(&m_refcnt, 1);
+        return true;
+    }
+
+    bool unpin() {
+        if (std::atomic_load(&m_refcnt) == 0) {
+            return false;
+        }
+
+        std::atomic_fetch_add(&m_refcnt, -1);
+        if (std::atomic_load(&m_refcnt) == 0 && std::atomic_load(&m_unused)) {
+            delete this;
+        }
+
+        return true;
+    }
+
 private:
     ssize_t m_level_no;
     size_t m_run_cap;
@@ -242,6 +273,9 @@ private:
     PagedFile** m_pfiles;
     std::string m_directory;
     bool *m_owns;
+
+    std::atomic_bool m_unused;
+    std::atomic_uint64_t m_refcnt;
 
 
     std::string get_fname(size_t idx) {
@@ -258,5 +292,7 @@ private:
         m_pfiles[idx] = nullptr;
     }
 };
+
+typedef std::shared_ptr<DiskLevel> disk_level_ptr;
 
 }
