@@ -155,6 +155,10 @@ public:
 
     // returns the number of records sampled
     size_t get_samples(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
+        if (sample_sz == 0) {
+            return 0;
+        }
+
         // low - high -> decompose to a set of nodes.
         // Build Alias across the decomposed nodes.
         std::vector<struct wirs_node*> nodes;

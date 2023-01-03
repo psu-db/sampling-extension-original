@@ -118,6 +118,11 @@ public:
             level->get_run_weights(run_weights, runs, lower_key, upper_key);
         }
 
+        if (run_weights.size() == 1 && run_weights[0] == 0) {
+            delete memtable_alias;
+            return; // no records in the sampling range
+        }
+
         // Construct alias structure
         auto alias = Alias(run_weights);
 
@@ -153,6 +158,8 @@ public:
                 // sample from each WIRS level
                 state.rid = runs[i].first;
                 auto sampled = runs[i].second->get_samples(sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], &state, rng) ;
+
+                assert(sampled <= run_samples[i]);
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
