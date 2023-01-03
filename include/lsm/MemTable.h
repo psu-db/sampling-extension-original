@@ -115,9 +115,14 @@ public:
             }
         }
 
+        double total_weight = std::accumulate(weights.begin(), weights.end(), 0);
+        for (size_t i=0; i<weights.size(); i++) {
+            weights[i] = weights[i] / total_weight;
+        }
+
         *alias = new Alias(weights);
 
-        return std::accumulate(weights.begin(), weights.end(), 0);
+        return total_weight;
     }
 
 private:
