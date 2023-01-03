@@ -161,7 +161,7 @@ public:
         std::vector<struct wirs_node*> nodes;
         double tot_weight = decompose_node(m_root, lower_key, upper_key, nodes);
         
-        assert(tot_weight > 0.0);
+        //assert(tot_weight > 0.0);
         std::vector<double> weights;
         for (const auto& node: nodes) {
             weights.emplace_back(node->weight / tot_weight);

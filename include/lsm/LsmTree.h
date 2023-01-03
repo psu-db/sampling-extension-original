@@ -111,6 +111,7 @@ public:
         std::vector<std::pair<RunId, WIRSRun *>> runs;
         std::vector<WIRSRunState*> states;
         runs.push_back({{-1, -1}, nullptr});
+        states.push_back(nullptr);
 
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
