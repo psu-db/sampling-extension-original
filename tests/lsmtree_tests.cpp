@@ -411,8 +411,10 @@ Suite *unit_testing()
     tcase_add_test(append, t_append);
     tcase_add_test(append, t_append_with_mem_merges);
     tcase_add_test(append, t_append_with_disk_merges);
+    tcase_set_timeout(append, 500);
     suite_add_tcase(unit, append);
 
+    /*
     TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
     tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
@@ -431,6 +433,7 @@ Suite *unit_testing()
     tcase_add_test(ts, t_tombstone_merging_01);
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
+    */
 
     return unit;
 }

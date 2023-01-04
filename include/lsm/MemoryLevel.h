@@ -209,6 +209,12 @@ public:
 
         return true;
     }
+
+    bool merge_will_fill(size_t record_cnt) {
+        return false;
+    }
+
+
 private:
     ssize_t m_level_no;
     

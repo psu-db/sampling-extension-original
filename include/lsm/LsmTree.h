@@ -50,14 +50,28 @@ private:
     typedef ssize_t level_index;
 
     struct version_data {
-        std::atomic_size_t active_memtable;
+        std::atomic<size_t> active_memtable;
         std::vector<MemTable *> memtables;
         std::vector<memory_level_ptr> mem_levels; 
         std::vector<disk_level_ptr> disk_levels; 
-        std::atomic_size_t pins;
+        std::atomic<size_t> pins;
+        std::atomic<bool> block_pin;
         level_index last_level_idx;
 
-        version_data() : active_memtable(0), pins(0), last_level_idx(-1) {};
+        version_data() : active_memtable(0), pins(0), block_pin(false), last_level_idx(-1) {};
+
+        bool pin() {
+            if (!block_pin.load()) {
+                pins.fetch_add(1);
+                return true;
+            }
+
+            return false;
+        }
+
+        void unpin() {
+            pins.fetch_add(-1);
+        }
 
         static tagged_ptr<version_data> create_copy(tagged_ptr<version_data> version) {
             auto ptr = version->copy();
@@ -65,52 +79,24 @@ private:
         }
 
         MemTable *get_active_memtable() {
-            return this->memtables[active_memtable];
+            return this->memtables[active_memtable.load() % LSM_MEMTABLE_CNT];
         }
 
-        //FIXME: Do this atomically
         MemTable *swap_active_memtable(MemTable *current_table) {
-            if (active_memtable.load() == 0) {
-                active_memtable.store(1);
-            }  else {
-                active_memtable.store(0);
-            }
-
-            return this->memtables[active_memtable];
+            active_memtable.fetch_add(1);
+            return this->get_active_memtable();
         }
     private:
-        version_data(std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, std::vector<disk_level_ptr> &disklvls, level_index last_level_idx)
-        : memtables(std::move(tables)), mem_levels(std::move(memlvls)), disk_levels(std::move(disklvls)), pins(0), last_level_idx(last_level_idx) {}
+        version_data(size_t active_memtable, std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, std::vector<disk_level_ptr> &disklvls, level_index last_level_idx)
+        : active_memtable(0), memtables(std::move(tables)), mem_levels(std::move(memlvls)), disk_levels(std::move(disklvls)), pins(0), block_pin(false), last_level_idx(last_level_idx) {}
 
         version_data *copy() {
+            auto active_mtable = active_memtable.load();
             auto tables = memtables;
             auto mlvls = mem_levels;
             auto dlvls = disk_levels;
 
-            return new version_data(tables, mlvls, dlvls, last_level_idx);
-        }
-    };
-
-    struct version_number { 
-        std::atomic_size_t num;
-        size_t max;
-        void init() {
-            num.store(0);
-            max = LSM_MEMTABLE_CNT;
-        }
-
-        void incr_version() {
-            size_t tmp;
-            size_t new_v;
-            do {
-                tmp = num.load();
-                new_v = (tmp == max) ? 0 : num + 1;
-            } while (!num.compare_exchange_strong(tmp, new_v));
-        }
-
-        bool incr_version(size_t tmp) {
-            size_t new_v = (tmp == max) ? 0 : num + 1;
-            return num.compare_exchange_strong(tmp, new_v);
+            return new version_data(active_mtable, tables, mlvls, dlvls, last_level_idx);
         }
     };
 
@@ -121,18 +107,19 @@ public:
                             m_root_directory(root_dir), 
                             m_memtables(LSM_MEMTABLE_CNT),
                             m_memory_level_cnt(memory_level_cap) {
-        m_version.init();
-        for (size_t i = 0; i < LSM_MEMTABLE_CNT; i++) {
+        m_version_num.store(0);
+        for (size_t i=0; i < LSM_MEMTABLE_CNT; i++) {
             m_memtables[i] = new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng);
-            m_memtable_merging[i].store(false);
-            m_version_data[i].store({nullptr, 0});
         }
-        m_version_data[LSM_MEMTABLE_CNT].store({nullptr, 0});
+        
+        for (size_t i=0; i < LSM_MEMTABLE_CNT + 1; i++) {
+            auto initial_version = new version_data();
+            initial_version->memtables = m_memtables;
+            m_version_data[i].store({initial_version, 0});
+        }
 
-        auto initial_version = new version_data();
-        initial_version->memtables = m_memtables;
-
-        m_version_data[0].store({initial_version, 0});
+        m_secondary_merge_possible.store(false);
+        m_primary_merge_active.store(false);
     }
 
     ~LSMTree() {
@@ -140,26 +127,6 @@ public:
         for (size_t i=0; i<LSM_MEMTABLE_CNT; i++) {
             delete m_memtables[i];
         }
-
-        /*
-        for (size_t i=0; i<LSM_MEMTABLE_CNT+1; i++) {
-            if (!m_version_data[i].load().m_ptr) {
-                continue;
-            }
-            for (size_t j=0; j<m_version_data[i].load()->disk_levels.size(); j++) {
-                m_version_data[i].load()->disk_levels[j].reset();
-            }
-        }
-
-        for (size_t i=0; i<LSM_MEMTABLE_CNT+1; i++) {
-            if (!m_version_data[i].load().m_ptr) {
-                continue;
-            }
-            for (size_t j=0; j<m_version_data[i].load()->memtables.size(); j++) {
-                m_version_data[i].load()->mem_levels[j].reset();
-            }
-        }
-        */
 
         for (size_t i=0; i<LSM_MEMTABLE_CNT+1; i++) {
             if (!m_version_data[i].load().m_ptr) {
@@ -179,16 +146,15 @@ public:
             if (mtable->is_full()) {
                 if (mtable->start_merge()) {
                     MemTable *merge_memtable = mtable;
-                    m_memtable_merging[version_num].store(true);
+
                     // take the pin for the merge process itself. The merge routine
                     // will unpin this.
-                    size_t vnum;
-                    this->pin_version(&vnum); 
-                    std::thread mthread = std::thread(&LSMTree::merge_memtable, this, mtable, vnum, rng);
+                    std::thread mthread = std::thread(&LSMTree::merge_memtable, this, mtable, version_num, rng);
                     mthread.detach();
+                    
+                    // move to other memtable
+                    mtable = m_version_data[version_num].load()->swap_active_memtable(mtable);
                 } 
-                // move to other memtable
-                mtable = m_version_data[version_num].load()->swap_active_memtable(mtable);
             }
 
             // Attempt to insert
@@ -200,7 +166,8 @@ public:
             // If insertion fails, we need to wait for the next version to
             // become available.
             this->unpin_version(version_num);
-        } while (this->wait_for_version(version_num));
+        } while (true);
+        //} while (this->wait_for_version(version_num));
 
         return 0;
     }
@@ -562,11 +529,10 @@ public:
         auto version = this->pin_version(&version_num);
 
         auto mem_level = new MemoryLevel(-1, 1);
-        mem_level->append_mem_table(this->active_memtable(), rng);
+        mem_level->append_mem_table(version->get_active_memtable(), rng);
 
         std::vector<InMemRun *> runs;
         std::vector<ISAMTree *> trees;
-
 
         for (int i=version->mem_levels.size() - 1; i>= 0; i--) {
             if (version->mem_levels[i]) {
@@ -629,13 +595,14 @@ public:
     }
 
 private:
-    version_number m_version;
+    std::atomic<size_t> m_version_num;
     std::atomic<tagged_ptr<version_data>> m_version_data[LSM_MEMTABLE_CNT + 1];
 
     std::vector<MemTable *> m_memtables;
-    std::atomic<bool> m_memtable_merging[LSM_MEMTABLE_CNT];
 
     std::mutex m_merge_lock;
+    std::atomic<bool> m_secondary_merge_possible;
+    std::atomic<bool> m_primary_merge_active;
 
     size_t m_scale_factor;
     double m_ts_prop;
@@ -649,21 +616,26 @@ private:
     version_data *pin_version(size_t *version_num=nullptr) {
         // FIXME: ensure that the version pinned is the same as
         // the one retrieved. 
-        size_t vnum = m_version.num;
-        version_data *version = m_version_data[vnum].load().m_ptr;
-        version->pins.fetch_add(1);
+        do {
+            size_t vnum = m_version_num.load();
+            version_data *version = m_version_data[vnum].load().m_ptr;
+            if (version->pin()) {
+                if (version_num) {
+                    *version_num = vnum;
+                }
 
-        if (version_num) {
-            *version_num = vnum;
-        }
+                return version;
+            }
+        } while (true);
 
-        return version;
+        assert(true); // not reached
     }
 
     void unpin_version(size_t version_num) {
         m_version_data[version_num].load()->pins.fetch_add(-1);
     }
 
+    /*
     MemTable *active_memtable(size_t *idx=nullptr) {
         size_t ver = m_version.num.load();
         if (ver >= LSM_MEMTABLE_CNT) { // all tables are currently merging
@@ -678,6 +650,7 @@ private:
         }
         return m_memtables[ver];
     }
+    */
 
 
     MemTableView *memtable_view() {
@@ -752,11 +725,41 @@ private:
     // merges to make room for it.
     inline void merge_memtable(MemTable *mtable, size_t version_num, gsl_rng *rng) {
         fprintf(stderr, "Starting merge for %ld\n", version_num);
-        m_merge_lock.lock();
+        fprintf(stderr, "\tMemtable Version: %ld\n", m_version_data[version_num].load()->active_memtable % LSM_MEMTABLE_CNT);
+        if (m_primary_merge_active) {
+            version_num = (version_num + 1) % LSM_MEMTABLE_CNT;
+            fprintf(stderr, "\tUpdating version number to: %ld\n", version_num);
+        }
 
+        fprintf(stderr, "\tPrimary Merge: %d\n", m_primary_merge_active.load());
+        fprintf(stderr, "\tSecondary Merge Possible: %d\n", m_secondary_merge_possible.load());
+        fprintf(stderr, "\tCurrent record count: %ld\n", this->get_record_cnt());
+        
+
+        memory_level_ptr new_l0 = nullptr;
+        if (m_primary_merge_active.load() && m_secondary_merge_possible.load()) {
+            fprintf(stderr, "Starting secondary merge...\n");
+            m_secondary_merge_possible.store(false); // start the secondary merge
+            new_l0 = this->create_new_l0(mtable, rng);
+            fprintf(stderr, "Awaiting primary merge completion...\n");
+        }
+
+        m_merge_lock.lock();
+        fprintf(stderr, "Passed merge lock for %ld\n", version_num);
+
+        if (new_l0) {
+            fprintf(stderr, "Secondary merge continuation\n");
+        }
+
+        m_primary_merge_active.store(true);
         auto new_version = version_data::create_copy(m_version_data[version_num]);
 
-        m_version.incr_version();
+        // If this merge will leave the first level completely full, then a
+        // secondary merge is possible, as we can initiate this process without
+        // needing to know the state of memlevel[0].
+        m_secondary_merge_possible.store(new_version.get()->mem_levels.size() > 0 && 
+                                         new_version.get()->mem_levels[0]->merge_will_fill(mtable->get_record_count()));
+
         if (!this->can_merge_with(0, mtable->get_record_count(), new_version.get())) {
             this->merge_down(0, new_version.get(), rng);
         }
@@ -764,13 +767,36 @@ private:
         this->merge_memtable_into_l0(mtable, new_version.get(), rng);
         this->enforce_tombstone_maximum(0, new_version.get(), rng);
 
+        // TEMP: install the new version 
+        size_t new_version_no = (version_num + 1) % LSM_MEMTABLE_CNT;
+        m_version_data[new_version_no].load();
+
+        // This should be sufficient, as once a version is no longer
+        // active it will stop acculumating pins. So there isn't a risk
+        // of this counter changing between when we observe it to be 0
+        // and when we swap in the new version. But we'll block new
+        // pins anyway to be safe.
+        m_version_data[new_version_no].load()->block_pin.store(true);
+        while (m_version_data[new_version_no].load()->pins > 0) {
+            ;
+        }
+
+        // Swap in the new version.
+        delete m_version_data[new_version_no].load().get();
+        m_version_data[new_version_no].store(new_version);
+
+        // Update the version counter
+        m_version_num.store(new_version_no);
+
+        // Truncate the memtable *after* the version has been installed. This
+        // prevents a duplicate merge request for the same memtable.
         bool truncation_status = false;
         mtable->truncate(&truncation_status);
 
         while (!truncation_status) 
             ;
 
-        m_memtable_merging[version_num].store(false);
+        m_primary_merge_active.store(false);
         m_merge_lock.unlock();
         fprintf(stderr, "merge done for %ld\n", version_num);
         return;
@@ -882,6 +908,16 @@ private:
         } else {
             version->mem_levels[0]->append_mem_table(mtable, rng);
         }
+    }
+
+
+    memory_level_ptr create_new_l0(MemTable *mtable, gsl_rng *rng) {
+        size_t run_capacity = (LSM_LEVELING) ? 1 : m_scale_factor;
+
+        auto new_level = new MemoryLevel(0, run_capacity);
+        new_level->append_mem_table(mtable, rng);
+
+        return std::shared_ptr<MemoryLevel>(new_level);
     }
 
     /*
@@ -1011,7 +1047,7 @@ private:
         while (!done) {
             done = true;
             for (size_t i=0; i<LSM_MEMTABLE_CNT; i++) {
-                if (m_memtable_merging[i] == true) {
+                if (m_memtables[i]->merging()) {
                     done = false;
                 }
             }
@@ -1021,7 +1057,7 @@ private:
 
     bool wait_for_version(size_t version_num) {
         // TODO: replace with condition variable
-        while (m_version.num == version_num) 
+        while (m_version_num.load() == version_num) 
             ;
 
         return true;

@@ -161,6 +161,10 @@ public:
         return true;
     }
 
+    bool merging() {
+        return m_merging;
+    }
+
 private:
     ssize_t try_advance_tail() {
         size_t new_tail = m_current_tail.fetch_add(record_size);
