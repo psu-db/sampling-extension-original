@@ -70,7 +70,9 @@ private:
         }
 
         void unpin() {
-            pins.fetch_add(-1);
+            if (pins.load() > 0) {
+                pins.fetch_add(-1);
+            }
         }
 
         static tagged_ptr<version_data> create_copy(tagged_ptr<version_data> version) {
@@ -155,17 +157,18 @@ public:
             auto version = this->pin_version(&version_num);
             MemTable *mtable = version->get_active_memtable();
 
-            if (mtable->is_full()) {
+            if (mtable->is_full() && !mtable->merging()) {
                 if (mtable->start_merge()) {
-                    MemTable *merge_memtable = mtable;
+                    // move to other memtable
+                    mtable = m_version_data[version_num].load()->swap_active_memtable();
 
-                    // take the pin for the merge process itself. The merge routine
-                    // will unpin this.
+                    // begin background merge of the full memtable
                     std::thread mthread = std::thread(&LSMTree::merge_memtable, this, mtable, version_num, rng);
                     mthread.detach();
-                    
-                    // move to other memtable
-                    mtable = m_version_data[version_num].load()->swap_active_memtable(mtable);
+
+                    // Get the new active memtable in preparation for
+                    // potentially appending to it.
+                    mtable = version->get_active_memtable();
                 } 
             }
 
@@ -342,8 +345,8 @@ public:
             }
         } while (sample_idx < sample_sz);
 
-        this->unpin_version(version_num);
         delete memtable;
+        this->unpin_version(version_num);
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -656,7 +659,7 @@ private:
     }
 
     void unpin_version(size_t version_num) {
-        m_version_data[version_num].load()->pins.fetch_add(-1);
+        m_version_data[version_num].load()->unpin();
     }
 
     MemTableView *memtable_view() {
@@ -804,18 +807,19 @@ private:
         auto old_version = m_version_data[new_version_no].load();
         m_version_data[new_version_no].store(new_version);
 
-        // Update the version counter
-        m_version_num.store(new_version_no);
-
-        delete old_version.m_ptr;
-
-        // Truncate the memtable *after* the version has been installed. This
-        // prevents a duplicate merge request for the same memtable.
+        // We need to truncate the memtable before we advance
+        // the version counter, otherwise there is a moment where 
+        // threads may see duplicate records.
         bool truncation_status = false;
         mtable->truncate(&truncation_status);
 
         while (!truncation_status) 
             ;
+
+        // Update the version counter
+        m_version_num.store(new_version_no);
+
+        delete old_version.m_ptr;
 
         m_primary_merge_active.store(false);
         m_merge_lock.unlock();
