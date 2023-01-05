@@ -421,6 +421,39 @@ void insert_records(std::vector<std::pair<key_type, value_type>> *records, size_
     }
 }
 
+
+void sample(LSMTree *lsm, size_t n) {
+    auto buf1 = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    auto buf2 = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    size_t k = 1000;
+
+    key_type lower_bound = 0;
+    key_type upper_bound = gsl_rng_uniform_int(g_rng, 10000);
+
+    const char *lower = (char *) &lower_bound;
+    const char *upper = (char *) &upper_bound;
+
+    for (size_t i=0; i<n; i++) {
+        auto sample_set = new char[k * lsm::record_size]();
+        lsm->range_sample(sample_set, lower, upper, k, buf1, buf2, g_rng);
+
+        for (size_t j=0; i<k; i++) {
+            auto rec = sample_set + i*record_size;
+            auto s_key = *(key_type*) get_key(rec);
+            auto s_val = *(value_type*) get_val(rec);
+
+            ck_assert_int_le(s_key, upper_bound);
+            ck_assert_int_ge(s_key, lower_bound);
+        }
+
+        delete[] sample_set;
+    }
+
+    free(buf1);
+    free(buf2);
+}
+
 START_TEST(t_multithread_insert)
 {
     size_t record_cnt = 10000;
@@ -458,7 +491,32 @@ END_TEST
 
 START_TEST(t_multithread_sample)
 {
+    size_t record_cnt = 10000;
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
 
+    for (size_t i=0; i<record_cnt; i++) {
+        lsm->append((char *) &i, (char*) &i, false, g_rng);
+    }
+
+    lsm->await_merge_completion();
+
+    size_t thread_cnt = 8;
+    size_t per_thread = record_cnt / thread_cnt;
+
+    std::vector<std::thread> workers(thread_cnt);
+    size_t start = 0;
+    size_t stop = start + per_thread;
+    for (size_t i=0; i<thread_cnt; i++) {
+        workers[i] = std::thread(sample, lsm, 100);
+    }
+
+    for (size_t i=0; i<thread_cnt; i++) {
+        if (workers[i].joinable()) {
+            workers[i].join();
+        }
+    }
+
+    delete lsm;
 }
 END_TEST
 
