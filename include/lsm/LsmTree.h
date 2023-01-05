@@ -65,6 +65,13 @@ private:
         }
 
         void unpin() {
+            // FIXME: This if statement *shouldn't* be necessary, but
+            // it currently is. Somehow a version is being unpinned twice (I think),
+            // resulting in a -1 pin count holding up merging indefinitely.
+            //
+            // I haven't been able to track the root cause down as of yet,
+            // so this is here as a workaround. Ideally the root problem should
+            // be fixed, of course. 
             if (pins.load() > 0) {
                 pins.fetch_add(-1);
             }
