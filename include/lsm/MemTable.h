@@ -199,6 +199,7 @@ class MemTableView {
 public:
     static MemTableView *create(std::vector<MemTable*> &tables) {
         std::vector<MemTable *> pinned_tables;
+        std::vector<size_t> table_cutoffs;
         // If a pin fails, then a version switch has just happened
         // emptying a table, and so we should bail out and try again
         for (size_t i=0; i<tables.size(); i++) {
@@ -215,10 +216,11 @@ public:
                 tables[i]->unpin();
             } else {
                 pinned_tables.push_back(tables[i]);
+                table_cutoffs.push_back(tables[i]->get_record_count());
             }
         }
 
-        return new MemTableView(pinned_tables);
+        return new MemTableView(pinned_tables, table_cutoffs);
     }
 
     ~MemTableView() {
@@ -229,8 +231,8 @@ public:
 
     size_t get_record_count() const {
         size_t cnt = 0;
-        for (size_t i=0; i<m_tables.size(); i++) {
-           cnt += m_tables[i]->get_record_count(); 
+        for (size_t i=0; i<m_cutoffs.size(); i++) {
+           cnt += m_cutoffs[i]; 
         }
 
         return cnt;
@@ -238,14 +240,17 @@ public:
 
     const char *get_record_at(size_t idx) const {
         assert(idx < this->get_record_count());
-        size_t cnt = 0;
+
         size_t i =0;
-        while (idx > cnt + m_tables[i]->get_record_count() && i < (m_tables.size() - 1)) {
+        ssize_t t_idx = idx;
+        while (t_idx >= m_cutoffs[i]) {
+            t_idx -= m_cutoffs[i];
             i++;
-            cnt += m_tables[i]->get_record_count();
         }
 
-        size_t t_idx = idx - cnt;
+        assert(i < m_tables.size());
+        assert(t_idx >= 0 && t_idx < m_cutoffs[i]);
+
         return m_tables[i]->get_record_at(t_idx);
     }
 
@@ -259,7 +264,8 @@ public:
 
 private:
     std::vector<MemTable *> m_tables;
-    MemTableView(std::vector<MemTable *> tables) : m_tables(tables) {}
+    std::vector<size_t> m_cutoffs;
+    MemTableView(std::vector<MemTable *> &tables, std::vector<size_t> &cutoffs) : m_tables(std::move(tables)), m_cutoffs(std::move(cutoffs)) {}
 };
 
 }
