@@ -717,32 +717,46 @@ private:
     // Merge the memory table down into the tree, completing any required other
     // merges to make room for it.
     inline void merge_memtable(MemTable *mtable, size_t version_num, gsl_rng *rng) {
+        //#define MERGE_LOGGING
+        #ifdef MERGE_LOGGING
         fprintf(stderr, "Starting merge for %ld\n", version_num);
         fprintf(stderr, "\tMemtable Version: %ld\n", m_version_data[version_num].load()->active_memtable % LSM_MEMTABLE_CNT);
+        #endif
         if (m_primary_merge_active) {
             version_num = (version_num + 1) % LSM_MEMTABLE_CNT;
+            
+            #ifdef MERGE_LOGGING
             fprintf(stderr, "\tUpdating version number to: %ld\n", version_num);
+            #endif
         }
 
+        #ifdef MERGE_LOGGING
         fprintf(stderr, "\tPrimary Merge: %d\n", m_primary_merge_active.load());
         fprintf(stderr, "\tSecondary Merge Possible: %d\n", m_secondary_merge_possible.load());
         fprintf(stderr, "\tCurrent record count: %ld\n", this->get_record_cnt());
+        #endif
         
 
         memory_level_ptr new_l0 = nullptr;
         if (m_primary_merge_active.load() && m_secondary_merge_possible.load()) {
+            #ifdef MERGE_LOGGING
             fprintf(stderr, "Starting secondary merge...\n");
+            #endif
             m_secondary_merge_possible.store(false); // start the secondary merge
             new_l0 = this->create_new_l0(mtable, rng);
+            #ifdef MERGE_LOGGING
             fprintf(stderr, "Awaiting primary merge completion...\n");
+            #endif
         }
 
         m_merge_lock.lock();
+        #ifdef MERGE_LOGGING
         fprintf(stderr, "Passed merge lock for %ld\n", version_num);
 
         if (new_l0) {
             fprintf(stderr, "Secondary merge continuation\n");
         }
+        #endif
 
         m_primary_merge_active.store(true);
         auto new_version = version_data::create_copy(m_version_data[version_num]);
@@ -793,7 +807,9 @@ private:
 
         m_primary_merge_active.store(false);
         m_merge_lock.unlock();
+        #ifdef MERGE_LOGGING
         fprintf(stderr, "merge done for %ld\n", version_num);
+        #endif
         return;
     }
 
