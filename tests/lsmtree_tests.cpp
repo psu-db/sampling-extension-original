@@ -462,7 +462,7 @@ START_TEST(t_multithread_insert)
         records[i] = {rand(), rand()};
     }
 
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
+    auto lsm = new LSMTree(dir, 100, 1, 2, 1, .01, g_rng);
     size_t thread_cnt = 8;
     size_t per_thread = record_cnt / thread_cnt;
 
@@ -492,7 +492,7 @@ END_TEST
 START_TEST(t_multithread_sample)
 {
     size_t record_cnt = 10000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
+    auto lsm = new LSMTree(dir, 100, 1, 2, 1, .01, g_rng);
 
     for (size_t i=0; i<record_cnt; i++) {
         lsm->append((char *) &i, (char*) &i, false, g_rng);
