@@ -593,6 +593,19 @@ public:
         return true;
     }
 
+
+    void await_merge_completion() {
+        bool done = false;
+        while (!done) {
+            done = true;
+            for (size_t i=0; i<LSM_MEMTABLE_CNT; i++) {
+                if (m_memtables[i]->merging()) {
+                    done = false;
+                }
+            }
+        }
+    }
+
 private:
     std::atomic<size_t> m_version_num;
     std::atomic<tagged_ptr<version_data>> m_version_data[LSM_MEMTABLE_CNT + 1];
@@ -1024,17 +1037,6 @@ private:
         return idx - m_memory_level_cnt;
     }
 
-    void await_merge_completion() {
-        bool done = false;
-        while (!done) {
-            done = true;
-            for (size_t i=0; i<LSM_MEMTABLE_CNT; i++) {
-                if (m_memtables[i]->merging()) {
-                    done = false;
-                }
-            }
-        }
-    }
 
 
     bool wait_for_version(size_t version_num) {
