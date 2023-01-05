@@ -26,14 +26,14 @@ public:
             m_tombstone_filter = new BloomFilter(filter_size, 8, rng);
         }
 
-        std::atomic_store(&m_refcnt, 0);
-        std::atomic_store(&m_deferred_truncate, false);
-        std::atomic_store(&m_merging, false);
+        m_refcnt.store(0);
+        m_deferred_truncate.store(false);
+        m_merging.store(false);
     }
 
     ~MemTable() {
-        assert(std::atomic_load(&m_refcnt) == 0);
-        assert(std::atomic_load(&m_merging) == false);
+        assert(m_refcnt.load() == 0);
+        assert(m_merging.load() == false);
         if (m_data) free(m_data);
         if (m_tombstone_filter) delete m_tombstone_filter;
         if (m_sorted_data) free(m_sorted_data);
@@ -54,16 +54,16 @@ public:
     }
 
     bool truncate(bool *truncation_complete) {
-        if (!m_merging) {
+        if (!m_merging.load()) {
             *truncation_complete = false;
             return false;
         }
 
-        if (std::atomic_load(&m_refcnt) > 0) {
+        if (m_refcnt.load() > 0) {
             *truncation_complete = false;
             this->truncation_signaller = truncation_complete;
 
-            m_deferred_truncate = true;
+            m_deferred_truncate.store(true);
             return true;
         }
 
@@ -74,7 +74,7 @@ public:
         // Update the tail to allow inserts to succeed again.
         m_current_tail.store(0); 
 
-        std::atomic_store(&m_merging, false);
+        m_merging.store(false);
 
         *truncation_complete = true;
         this->truncation_signaller = nullptr;
@@ -125,14 +125,14 @@ public:
 
     char* sorted_output() {
         memset(m_sorted_data, 0, m_buffersize);
-        memcpy(m_sorted_data, m_data, record_size * (std::atomic_load(&m_reccnt)));
+        memcpy(m_sorted_data, m_data, record_size * (m_reccnt.load()));
         qsort(m_sorted_data, m_reccnt.load(), record_size, memtable_record_cmp);
         return m_sorted_data;
     }
 
     char *start_merge() {
         if (m_merge_lock.try_lock()) {
-            m_merging = true;
+            m_merging.store(true);
             return this->sorted_output();
         }
 
@@ -147,14 +147,14 @@ public:
             //return false;
         //}
 
-        std::atomic_fetch_add(&m_refcnt, 1);
+        m_refcnt.fetch_add(1);
         return true;
     }
 
     bool unpin() {
-        std::atomic_fetch_add(&m_refcnt, -1);
+        m_reccnt.fetch_add(-1);
 
-        if (std::atomic_load(&m_refcnt) == 0 && m_deferred_truncate) {
+        if (m_refcnt.load() == 0 && m_deferred_truncate.load()) {
             assert(this->truncate(this->truncation_signaller));
         }
 
@@ -162,7 +162,7 @@ public:
     }
 
     bool merging() {
-        return m_merging;
+        return m_merging.load();
     }
 
 private:
@@ -181,10 +181,10 @@ private:
 
     std::mutex m_merge_lock;
 
-    std::atomic_uint64_t m_refcnt;
+    std::atomic<size_t> m_refcnt;
 
-    std::atomic_bool m_merging;
-    std::atomic_bool m_deferred_truncate;
+    std::atomic<bool> m_merging;
+    std::atomic<bool> m_deferred_truncate;
 
     char* m_data;
     char* m_sorted_data;
