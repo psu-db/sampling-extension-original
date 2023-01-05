@@ -1,6 +1,7 @@
 #include <check.h>
 #include <set>
 #include <random>
+#include <thread>
 
 #include "lsm/LsmTree.h"
 
@@ -410,6 +411,64 @@ START_TEST(t_tombstone_merging_01)
 }
 END_TEST
 
+/*
+ * functions for multithreaded testing
+ */
+void insert_records(std::vector<std::pair<key_type, value_type>> *records, size_t start, size_t stop, lsm::LSMTree *tree) 
+{
+    for (size_t i=start; i<stop; i++) {
+        tree->append((char*) &((*records)[i].first), (char*) &((*records)[i].second), false, g_rng);
+    }
+}
+
+START_TEST(t_multithread_insert)
+{
+    size_t record_cnt = 10000;
+    std::vector<std::pair<key_type, value_type>> records(record_cnt);
+    for (size_t i=0; i<record_cnt; i++) {
+        records[i] = {rand(), rand()};
+    }
+
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1, .01, g_rng);
+    size_t thread_cnt = 8;
+    size_t per_thread = record_cnt / thread_cnt;
+
+    std::vector<std::thread> workers(thread_cnt);
+    size_t start = 0;
+    size_t stop = start + per_thread;
+    for (size_t i=0; i<thread_cnt; i++) {
+        workers[i] = std::thread(insert_records, &records, start, stop, lsm);
+        start = stop;
+        stop = std::min(start + per_thread, record_cnt);
+    }
+
+    for (size_t i=0; i<thread_cnt; i++) {
+        if (workers[i].joinable()) {
+            workers[i].join();
+        }
+    }
+
+    ck_assert_int_eq(lsm->get_record_cnt(), record_cnt);
+    ck_assert_int_eq(lsm->get_tombstone_cnt(), 0);
+
+    delete lsm;
+}
+END_TEST
+
+
+START_TEST(t_multithread_sample)
+{
+
+}
+END_TEST
+
+
+START_TEST(t_multithread_mix)
+{
+
+}
+END_TEST
+
 
 Suite *unit_testing()
 {
@@ -417,12 +476,14 @@ Suite *unit_testing()
 
     TCase *create = tcase_create("lsm::LSMTree::constructor Testing");
     tcase_add_test(create, t_create);
+
     suite_add_tcase(unit, create);
 
     TCase *append = tcase_create("lsm::LSMTree::append Testing");
     tcase_add_test(append, t_append);
     tcase_add_test(append, t_append_with_mem_merges);
     tcase_add_test(append, t_append_with_disk_merges);
+
     tcase_set_timeout(append, 500);
     suite_add_tcase(unit, append);
 
@@ -430,8 +491,8 @@ Suite *unit_testing()
     tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
     tcase_add_test(sampling, t_range_sample_disklevels);
-    tcase_set_timeout(sampling, 500);
 
+    tcase_set_timeout(sampling, 500);
     suite_add_tcase(unit, sampling);
 
     TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
@@ -443,8 +504,18 @@ Suite *unit_testing()
 
     TCase *ts = tcase_create("lsm::LSMTree::tombstone_compaction Testing");
     tcase_add_test(ts, t_tombstone_merging_01);
+
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
+
+
+    TCase *mt = tcase_create("lsm::LSMTree Multithreaded Testing");
+    tcase_add_test(mt, t_multithread_insert);
+    tcase_add_test(mt, t_multithread_sample);
+    tcase_add_test(mt, t_multithread_mix);
+    
+    tcase_set_timeout(mt, 500);
+    suite_add_tcase(unit, mt);
 
     return unit;
 }
