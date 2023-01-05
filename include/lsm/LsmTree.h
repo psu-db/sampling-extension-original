@@ -192,8 +192,7 @@ public:
 
         TIMER_START();
 
-        size_t memtable_cutoff = memtable->get_record_count() - 1;
-        record_counts.push_back(memtable_cutoff + 1);
+        record_counts.push_back(memtable->get_record_count());
 
         for (auto &level : version->mem_levels) {
             if (level) {
@@ -263,18 +262,17 @@ public:
             // First the memtable,
             while (run_samples[0] > 0) {
                 TIMER_START();
-                size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
+                size_t idx = gsl_rng_uniform_int(rng, memtable->get_record_count() - 1 );
                 sample_record = memtable->get_record_at(idx);
                 TIMER_STOP();
                 memtable_sample_time += TIMER_RESULT();
 
                 run_samples[0]--;
 
-                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff, version)) {
+                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
                     rejections++;
                 }
             }
-
 
             // Next the in-memory runs
             // QUESTION: can we assume that the memory page size is a multiple of the record length?
@@ -293,7 +291,7 @@ public:
                     TIMER_STOP();
                     memlevel_sample_time += TIMER_RESULT();
 
-                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff, version)) {
+                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
                         rejections++;
                     }
                 }
@@ -325,7 +323,7 @@ public:
                     TIMER_STOP();
                     disklevel_sample_time += TIMER_RESULT();
 
-                    if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, memtable_cutoff, version)) {
+                    if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
                         rejections++;
                     }
                 }
@@ -333,6 +331,7 @@ public:
         } while (sample_idx < sample_sz);
 
         this->unpin_version(version_num);
+        delete memtable;
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -340,7 +339,7 @@ public:
     // should correspond to the run containing the record in question
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
-    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTableView *memtable, size_t memtable_cutoff, version_data *version) {
+    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTableView *memtable, version_data *version) {
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
         if (memtable->check_tombstone(get_key(record), get_val(record))) {
             return true;
@@ -635,36 +634,18 @@ private:
         m_version_data[version_num].load()->pins.fetch_add(-1);
     }
 
-    /*
-    MemTable *active_memtable(size_t *idx=nullptr) {
-        size_t ver = m_version.num.load();
-        if (ver >= LSM_MEMTABLE_CNT) { // all tables are currently merging
-            // FIXME: temporary for single merge version
-            m_version.incr_version(ver);
-            return nullptr;
-        }
-
-        assert(ver < LSM_MEMTABLE_CNT);
-        if (idx) {
-            *idx=ver;
-        }
-        return m_memtables[ver];
-    }
-    */
-
-
     MemTableView *memtable_view() {
-        return MemTableView::create(m_memtables, sizeof(m_memtables));
+        return MemTableView::create(m_memtables);
     }
 
-    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTableView *memtable, size_t memtable_cutoff, version_data *version) {
+    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTableView *memtable, version_data *version) {
         if (is_tombstone(record)) {
             tombstone_rejections++;
             return true;
         } else if (key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0) {
             bounds_rejections++;
             return true;
-        } else if (this->is_deleted(record, rid, buffer, memtable, memtable_cutoff, version)) {
+        } else if (this->is_deleted(record, rid, buffer, memtable, version)) {
             deletion_rejections++;
             return true;
         }
@@ -677,12 +658,11 @@ private:
     }
 
     inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
-                              char *sample_buffer, size_t &sample_idx, MemTableView *memtable, size_t memtable_cutoff,
-                              version_data *version) {
+                              char *sample_buffer, size_t &sample_idx, MemTableView *memtable, version_data *version) {
         TIMER_INIT();
         TIMER_START();
         sampling_attempts++;
-        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer, memtable, memtable_cutoff, version)) {
+        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer, memtable, version)) {
             sampling_rejections++;
             return false;
         }

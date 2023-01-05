@@ -143,9 +143,9 @@ public:
         // FIXME: Even if a table is merging, it may still be accessed
         // by a sampling operation. I don't think this is actually a 
         // valid condition.
-        if (m_merging == true) {
-            return false;
-        }
+        //if (m_merging == true) {
+            //return false;
+        //}
 
         std::atomic_fetch_add(&m_refcnt, 1);
         return true;
@@ -197,12 +197,16 @@ private:
 
 class MemTableView {
 public:
-    static MemTableView *create(std::vector<MemTable*> &tables, size_t table_cnt) {
+    static MemTableView *create(std::vector<MemTable*> &tables) {
         std::vector<MemTable *> pinned_tables;
         // If a pin fails, then a version switch has just happened
         // emptying a table, and so we should bail out and try again
-        for (size_t i=0; i<table_cnt; i++) {
+        for (size_t i=0; i<tables.size(); i++) {
             if (!tables[i]->pin()) {
+                for (size_t i=0; i<pinned_tables.size(); i++) {
+                    pinned_tables[i]->unpin();
+                }
+
                 return nullptr;
             }
 
@@ -214,7 +218,7 @@ public:
             }
         }
 
-        return nullptr;
+        return new MemTableView(pinned_tables);
     }
 
     ~MemTableView() {
@@ -228,14 +232,17 @@ public:
         for (size_t i=0; i<m_tables.size(); i++) {
            cnt += m_tables[i]->get_record_count(); 
         }
-        return 0;
+
+        return cnt;
     }
 
     const char *get_record_at(size_t idx) const {
+        assert(idx < this->get_record_count());
         size_t cnt = 0;
-        size_t i;
-        while (idx > cnt + m_tables[i]->get_record_count()) {
+        size_t i =0;
+        while (idx > cnt + m_tables[i]->get_record_count() && i < (m_tables.size() - 1)) {
             i++;
+            cnt += m_tables[i]->get_record_count();
         }
 
         size_t t_idx = idx - cnt;
