@@ -79,12 +79,24 @@ private:
         }
 
         MemTable *get_active_memtable() {
-            return this->memtables[active_memtable.load() % LSM_MEMTABLE_CNT];
+            return this->memtables[active_memtable.load()];
         }
 
-        MemTable *swap_active_memtable(MemTable *current_table) {
-            active_memtable.fetch_add(1);
-            return this->get_active_memtable();
+        /*
+         * Swap the memtable considered "active", i.e. sustaining inserts
+         * for this version, and return a pointer to the memtable that was
+         * originally active before this function was called.
+         */
+        MemTable *swap_active_memtable() {
+            auto old_memtable = this->get_active_memtable();
+
+            size_t new_idx, old_idx;
+            do {
+                old_idx = active_memtable.load();
+                new_idx = (new_idx + 1) % LSM_MEMTABLE_CNT;
+             } while (!this->active_memtable.compare_exchange_strong(old_idx, new_idx));
+            
+            return old_memtable;
         }
     private:
         version_data(size_t active_memtable, std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, std::vector<disk_level_ptr> &disklvls, level_index last_level_idx)
