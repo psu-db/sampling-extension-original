@@ -147,13 +147,10 @@ public:
     }
 
     bool pin() {
-        // FIXME: Even if a table is merging, it may still be accessed
-        // by a sampling operation. I don't think this is actually a 
-        // valid condition.
-        if (m_merging == true) {
-            return false;
-        }
-
+        // NOTE: I've removed the block on acquiring pins here,
+        // but this *could* result in starvation of the merge thread, 
+        // in principle. It might be better to have the sample threads
+        // drop their version pin and try again.
         m_refcnt.fetch_add(1);
         return true;
     }

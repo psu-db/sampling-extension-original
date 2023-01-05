@@ -498,8 +498,6 @@ START_TEST(t_multithread_sample)
         lsm->append((char *) &i, (char*) &i, false, g_rng);
     }
 
-    lsm->await_merge_completion();
-
     size_t thread_cnt = 8;
     size_t per_thread = record_cnt / thread_cnt;
 
