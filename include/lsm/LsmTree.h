@@ -55,18 +55,13 @@ private:
         std::vector<memory_level_ptr> mem_levels; 
         std::vector<disk_level_ptr> disk_levels; 
         std::atomic<size_t> pins;
-        std::atomic<bool> block_pin;
         level_index last_level_idx;
 
-        version_data() : active_memtable(0), pins(0), block_pin(false), last_level_idx(-1) {};
+        version_data() : active_memtable(0), pins(0), last_level_idx(-1) {};
 
         bool pin() {
-            if (!block_pin.load()) {
-                pins.fetch_add(1);
-                return true;
-            }
-
-            return false;
+            pins.fetch_add(1);
+            return true;
         }
 
         void unpin() {
@@ -102,7 +97,7 @@ private:
         }
     private:
         version_data(size_t active_memtable, std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, std::vector<disk_level_ptr> &disklvls, level_index last_level_idx)
-        : active_memtable(0), memtables(std::move(tables)), mem_levels(std::move(memlvls)), disk_levels(std::move(disklvls)), pins(0), block_pin(false), last_level_idx(last_level_idx) {}
+        : active_memtable(0), memtables(std::move(tables)), mem_levels(std::move(memlvls)), disk_levels(std::move(disklvls)), pins(0), last_level_idx(last_level_idx) {}
 
         version_data *copy() {
             auto active_mtable = active_memtable.load();
@@ -796,9 +791,8 @@ private:
         // This should be sufficient, as once a version is no longer
         // active it will stop acculumating pins. So there isn't a risk
         // of this counter changing between when we observe it to be 0
-        // and when we swap in the new version. But we'll block new
-        // pins anyway to be safe.
-        m_version_data[new_version_no].load()->block_pin.store(true);
+        // and when we swap in the new version.
+
         while (m_version_data[new_version_no].load()->pins > 0) {
             ;
         }
@@ -815,6 +809,8 @@ private:
 
         while (!truncation_status) 
             ;
+
+        new_version.m_ptr->active_memtable.store(m_version_data[m_version_num.load()].load().m_ptr->active_memtable.load());
 
         // Update the version counter
         m_version_num.store(new_version_no);

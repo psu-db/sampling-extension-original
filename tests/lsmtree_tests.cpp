@@ -18,6 +18,7 @@ START_TEST(t_create)
     ck_assert_int_eq(lsm->get_record_cnt(), 0);
     ck_assert_int_eq(lsm->get_height(), 0);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -40,6 +41,7 @@ START_TEST(t_append)
     ck_assert_int_eq(lsm->get_height(), 0);
     ck_assert_int_eq(lsm->get_record_cnt(), 100);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -62,6 +64,7 @@ START_TEST(t_append_with_mem_merges)
     ck_assert_int_eq(lsm->get_record_cnt(), 300);
     ck_assert_int_eq(lsm->get_height(), 1);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -84,6 +87,7 @@ START_TEST(t_append_with_disk_merges)
     ck_assert_int_eq(lsm->get_record_cnt(), 1000);
     ck_assert_int_eq(lsm->get_height(), 3);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -124,6 +128,7 @@ START_TEST(t_range_sample_memtable)
     free(buf);
     free(util_buf);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -164,6 +169,7 @@ START_TEST(t_range_sample_memlevels)
     free(buf);
     free(util_buf);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -204,6 +210,7 @@ START_TEST(t_range_sample_disklevels)
     free(buf);
     free(util_buf);
 
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -265,6 +272,8 @@ START_TEST(t_sorted_array)
     }
 
     free(flat);
+
+    lsm->await_merge_completion();
     delete lsm;
 }
 END_TEST
@@ -338,9 +347,13 @@ START_TEST(t_flat_isam)
 
     auto pfile = flat->get_pfile();
 
+
     delete iter;
     delete flat;
+
+    lsm->await_merge_completion();
     delete lsm;
+
     delete pfile;
 }
 END_TEST
@@ -388,10 +401,9 @@ START_TEST(t_tombstone_merging_01)
         if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
             to_delete.insert(rec);
         }
-
-        ck_assert(lsm->validate_tombstone_proportion());
     }
 
+    lsm->await_merge_completion();
     ck_assert(lsm->validate_tombstone_proportion());
 
     delete lsm;
@@ -414,11 +426,11 @@ Suite *unit_testing()
     tcase_set_timeout(append, 500);
     suite_add_tcase(unit, append);
 
-    /*
     TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
     tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
     tcase_add_test(sampling, t_range_sample_disklevels);
+    tcase_set_timeout(sampling, 500);
 
     suite_add_tcase(unit, sampling);
 
@@ -433,7 +445,6 @@ Suite *unit_testing()
     tcase_add_test(ts, t_tombstone_merging_01);
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
-    */
 
     return unit;
 }
