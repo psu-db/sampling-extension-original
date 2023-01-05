@@ -782,11 +782,13 @@ private:
         }
 
         // Swap in the new version.
-        delete m_version_data[new_version_no].load().get();
+        auto old_version = m_version_data[new_version_no].load();
         m_version_data[new_version_no].store(new_version);
 
         // Update the version counter
         m_version_num.store(new_version_no);
+
+        delete old_version.m_ptr;
 
         // Truncate the memtable *after* the version has been installed. This
         // prevents a duplicate merge request for the same memtable.
