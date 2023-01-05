@@ -132,6 +132,13 @@ public:
 
     char *start_merge() {
         if (m_merge_lock.try_lock()) {
+            // Only allow entry to a merge state when the memtable
+            // is full. 
+            if (this->get_record_count() < this->get_capacity()) {
+                m_merge_lock.unlock();
+                return nullptr;
+            }
+
             m_merging.store(true);
             return this->sorted_output();
         }
@@ -143,16 +150,16 @@ public:
         // FIXME: Even if a table is merging, it may still be accessed
         // by a sampling operation. I don't think this is actually a 
         // valid condition.
-        //if (m_merging == true) {
-            //return false;
-        //}
+        if (m_merging == true) {
+            return false;
+        }
 
         m_refcnt.fetch_add(1);
         return true;
     }
 
     bool unpin() {
-        m_reccnt.fetch_add(-1);
+        m_refcnt.fetch_add(-1);
 
         if (m_refcnt.load() == 0 && m_deferred_truncate.load()) {
             assert(this->truncate(this->truncation_signaller));
@@ -204,19 +211,19 @@ public:
         // emptying a table, and so we should bail out and try again
         for (size_t i=0; i<tables.size(); i++) {
             if (!tables[i]->pin()) {
-                for (size_t i=0; i<pinned_tables.size(); i++) {
+                for (size_t j=0; j<pinned_tables.size(); j++) {
                     pinned_tables[i]->unpin();
                 }
 
                 return nullptr;
-            }
-
-            // don't use any empty memtables
-            if (tables[i]->get_record_count() == 0) {
-                tables[i]->unpin();
             } else {
-                pinned_tables.push_back(tables[i]);
-                table_cutoffs.push_back(tables[i]->get_record_count());
+                // don't use any empty memtables
+                if (tables[i]->get_record_count() == 0) {
+                    tables[i]->unpin();
+                } else {
+                    pinned_tables.push_back(tables[i]);
+                    table_cutoffs.push_back(tables[i]->get_record_count());
+                }
             }
         }
 
