@@ -1,6 +1,7 @@
 #include <check.h>
 
 #include "lsm/WIRSRun.h"
+#include "lsm/LsmTree.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
 
@@ -17,6 +18,31 @@ static MemTable *create_test_memtable(size_t cnt)
         value_type val = rand();
 
         mtable->append((char*) &key, (char*) &val);
+    }
+
+    return mtable;
+}
+
+static MemTable *create_weighted_memtable(size_t cnt)
+{
+    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    
+    // Put in half of the count with weight one.
+    key_type key = 0;
+    for (size_t i=0; i< cnt / 2; i++) {
+        mtable->append((char *) &key, (char *) &i);
+    }
+
+    // put in a quarter of the count with weight two.
+    key = 1;
+    for (size_t i=0; i< cnt / 4; i++) {
+        mtable->append((char *) &key, (char *) &i, 2);
+    }
+
+    // the remaining quarter with weight four.
+    key = 2;
+    for (size_t i=0; i< cnt / 4; i++) {
+        mtable->append((char *) &key, (char *) &i, 3);
     }
 
     return mtable;
@@ -190,6 +216,46 @@ START_TEST(t_full_cancelation)
 }
 END_TEST
 
+
+START_TEST(t_weighted_sampling)
+{
+    size_t n=1000;
+    auto mtable = create_weighted_memtable(n);
+
+    BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    WIRSRun* run = new WIRSRun(mtable, bf);
+
+    key_type lower_key = 0;
+    key_type upper_key = 5;
+
+    size_t k = 1000;
+
+    char * buffer = new char[k*lsm::record_size]();
+    size_t cnt[3] = {0};
+    for (size_t i=0; i<1000; i++) {
+        auto state = run->get_sample_run_state((char*) &lower_key, (char*) &upper_key);
+        
+        run->get_samples(state, buffer, (char *) &lower_key, (char *) &upper_key, k, nullptr, g_rng);
+
+        for (size_t j=0; j<k; j++) {
+            cnt[*(size_t *) get_key(buffer + j*lsm::record_size)]++;
+        }
+
+        delete state;
+    }
+
+    for (size_t j=0; j<3; j++) {
+        fprintf(stderr, "%ld: %ld\n", j, cnt[j]/1000);
+    }
+
+
+    delete[] buffer;
+    delete run;
+    delete bf;
+    delete mtable;
+}
+END_TEST
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("WIRSRun Unit Testing");
@@ -200,14 +266,22 @@ Suite *unit_testing()
     tcase_set_timeout(create, 100);
     suite_add_tcase(unit, create);
 
+
     TCase *bounds = tcase_create("lsm::WIRSRun::get_{lower,upper}_bound Testing");
     tcase_add_test(bounds, t_get_lower_bound_index);
     tcase_set_timeout(bounds, 100);   
     suite_add_tcase(unit, bounds);
 
+
     TCase *tombstone = tcase_create("lsm::WIRSRun::tombstone cancellation Testing");
     tcase_add_test(tombstone, t_full_cancelation);
     suite_add_tcase(unit, tombstone);
+
+
+    TCase *sampling = tcase_create("lsm::WIRSRun::sampling Testing");
+    tcase_add_test(sampling, t_weighted_sampling);
+
+    suite_add_tcase(unit, sampling);
     return unit;
 }
 
