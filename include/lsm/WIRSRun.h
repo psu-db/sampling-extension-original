@@ -187,7 +187,7 @@ public:
             // third level...
             size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
             auto record = m_data + rec_offset * record_size;
-            if (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state)) {
+            if (!state || (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state))) {
                 memcpy(sample_set + cnt * record_size, record, record_size);
                 ++cnt;
             }
