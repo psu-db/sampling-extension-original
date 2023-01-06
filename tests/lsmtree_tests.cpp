@@ -215,7 +215,7 @@ Suite *unit_testing()
     suite_add_tcase(unit, append);
 
     TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
-    //tcase_add_test(sampling, t_range_sample_memtable);
+    tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
 
     suite_add_tcase(unit, sampling);

@@ -16,22 +16,41 @@
 #include <string>
 #include <random>
 
-typedef struct {
+typedef struct record {
     char *key;
     char *value;
     lsm::weight_type weight;
+
+    friend bool operator<(const struct record &first, const struct record &other) {
+        if (*(lsm::key_type *) first.key == *(lsm::key_type *) other.key) {
+            return *(lsm::value_type*) first.value < *(lsm::value_type*) other.value;
+        }
+
+        return *(lsm::key_type *) first.key < *(lsm::key_type *)  other.key;
+    }
 } record;
 
-typedef struct {
+typedef struct shared_record {
     std::shared_ptr<char[]> key;
     std::shared_ptr<char[]> value;
     lsm::weight_type weight;
+
+    friend bool operator<(const struct shared_record &first, const struct shared_record &other) {
+        if (*(lsm::key_type *) first.key.get() == *(lsm::key_type *) other.key.get()) {
+            return *(lsm::value_type*) first.value.get() < *(lsm::value_type*) other.value.get();
+        }
+
+        return *(lsm::key_type *) first.key.get() < *(lsm::key_type *)  other.key.get();
+    }
 } shared_record;
 
 typedef std::pair<lsm::key_type, lsm::key_type> key_range;
 
 static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
+
+static lsm::key_type g_min_key = INT64_MAX;
+static lsm::key_type g_max_key = INT64_MIN;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
 
@@ -113,6 +132,15 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         *((lsm::key_type*) key) = atol(key_field.c_str());
         *((lsm::value_type*) val) = atol(value_field.c_str());
         *(weight) = atof(weight_field.c_str());
+
+        if (*(lsm::key_type*) key < g_min_key) {
+            g_min_key = *(lsm::key_type*) key;
+        }
+
+        if (*(lsm::key_type*) key > g_max_key) {
+            g_max_key = *(lsm::key_type*) key;
+        }
+
         return true;
     }
 
@@ -216,9 +244,12 @@ static key_range get_key_range(lsm::key_type min, lsm::key_type max, double sele
     size_t range_length = (max - min) * selectivity;
 
     lsm::key_type max_bottom = max - range_length;
-    lsm::key_type bottom = gsl_rng_uniform_int(g_rng, max_bottom);
+    lsm::key_type bottom;
 
-    return {bottom, bottom + range_length};
+    while ((bottom = gsl_rng_get(g_rng)) > range_length) 
+        ;
+
+    return {min + bottom, min + bottom + range_length};
 }
 
 
