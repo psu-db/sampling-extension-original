@@ -7,6 +7,11 @@
 
 using namespace lsm;
 
+bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
+    return ((double) std::abs(n1 - n2) / (double) mag) < epsilon;
+}
+
+
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
 static MemTable *create_test_memtable(size_t cnt)
@@ -28,21 +33,21 @@ static MemTable *create_weighted_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
     
     // Put in half of the count with weight one.
-    key_type key = 0;
+    key_type key = 1;
     for (size_t i=0; i< cnt / 2; i++) {
-        mtable->append((char *) &key, (char *) &i);
-    }
-
-    // put in a quarter of the count with weight two.
-    key = 1;
-    for (size_t i=0; i< cnt / 4; i++) {
         mtable->append((char *) &key, (char *) &i, 2);
     }
 
-    // the remaining quarter with weight four.
+    // put in a quarter of the count with weight two.
     key = 2;
     for (size_t i=0; i< cnt / 4; i++) {
-        mtable->append((char *) &key, (char *) &i, 3);
+        mtable->append((char *) &key, (char *) &i, 4);
+    }
+
+    // the remaining quarter with weight four.
+    key = 3;
+    for (size_t i=0; i< cnt / 4; i++) {
+        mtable->append((char *) &key, (char *) &i, 8);
     }
 
     return mtable;
@@ -238,16 +243,15 @@ START_TEST(t_weighted_sampling)
         run->get_samples(state, buffer, (char *) &lower_key, (char *) &upper_key, k, nullptr, g_rng);
 
         for (size_t j=0; j<k; j++) {
-            cnt[*(size_t *) get_key(buffer + j*lsm::record_size)]++;
+            cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
         }
 
         delete state;
     }
 
-    for (size_t j=0; j<3; j++) {
-        fprintf(stderr, "%ld: %ld\n", j, cnt[j]/1000);
-    }
-
+    ck_assert(roughly_equal(cnt[0] / 1000, (double) n/4.0, n, .05));
+    ck_assert(roughly_equal(cnt[1] / 1000, (double) n/4.0, n, .05));
+    ck_assert(roughly_equal(cnt[2] / 1000, (double) n/2.0, n, .05));
 
     delete[] buffer;
     delete run;
