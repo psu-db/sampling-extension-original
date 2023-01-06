@@ -171,6 +171,8 @@ public:
     }
 
     // returns the number of records sampled
+    // NOTE: This operation returns records strictly between the lower and upper bounds, not
+    // including them.
     size_t get_samples(WIRSRunState* run_state, char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         if (sample_sz == 0) {
             return 0;
