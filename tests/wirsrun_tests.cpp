@@ -249,9 +249,9 @@ START_TEST(t_weighted_sampling)
         delete state;
     }
 
-    ck_assert(roughly_equal(cnt[0] / 1000, (double) n/4.0, n, .05));
-    ck_assert(roughly_equal(cnt[1] / 1000, (double) n/4.0, n, .05));
-    ck_assert(roughly_equal(cnt[2] / 1000, (double) n/2.0, n, .05));
+    ck_assert(roughly_equal(cnt[0] / 1000, (double) k/4.0, k, .05));
+    ck_assert(roughly_equal(cnt[1] / 1000, (double) k/4.0, k, .05));
+    ck_assert(roughly_equal(cnt[2] / 1000, (double) k/2.0, k, .05));
 
     delete[] buffer;
     delete run;

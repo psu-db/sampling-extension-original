@@ -1,6 +1,7 @@
 #include <check.h>
 #include <set>
 #include <random>
+#include <algorithm>
 
 #include "lsm/LsmTree.h"
 
@@ -9,6 +10,10 @@ using namespace lsm;
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
 std::string dir = "./tests/data/lsmtree";
+
+bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
+    return ((double) std::abs(n1 - n2) / (double) mag) < epsilon;
+}
 
 START_TEST(t_create)
 {
@@ -147,6 +152,74 @@ START_TEST(t_range_sample_memlevels)
 }
 END_TEST
 
+START_TEST(t_range_sample_weighted)
+{
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    size_t n = 10000;
+
+    std::vector<key_type> keys;
+
+    key_type key = 1;
+    for (size_t i=0; i< n / 2; i++) {
+        keys.push_back(key);
+    }
+
+    // put in a quarter of the count with weight two.
+    key = 2;
+    for (size_t i=0; i< n / 4; i++) {
+        keys.push_back(key);
+    }
+
+    // the remaining quarter with weight four.
+    key = 3;
+    for (size_t i=0; i< n / 4; i++) {
+        keys.push_back(key);
+    }
+
+    std::random_device rd;
+    std::mt19937 gen{rd()};
+    std::shuffle(keys.begin(), keys.end(), gen);
+
+    for (size_t i=0; i<keys.size(); i++) {
+        double weight;
+        if (keys[i] == 1)  {
+            weight = 2.0;
+        } else if (keys[i] == 2) {
+            weight = 4.0;
+        } else {
+            weight = 8.0;
+        }
+
+        lsm->append((char*) &keys[i], (char*) &i, weight, false, g_rng);
+    }
+    size_t k = 1000;
+    key_type lower_key = 0;
+    key_type upper_key = 5;
+
+    char *buffer = new char[k*lsm::record_size]();
+    char *buffer1 = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+    char *buffer2 = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
+
+    size_t cnt[3] = {0};
+    for (size_t i=0; i<1000; i++) {
+        lsm->range_sample(buffer, (char*) &lower_key, (char*) &upper_key, k, buffer1, buffer2, g_rng);
+
+        for (size_t j=0; j<k; j++) {
+            cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
+        }
+    }
+
+    ck_assert(roughly_equal(cnt[0] / 1000, (double) k/4.0, k, .05));
+    ck_assert(roughly_equal(cnt[1] / 1000, (double) k/4.0, k, .05));
+    ck_assert(roughly_equal(cnt[2] / 1000, (double) k/2.0, k, .05));
+
+    delete lsm;
+    delete[] buffer;
+    free(buffer1);
+    free(buffer2);
+}
+END_TEST
+
 
 START_TEST(t_tombstone_merging_01)
 {
@@ -217,6 +290,7 @@ Suite *unit_testing()
     TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
     tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
+    tcase_add_test(sampling, t_range_sample_weighted);
 
     suite_add_tcase(unit, sampling);
 
