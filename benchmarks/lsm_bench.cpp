@@ -78,8 +78,22 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     auto sample_time = std::chrono::duration_cast<std::chrono::nanoseconds>(sample_stop - sample_start).count() / samples;
 
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %zu\t", tree->get_record_cnt() - tree->get_tombstone_cnt(), tree->get_tombstone_cnt(), tree->get_height(), tree->get_memory_utilization(), tree->get_aux_memory_utilization(), lsm::sampling_attempts, lsm::sampling_rejections, lsm::bounds_rejections, lsm::tombstone_rejections, lsm::deletion_rejections, per_insert, sample_time);
-    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n", lsm::sample_range_time / samples, lsm::alias_time / samples, lsm::alias_query_time / samples, lsm::memtable_sample_time / samples, lsm::memlevel_sample_time / samples, lsm::disklevel_sample_time / samples, lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
+
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %zu\t",
+            tree->get_record_cnt() - tree->get_tombstone_cnt(),
+            tree->get_tombstone_cnt(), tree->get_height(),
+            tree->get_memory_utilization(), tree->get_aux_memory_utilization(),
+            lsm::sampling_attempts, lsm::sampling_rejections,
+            lsm::bounds_rejections, lsm::tombstone_rejections,
+            lsm::deletion_rejections, per_insert, sample_time);
+
+    fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n",
+            lsm::sample_range_time / samples, lsm::alias_time / samples,
+            lsm::alias_query_time / samples,
+            lsm::memtable_sample_time / samples,
+            lsm::memlevel_sample_time / samples,
+            lsm::disklevel_sample_time / samples,
+            lsm::rejection_check_time / samples, lsm::pf_read_cnt / samples);
 
     reset_lsm_perf_metrics();
 
@@ -130,6 +144,10 @@ int main(int argc, char **argv)
 
     size_t total_inserts = initial_insertions;
 
+    fprintf(stderr, "Record Count, Tombstone Count, Tree Height, Memory Utilization, Auxiliary Memory Utilization, Average Sample Attempts, Average Sample Rejections, ");
+    fprintf(stderr, "Average Bounds Rejections, Average Tombstone Rejections, Average Deletion Rejections, Average Insert Latency (ns), Average Sample Latency (ns), ");
+    fprintf(stderr, "Average Sample Range Construction Latency (ns), Average Alias Query Latency (ns), Average MemTable Sampling Latency (ns), Average MemLevel Sampling Latency (ns), ");
+    fprintf(stderr, "Average DiskLevel Sampling Latency (ns), Average Rejection Check Time (ns)\n");
     while (benchmark(&sampling_lsm, &datafile, inserts, samples,
                      sample_size, min_key, max_key, selectivity, delete_prop)) {
         total_inserts += inserts;

@@ -2,17 +2,18 @@
 
 #include "bench.h"
 
+size_t g_insert_batch_size = 100;
+
 static bool benchmark(lsm::LSMTree *tree, std::fstream *file, 
                       size_t inserts, double delete_prop) {
     // for looking at the insert time distribution
-    size_t insert_batch_size = 100;
     std::vector<size_t> insert_times;
-    insert_times.reserve(inserts / insert_batch_size);
+    insert_times.reserve(inserts / g_insert_batch_size);
 
     bool out_of_data = false;
 
     size_t inserted_records = 0;
-    std::vector<shared_record> to_insert(insert_batch_size);
+    std::vector<shared_record> to_insert(g_insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
     std::vector<shared_record> del_vec;
@@ -21,7 +22,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t applied_deletes = 0;
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
-        for (size_t i=0; i<insert_batch_size; i++) {
+        for (size_t i=0; i<g_insert_batch_size; i++) {
             auto rec = create_shared_record();
             if (!next_record(file, rec.first.get(), rec.second.get())) {
                     // If no new records were loaded, there's no reason to duplicate
@@ -57,7 +58,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
 
-        insert_times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(insert_stop - insert_start).count() / insert_batch_size );
+        insert_times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(insert_stop - insert_start).count() / g_insert_batch_size );
     }
 
     size_t per_insert = std::accumulate(insert_times.begin(), insert_times.end(), decltype(insert_times)::value_type(0)) / (inserts + applied_deletes);
@@ -109,6 +110,8 @@ int main(int argc, char **argv)
     size_t inserts = insert_batch * record_count;
 
     size_t total_inserts = initial_insertions;
+
+    fprintf(stderr, "Insert Latency (ns) [Averaged over %ld inserts]\n", g_insert_batch_size);
 
     while (benchmark(&sampling_lsm, &datafile, inserts, delete_prop)) {
         total_inserts += inserts;

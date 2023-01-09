@@ -23,6 +23,7 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, size_t min
     free(buffer1);
     free(buffer2);
 
+    fprintf(stderr, "Average Sample Latency (ns)\n");
     printf("%.0lf\n", avg_latency);
 }
 

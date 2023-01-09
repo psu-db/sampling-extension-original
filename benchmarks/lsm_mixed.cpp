@@ -88,7 +88,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t avg_sample_tput = (avg_sample_latency) ? (double) (1.0 / (double) avg_sample_latency) * 1e9 : 0;
     size_t avg_delete_tput = (avg_delete_latency) ? (double) (1.0 / (double) avg_delete_latency) * 1e9 : 0;;
 
-    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_latency, avg_insert_latency, avg_delete_tput);
+    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_tput, avg_insert_latency, avg_delete_tput);
 
     free(buffer1);
     free(buffer2);
@@ -127,6 +127,8 @@ int main(int argc, char **argv)
 
     double phase_insert_prop = .1;
     size_t phase_insert_cnt = phase_insert_prop * record_count;
+
+    fprintf(stderr, "Record Count, Average Sampling Throughput (sample/s), Average Insertion Throughput (insert/s), Average Deletion Throughput (delete/s)\n");
 
     bool records_to_insert = true;
     while (records_to_insert) {

@@ -60,6 +60,7 @@ static void benchmark(char *data, size_t n, size_t k, size_t sample_attempts, si
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / sample_attempts;
 
+    fprintf(stderr, "Average Sample Latency (ns)");
     printf("%.0lf\n", avg_latency);
 }
 

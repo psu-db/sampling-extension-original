@@ -19,7 +19,8 @@ static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts,
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / sample_attempts;
 
-    printf("%.0lf\n", avg_latency);
+    fprintf(stderr, "Average Latency (ns)\n");
+    fprintf(stdout, "%.0lf\n", avg_latency);
 }
 
 
