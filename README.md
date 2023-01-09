@@ -39,9 +39,9 @@ or a tiering merge policy. The `LSM_REJ_SAMPLE` flag in the same file isn't used
 and should be left set as `true`.
 
 Beyond this, there are three branches, each implementing different
-functionality. The `master` branch support standard, single threaded IRS with
-both memory and disk levels. The `wirs` branch supports single threaded
-weighted sampling on memory levels only. The `concurrency` branch supports
+functionality. The `master` branch supports single-threaded IRS with
+both memory and disk levels. The `wirs` branch supports single-threaded
+weighted IRS on memory levels only. The `concurrency` branch supports
 concurrent IRS on both memory and disk.
 
 ## Benchmarking
@@ -54,12 +54,11 @@ To generate a test dataset, use,
 ```bash
 $ bash bin/utilities/data_proc.sh <number of records> <filename>
 ```
-which will create a data file with a specified number of records into the
-specified file. The file will specifically contain two entries per record, the
-first is an integer which counts from 0 to (1 - number of records), and the
-second is another integer covering the same value range, but shuffled randomly.
-This second integer is meant for use as the sampling key, and the first the
-sampling value.
+which will create a data file with a specified number of records The file will
+specifically contain two entries per record, the first is an integer which
+counts from 0 to (1 - number of records), and the second is another integer
+covering the same value range, but shuffled randomly. This second integer is
+meant for use as the sampling key, and the first the sampling value.
 
 ### Shuffling Data Sets
 For large datasets, it isn't feasible to use the `shuf` utility due to memory
@@ -79,7 +78,7 @@ The following benchmarking programs are currently available,
 | `lsm_sample` | Creates an LSM Tree with the specified number of records from a file and measures average sampling latency for a given selectivity |
 | `lsm_insert` | Measures the average insertion latency into an LSM Tree |
 | `lsm_mixed` | Gradually fills up an LSM Tree, measuring the average insertion, deletion, and sampling throughputs at each stage |
-| `lsm_bench` | Similar to lsm_mixed, but allows specifying more properties for the LSM Tree |
+| `lsm_bench` | Similar to lsm_mixed, but allows specifying more parameters of the LSM Tree from the command line, and produces a much more verbose output |
 
 The required arguments for a given benchmark can be seen by running it without
 arguments. Each benchmark will write a header to `stderr`, and its normal
@@ -117,7 +116,12 @@ for IRS and
 ```
 for WIRS.
 
-`numa_node` it the NUMA node on which the benchmark programs will be run (using `numactl(8)`).
+`numa_node` is the NUMA node on which the benchmark programs will be run (using
+`numactl(8)`). For a single-node machine, use 0. A list of available nodes can
+be found using,
+```bash
+$ numactl --hardware
+```
 
 `record_count` is the number of records in the file. If not specified, it will
 be automatically determined using `wc(1)`, but this can take a few moments for
