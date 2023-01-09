@@ -23,7 +23,7 @@ rcount=$(wc -l "$ifname" | awk '{ print $1 }')
 # if the count is small, it's better to just generate the data in
 # one pass
 if (( rcount <= 1000000 )); then
-    cat "$ifname" | awk 'BEGIN{srand();} {printf "%0.15f\t%s\n", rand(), $0;}' | sort -n | cut  -f 2,3,5 - > "$ofname"
+    cat "$ifname" | awk 'BEGIN{srand();} {printf "%0.15f\t%s\n", rand(), $0;}' | sort -n | cut  -f 1 --complement - > "$ofname"
     exit 0
 fi
 
@@ -75,7 +75,7 @@ batch=$(( fcount + 10 ))
 # Merge the sorted files together, strip out the sorting key, add a
 # line number as a fake second value, and clean out some whitespace
 # for easy processing
-sort --batch-size="$batch" -n -m "$tmp_dir"/*.sorted | cut -f 2,3,5 -  > "$ofname"
+sort --batch-size="$batch" -n -m "$tmp_dir"/*.sorted | cut -f 1 --complement -  > "$ofname"
 
 # clean up all the extra temporary files
-#rm -r "$tmp_dir"
+rm -r "$tmp_dir"

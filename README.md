@@ -65,7 +65,7 @@ sampling value.
 For large datasets, it isn't feasible to use the `shuf` utility due to memory
 constraints. In these cases,
 ```bash
-$ bash bin/utilities/eshuff.sh <input_filename> <output_filename>
+$ bash bin/utilities/eshuf.sh <input_filename> <output_filename>
 ```
 can be used to perform an external shuffle on arbitrarily large files.
 
