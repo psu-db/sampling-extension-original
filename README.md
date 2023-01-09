@@ -65,7 +65,7 @@ sampling value.
 For large datasets, it isn't feasible to use the `shuf` utility due to memory
 constraints. In these cases,
 ```bash
-$ bash bin/utilities/eshuff.st <input_filename> <output_filename>
+$ bash bin/utilities/eshuff.sh <input_filename> <output_filename>
 ```
 can be used to perform an external shuffle on arbitrarily large files.
 
@@ -74,7 +74,7 @@ The following benchmarking programs are currently available,
 
 | name | purpose |
 |------| ------- |
-| `btree_sample` | Loads a BTree with the specified number of records from a file and measures average sampling latency for a given selectivity |
+| `btree_sample` | Loads an in-memory B+Tree with the specified number of records from a file and measures average sampling latency for a given selectivity |
 | `static_sample` | Creates a static array with the specified number of records from a file and measures average sampling latency for a given selectivity |
 | `lsm_sample` | Creates an LSM Tree with the specified number of records from a file and measures average sampling latency for a given selectivity |
 | `lsm_insert` | Measures the average insertion latency into an LSM Tree |
@@ -89,6 +89,6 @@ represented as simple Bash arrays,
 | name | purpose | 
 | ---- | ------- | 
 | `sample_latency.sh` | Sweeps over selectivities and uses `btree_sample`, `static_sample`, and `lsm_sample` to measure sampling latencies |
-| `insert_tail_latency` | Measures insertion latencies in an LSM Tree and summarizes the percentiles in `tail_latencies.dat` |
+| `insert_tail_latency.sh` | Measures insertion latencies in an LSM Tree and summarizes the percentiles in `tail_latencies.dat` |
 | `sample_size_bench.sh` | Uses `{btree,static,lsm}_sample` benchmarks to sweep over selectivity and sample sizes |
 | `sample_bench.sh` | Uses `lsm_bench` to sweep over memtable size, scale factor, and max delete proportion|
