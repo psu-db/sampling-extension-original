@@ -81,10 +81,14 @@ The following benchmarking programs are currently available,
 | `lsm_mixed` | Gradually fills up an LSM Tree, measuring the average insertion, deletion, and sampling throughputs at each stage |
 | `lsm_bench` | Similar to lsm_mixed, but allows specifying more properties for the LSM Tree |
 
+The required arguments for a given benchmark can be seen by running it without
+arguments. Each benchmark will write a header to `stderr`, and its normal
+output to `stdout`.
+
 ### Benchmark Scripts
 Rather than running the benchmarks directly, the following scripts can be used.
 They can be edited to change the experimental parameters for the run, which are
-represented as simple Bash arrays,
+represented as simple bash variables and arrays,
 
 | name | purpose | 
 | ---- | ------- | 
@@ -92,3 +96,29 @@ represented as simple Bash arrays,
 | `insert_tail_latency.sh` | Measures insertion latencies in an LSM Tree and summarizes the percentiles in `tail_latencies.dat` |
 | `sample_size_bench.sh` | Uses `{btree,static,lsm}_sample` benchmarks to sweep over selectivity and sample sizes |
 | `sample_bench.sh` | Uses `lsm_bench` to sweep over memtable size, scale factor, and max delete proportion|
+
+All of these scripts accept a standardized set of arguments,
+```bash
+$ bash script.sh <result_dir> <data_file> <numa_node> [record_count]
+```
+`result_dir` is a directory into which the script will place its output.
+The scripts will create this directory automatically, and will error out if the
+directory already exists (to avoid accidentally clobbering already collected
+data). 
+
+`data_file` contains the records to be inserted, one per line, and should have
+the format, 
+```
+<value> <key> \n
+```
+for IRS and 
+```
+<value> <key> <weight> \n
+```
+for WIRS.
+
+`numa_node` it the NUMA node on which the benchmark programs will be run (using `numactl(8)`).
+
+`record_count` is the number of records in the file. If not specified, it will
+be automatically determined using `wc(1)`, but this can take a few moments for
+large files.
