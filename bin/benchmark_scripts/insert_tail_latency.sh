@@ -27,19 +27,23 @@ else
     reccnt=$(wc -l $data_file | cut -d' ' -f1)
 fi
 
-memtable_size=200000
+memtable_size=20000
 memlevels=(100)
 scale_factors=(10)
-max_del_props=(".1" ".15" ".6") 
+
+# Level tombstone proportion beyond which compaction will be triggered
+max_ts_props=(".1" ".15" ".6") 
+
+# Probability that an inserted record will later be deleted
 del_prop="0.5"
 
 for mlvl in ${memlevels[@]}; do
     for sf in ${scale_factors[@]}; do
-        for mdel in ${max_del_props[@]}; do
+        for mdel in ${max_ts_props[@]}; do
             fname="${result_dir}/${sf}_${mlvl}_${mdel}.dat"
-            numactl -N${numa} bin/benchmarks/insert_bench "$data_file" "$reccnt" "$memtable_size" "$sf" "$mlvl" "$del_prop" "$mdel" > $fname
-            tail_lat=$(bin/utilities/calc_percentile $fname 99.99)
-            printf "%d %d %d %f\t %f\n" $reccnt $mlvl $sf $mdel $tail_lat >> "$result_dir/tail_latencies.dat"
+            numactl -N${numa} bin/benchmarks/lsm_insert "$data_file" "$reccnt" "$memtable_size" "$sf" "$mlvl" "$del_prop" "$mdel" > $fname
+            tail_lat=$(bin/utilities/calc_percentile $fname 25 50 75 99)
+            printf "%d %d %d %f\t %s\n" $reccnt $mlvl $sf $mdel "$tail_lat" >> "$result_dir/tail_latencies.dat"
         done
     done
 done

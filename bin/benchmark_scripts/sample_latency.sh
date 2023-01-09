@@ -35,7 +35,7 @@ for sel in ${selectivities[@]}; do
     echo -n "$sel " >> ${result_dir}/btree.dat
     echo -n "$sel " >> ${result_dir}/lsm.dat
 
-    numactl -N${numa} bin/benchmarks/static_bench $data_file $reccnt $sel $sample_sz >> ${result_dir}/static.dat
-    numactl -N${numa} bin/benchmarks/sample_bench $data_file $reccnt $sel $sample_sz >> ${result_dir}/lsm.dat
-    numactl -N${numa} bin/benchmarks/btree_bench $data_file $reccnt $sel $sample_sz >> ${result_dir}/btree.dat
+    numactl -N${numa} bin/benchmarks/static_sample $data_file $reccnt $sel $sample_sz >> ${result_dir}/static.dat
+    numactl -N${numa} bin/benchmarks/lsm_sample $data_file $reccnt $sel $sample_sz >> ${result_dir}/lsm.dat
+    numactl -N${numa} bin/benchmarks/btree_sample $data_file $reccnt $sel $sample_sz >> ${result_dir}/btree.dat
 done
