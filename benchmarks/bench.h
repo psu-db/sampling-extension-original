@@ -154,14 +154,23 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
     return true;
 }
 
-
-static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
+/*
+ * "Warm up" the LSM Tree data structure by inserting `count` records from
+ * `file` into it. If `delete_prop` is non-zero, then the global to-delete
+ * record vector will be populated with records during the warmup process (the
+ * probability of a record being added to it is delete_prop + .15). If
+ * `initial_delete_prop` is non-zero, then records will be deleted from the
+ * tree during the warmup as well with probability `initial_delete_prop`.
+ */
+static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop, double initial_delete_prop=0)
 {
     std::string line;
 
     auto key_buf = std::make_unique<char[]>(lsm::key_size);
     auto val_buf = std::make_unique<char[]>(lsm::value_size);
     
+    std::vector<shared_record> del_vec;
+
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get())) {
             break;
@@ -175,6 +184,15 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             memcpy(del_key_buf, key_buf.get(), lsm::key_size);
             memcpy(del_val_buf, val_buf.get(), lsm::value_size);
             g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        }
+
+        if (gsl_rng_uniform(g_rng) < initial_delete_prop) {
+            std::sample(g_to_delete->begin(), g_to_delete->end(), std::back_inserter(del_vec), 1, std::mt19937{std::random_device{}()});
+            if (del_vec.size() > 0) {
+                lsmtree->append(del_vec[0].first.get(), del_vec[0].second.get(), true, g_rng);
+                g_to_delete->erase(del_vec[0]);
+            }
+            del_vec.clear();
         }
     }
 }
