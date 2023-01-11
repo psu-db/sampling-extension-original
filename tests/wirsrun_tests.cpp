@@ -238,15 +238,11 @@ START_TEST(t_weighted_sampling)
     char * buffer = new char[k*lsm::record_size]();
     size_t cnt[3] = {0};
     for (size_t i=0; i<1000; i++) {
-        auto state = run->get_sample_run_state((char*) &lower_key, (char*) &upper_key);
-        
-        run->get_samples(state, buffer, (char *) &lower_key, (char *) &upper_key, k, nullptr, g_rng);
+        run->get_samples(buffer, k, nullptr, g_rng);
 
         for (size_t j=0; j<k; j++) {
             cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
         }
-
-        delete state;
     }
 
     ck_assert(roughly_equal(cnt[0] / 1000, (double) k/4.0, k, .05));

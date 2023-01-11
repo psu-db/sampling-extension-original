@@ -13,28 +13,17 @@
 namespace lsm {
 
 struct sample_state;
-bool check_deleted(char *record, sample_state *state);
-
-struct wirs_node {
-    struct wirs_node *left, *right;
-    key_type low, high;
-    double weight;
-    Alias alias;
-};
-
-struct WIRSRunState {
-    double tot_weight;
-    std::vector<wirs_node*> nodes;
-    Alias top_level_alias;
-};
+bool check_deleted(const char *record, sample_state *state);
 
 thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
 public:
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0) {
 
+        std::vector<double> weights;
+        weights.reserve(mem_table->get_record_count());
         size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
@@ -59,17 +48,24 @@ public:
                 offset += record_size;
                 ++m_reccnt;
                 base += record_size;
+                m_total_weight += get_weight(base);
+                weights.push_back(get_weight(base));
             }
         }
 
-        if (m_reccnt > 0) {
-            build_wirs_structure();
+        // normalize the weights array
+        for (size_t i=0; i<weights.size(); i++) {
+            weights[i] = weights[i] / m_total_weight;
         }
+
+        // build the alias structure
+        m_alias = new Alias(weights);
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0) {
         std::vector<Cursor> cursors;
+        std::vector<double> weights;
         cursors.reserve(len);
 
         PriorityQueue pq(len);
@@ -91,6 +87,7 @@ public:
         size_t alloc_size = (attemp_reccnt * record_size) + (CACHELINE_SIZE - (attemp_reccnt * record_size) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+        weights.reserve(attemp_reccnt);
 
         size_t offset = 0;
         
@@ -114,29 +111,28 @@ public:
                 }
                 offset += record_size;
                 ++m_reccnt;
+                m_total_weight += get_weight(cursor.ptr);
+                weights.push_back(get_weight(cursor.ptr));
                 pq.pop();
                 
                 if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
             }
         }
-
-        if (m_reccnt > 0) {
-            build_wirs_structure();
+        
+        // normalize the weights array
+        for (size_t i=0; i<weights.size(); i++) {
+            weights[i] = weights[i] / m_total_weight;
         }
+
+        // build the alias structure
+        m_alias = new Alias(weights);
    }
 
     ~WIRSRun() {
         if (m_data) free(m_data);
-        free_tree(m_root);
+        if (m_alias) delete m_alias;
     }
 
-    void free_tree(struct wirs_node* node) {
-        if (node) {
-            free_tree(node->left);
-            free_tree(node->right);
-            delete node;
-        }
-    }
 
     char* sorted_output() const {
         return m_data;
@@ -155,47 +151,29 @@ public:
         return m_data + idx * record_size;
     }
 
-    // low - high -> decompose to a set of nodes.
-    // Build Alias across the decomposed nodes.
-    WIRSRunState* get_sample_run_state(const char* lower_key, const char* upper_key) {
-        std::vector<struct wirs_node*> nodes;
-        double tot_weight = decompose_node(m_root, lower_key, upper_key, nodes);
-        
-        //assert(tot_weight > 0.0);
-        std::vector<double> weights;
-        for (const auto& node: nodes) {
-            weights.emplace_back(node->weight / tot_weight);
-        }
-
-        return new WIRSRunState{tot_weight, std::move(nodes), Alias(weights)};
-    }
-
+    //
     // returns the number of records sampled
     // NOTE: This operation returns records strictly between the lower and upper bounds, not
     // including them.
-    size_t get_samples(WIRSRunState* run_state, char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
+    size_t get_samples(char *sample_set, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         if (sample_sz == 0) {
             return 0;
         }
-        // k -> sampling: three levels. 1. select a node -> select a fat point -> select a record.
-        size_t cnt = 0;
-        size_t attempts = 0;
-        do {
-            ++attempts;
-            // first level....
-            auto node = run_state->nodes[run_state->top_level_alias.get(rng)];
-            // second level...
-            auto fat_point = node->low + node->alias.get(rng);
-            // third level...
-            size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
-            auto record = m_data + rec_offset * record_size;
-            if (!state || (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state))) {
-                memcpy(sample_set + cnt * record_size, record, record_size);
-                ++cnt;
-            }
-        } while (attempts < sample_sz);
 
-        return cnt;
+        size_t sampled_cnt=0;
+        for (size_t i=0; i<sample_sz; i++) {
+            size_t idx = m_alias->get(rng);
+            const char *rec = this->get_record_at(idx);
+            if (state) {
+                if (check_deleted(rec, state)) {
+                    continue;
+                }
+            }
+
+            memcpy (sample_set + record_size*sampled_cnt++, rec, record_size);
+        }
+
+        return sampled_cnt;
     }
 
     size_t get_lower_bound(const char *key) const {
@@ -238,107 +216,19 @@ public:
     size_t get_memory_utilization() {
         return 0;
     }
+
+
+    double get_total_weight() {
+        return m_total_weight;
+    }
     
 private:
-    bool covered_by(struct wirs_node* node, const char* lower_key, const char* upper_key) {
-        auto low_index = node->low * m_group_size;
-        auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
-        return key_cmp(lower_key, get_key(m_data + low_index * record_size)) == -1 &&
-               key_cmp(get_key(m_data + high_index * record_size), upper_key) == -1;
-    }
-
-    bool intersects(struct wirs_node* node, const char* lower_key, const char* upper_key) {
-        auto low_index = node->low * m_group_size;
-        auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
-        return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 ||
-               key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
-    }
-
-    double decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
-        if (node == nullptr) return 0.0;
-        else if (covered_by(node, lower_key, upper_key)) {
-            output.emplace_back(node);
-            return node->weight;
-        }
-
-        double ans = 0.0;
-        if (node->left && intersects(node->left, lower_key, upper_key)) ans += decompose_node(node->left, lower_key, upper_key, output);
-        if (node->right && intersects(node->right, lower_key, upper_key)) ans += decompose_node(node->right, lower_key, upper_key, output);
-        return ans;
-    }
-
-    // double get_sample_weight_internal(struct wirs_node* node, const char* lower_key, const char* upper_key) {
-    //     if (node == nullptr) return 0.0;
-    //     else if (covered_by(node, lower_key, upper_key)) return node->weight;
-
-    //     double ans = 0.0;
-    //     if (node->left && intersects(node->left, lower_key, upper_key)) ans += get_sample_weight_internal(node->left, lower_key, upper_key);
-    //     if (node->right && intersects(node->right, lower_key, upper_key)) ans += get_sample_weight_internal(node->right, lower_key, upper_key);
-    //     return ans;
-    // }
-
-    struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
-        if (low == high) {
-            return new wirs_node{nullptr, nullptr, low, high, weights[low], Alias({1.0})};
-        } else if (low > high) return nullptr;
-        std::vector<double> node_weights;
-        double sum = 0.0;
-        for (size_t i = low; i < high; ++i) {
-            node_weights.emplace_back(weights[i]);
-            sum += weights[i];
-        }
-
-        for (auto& w: node_weights)
-            if (sum) w /= sum;
-            else w = 1.0 / node_weights.size();
-        
-        
-        size_t mid = (low + high) / 2;
-        return new wirs_node{construct_wirs_node(weights, low, mid),
-                             construct_wirs_node(weights, mid + 1, high),
-                             low, high, sum, Alias(node_weights)};
-    }
-
-    void build_wirs_structure() {
-        m_group_size = std::ceil(std::log(m_reccnt));
-        size_t n_groups = std::ceil((double) m_reccnt / (double) m_group_size);
-        
-        // Fat point construction + low level alias....
-        double sum_weight = 0.0;
-        std::vector<double> weights;
-        std::vector<double> group_norm_weight;
-        size_t i = 0;
-        size_t group_no = 0;
-        while (i < m_reccnt) {
-            double group_weight = 0.0;
-            group_norm_weight.clear();
-            for (size_t k = 0; k < m_group_size && i < m_reccnt; ++k, ++i) {
-                auto w = get_weight(m_data + record_size * i);
-                group_norm_weight.emplace_back(w);
-                group_weight += w;
-                sum_weight += w;
-            }
-
-            for (auto& w: group_norm_weight)
-                if (group_weight) w /= group_weight;
-                else w = 1.0 / group_norm_weight.size();
-            m_alias.emplace_back(Alias(group_norm_weight));
-
-            
-            weights.emplace_back(group_weight);
-        }
-
-        assert(weights.size() == n_groups);
-
-        m_root = construct_wirs_node(weights, 0, n_groups-1);
-    }
 
     char* m_data;
-    std::vector<Alias> m_alias;
-    wirs_node* m_root;
+    Alias *m_alias;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
-    size_t m_group_size;
+    double m_total_weight;
 };
 
 }

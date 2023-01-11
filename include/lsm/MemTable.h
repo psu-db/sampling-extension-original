@@ -102,19 +102,15 @@ public:
 
     // NOTE: This operation samples from records strictly between the upper and
     // lower bounds, not including them
-    double get_sample_range(const char *lower, const char *upper, std::vector<char *> &records, 
-                            Alias **alias, size_t *cutoff) {
+    double get_sample_range(Alias **alias, size_t *cutoff) {
       std::vector<double> weights;
 
       *cutoff = std::atomic_load(&m_reccnt) - 1;
-      records.clear();
       for (size_t i = 0; i < (*cutoff) + 1; i++) {
         char *rec = m_data + (i * record_size);
 
-        if (key_cmp(get_key(rec), lower) > 0 &&
-            key_cmp(get_key(rec), upper) < 0 && !is_tombstone(rec)) {
+        if (!is_tombstone(rec)) {
           weights.push_back(get_weight(rec));
-          records.push_back(rec);
         }
       }
 

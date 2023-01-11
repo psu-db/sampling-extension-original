@@ -96,28 +96,24 @@ public:
         return mtable->append(key, val, weight, tombstone);
     }
 
-    void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    void range_sample(char *sample_set, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
-        // TODO: deal with memtable
         Alias *memtable_alias;
-        std::vector<char *> memtable_records;
         size_t mtable_cutoff = 0;
-        double memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias, &mtable_cutoff);
+        double memtable_weight = mtable->get_sample_range(&memtable_alias, &mtable_cutoff);
 
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
         std::vector<std::pair<RunId, WIRSRun *>> runs;
-        std::vector<WIRSRunState*> states;
         runs.push_back({{-1, -1}, nullptr});
-        states.push_back(nullptr);
 
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
 
         for (auto &level : this->memory_levels) {
-            level->get_run_weights(run_weights, runs, states, lower_key, upper_key);
+            level->get_run_weights(run_weights, runs);
         }
 
         if (run_weights.size() == 1 && run_weights[0] == 0) {
@@ -149,7 +145,7 @@ public:
             rejections = 0;
 
             while (run_samples[0] > 0) {
-                auto rec = memtable_records[memtable_alias->get(rng)];
+                auto rec = mtable->get_record_at(memtable_alias->get(rng));
                 if (!mtable->check_tombstone(get_key(rec), get_val(rec))) {
                     memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 } else {
@@ -161,7 +157,7 @@ public:
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
                 state.rid = runs[i].first;
-                auto sampled = runs[i].second->get_samples(states[i], sample_set + sample_idx*record_size, lower_key, upper_key, run_samples[i], &state, rng) ;
+                auto sampled = runs[i].second->get_samples(sample_set + sample_idx*record_size, run_samples[i], &state, rng) ;
                 assert(sampled <= run_samples[i]);
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
@@ -170,7 +166,6 @@ public:
         } while (sample_idx < sample_sz);
 
         delete memtable_alias;
-        for (auto& x: states) delete x;
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -652,7 +647,7 @@ private:
 };
 
 
-bool check_deleted(char *record, sample_state *state) {
+bool check_deleted(const char *record, sample_state *state) {
     return state->tree->is_deleted(record, state->rid, state->buff, state->memtable, state->mtable_cutoff);
 }
 

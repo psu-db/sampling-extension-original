@@ -87,14 +87,14 @@ START_TEST(t_range_sample_memtable)
         val++;
     }
 
-    key_type lower_bound = 20;
-    key_type upper_bound = 50;
+    key_type lower_bound = 0;
+    key_type upper_bound = 100;
 
     char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char sample_set[100*record_size];
 
-    lsm->range_sample(sample_set, (char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
+    lsm->range_sample(sample_set, 100, buf, util_buf, g_rng);
 
     for(size_t i=0; i<100; i++) {
         auto rec = sample_set + (record_size * i);
@@ -127,14 +127,14 @@ START_TEST(t_range_sample_memlevels)
         val++;
     }
 
-    key_type lower_bound = 100;
-    key_type upper_bound = 250;
+    key_type lower_bound = 0;
+    key_type upper_bound = 300;
 
     char *buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
     char *util_buf = (char *) std::aligned_alloc(SECTOR_SIZE, PAGE_SIZE);
 
     char sample_set[100*record_size];
-    lsm->range_sample(sample_set, (char*) &lower_bound, (char*) &upper_bound, 100, buf, util_buf, g_rng);
+    lsm->range_sample(sample_set, 100, buf, util_buf, g_rng);
 
     for(size_t i=0; i<100; i++) {
         auto rec = sample_set + (record_size * i);
@@ -202,7 +202,7 @@ START_TEST(t_range_sample_weighted)
 
     size_t cnt[3] = {0};
     for (size_t i=0; i<1000; i++) {
-        lsm->range_sample(buffer, (char*) &lower_key, (char*) &upper_key, k, buffer1, buffer2, g_rng);
+        lsm->range_sample(buffer, k, buffer1, buffer2, g_rng);
 
         for (size_t j=0; j<k; j++) {
             cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
