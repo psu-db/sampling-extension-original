@@ -41,6 +41,7 @@ if (tests)
     target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(lsmtree_tests PUBLIC -llib)
 
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/memlevel_tests")
     add_executable(memlevel_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memlevel_tests.cpp)
     target_link_libraries(memlevel_tests PUBLIC ${PROJECT_NAME} check subunit)
     target_compile_options(memlevel_tests PUBLIC -llib)

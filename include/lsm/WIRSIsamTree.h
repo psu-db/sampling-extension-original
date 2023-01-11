@@ -271,6 +271,10 @@ public:
         return this->tombstone_cnt;
     }
 
+    inline void retain() {
+
+    }
+
 private:
     PagedFile *pfile;
     PageNum root_page;

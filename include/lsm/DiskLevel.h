@@ -20,7 +20,8 @@ public:
     , m_pfiles(new PagedFile*[run_cap]{nullptr})
     , m_owns(new bool[run_cap]{true})
     , m_directory(root_directory)
-    , m_version(version) {}
+    , m_version(version)
+    , m_retain(false) {}
 
     ~DiskLevel() {
         for (size_t i = 0; i < m_run_cap; ++i) {
@@ -231,6 +232,18 @@ public:
         return (double) tscnt / (double) (tscnt + reccnt);
     }
 
+    void persist_level(std::string meta_fname) {
+        FILE *meta_f = fopen(meta_fname.c_str(), "w");
+        assert(meta_f);
+        for (size_t i=0; i<m_run_cap; i++) {
+            if (m_runs[i]) {
+                fprintf(meta_f, "disk %s %d %ld %ld\n", m_runs[i]->get_pfile()->get_fname().c_str(), m_runs[i]->get_last_leaf_pnum(), m_runs[i]->get_record_count(), m_runs[i]->get_tombstone_count());
+                m_runs[i]->retain();
+            }
+        }
+        fclose(meta_f);
+    }
+
 private:
     ssize_t m_level_no;
     size_t m_run_cap;
@@ -241,6 +254,7 @@ private:
     PagedFile** m_pfiles;
     std::string m_directory;
     bool *m_owns;
+    bool m_retain;
 
 
     std::string get_fname(size_t idx) {

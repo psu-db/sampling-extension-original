@@ -8,6 +8,8 @@ using namespace lsm;
 
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
+std::string root_dir = "tests/data/memlevel_tests";
+
 static MemTable *create_test_memtable(size_t cnt)
 {
     auto mtable = new MemTable(cnt, true, 0, g_rng);
@@ -49,11 +51,11 @@ START_TEST(t_memlevel_merge)
     auto tbl1 = create_test_memtable(100);
     auto tbl2 = create_test_memtable(100);
 
-    auto base_level = new MemoryLevel(1, 1);
+    auto base_level = new MemoryLevel(1, 1, root_dir);
     base_level->append_mem_table(tbl1, g_rng);
     ck_assert_int_eq(base_level->get_record_cnt(), 100);
 
-    auto merging_level = new MemoryLevel(0, 1);
+    auto merging_level = new MemoryLevel(0, 1, root_dir);
     merging_level->append_mem_table(tbl2, g_rng);
     ck_assert_int_eq(merging_level->get_record_cnt(), 100);
 

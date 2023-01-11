@@ -32,6 +32,35 @@ thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
 public:
+    WIRSRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf)
+    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt) {
+
+        // read the stored data file the file
+        size_t alloc_size = (record_cnt * record_size) + (CACHELINE_SIZE - (record_cnt * record_size) % CACHELINE_SIZE);
+        assert(alloc_size % CACHELINE_SIZE == 0);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+
+        FILE *file = fopen(data_fname.c_str(), "rb");
+        assert(file);
+        auto res = fread(m_data, record_size, m_reccnt, file);
+        assert (res == m_reccnt);
+        fclose(file);
+
+        // We can't really persist the internal structure, as it uses
+        // pointers, which are invalidated by the move. So we'll just
+        // rebuild it.
+        this->build_wirs_structure();
+
+        // rebuild the bloom filter
+        for (size_t i=0; i<m_reccnt; i++) {
+            auto rec = this->get_record_at(i);
+            if (is_tombstone(rec)) {
+                bf->insert(get_key(rec), key_size);
+            }
+        }
+    }
+
+
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
     :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
 
@@ -237,6 +266,15 @@ public:
 
     size_t get_memory_utilization() {
         return 0;
+    }
+
+    void persist_to_file(std::string fname) {
+        FILE *file = fopen(fname.c_str(), "w");
+        assert(file);
+
+        fwrite(m_data, record_size, m_reccnt, file);
+
+        fclose(file);
     }
     
 private:
