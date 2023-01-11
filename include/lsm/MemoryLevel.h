@@ -39,18 +39,19 @@ private:
     };
 
 public:
-    MemoryLevel(ssize_t level_no, size_t run_cap)
+    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory)
     : m_level_no(level_no), m_run_cnt(0)
-    , m_structure(new InternalLevelStructure(run_cap)) {}
+    , m_structure(new InternalLevelStructure(run_cap))
+    , m_directory(root_directory) {}
 
     // Create a new memory level sharing the runs and repurposing it as previous level_no + 1
     // WARNING: for leveling only.
     MemoryLevel(MemoryLevel* level)
     : m_level_no(level->m_level_no + 1), m_run_cnt(level->m_run_cnt)
-    , m_structure(level->m_structure) {
+    , m_structure(level->m_structure) 
+    , m_directory(level->m_directory) {
         assert(m_structure->m_cap == 1 && m_run_cnt == 1);
     }
-
 
     ~MemoryLevel() {}
 
@@ -58,7 +59,7 @@ public:
     // assuming the base level is the level new level is merging into. (base_level is larger.)
     static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
-        auto res = new MemoryLevel(base_level->m_level_no, 1);
+        auto res = new MemoryLevel(base_level->m_level_no, 1, base_level->m_directory);
         res->m_run_cnt = 1;
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
@@ -177,12 +178,27 @@ public:
         return (double) tscnt / (double) (tscnt + reccnt);
     }
 
+    void persist_level(std::string meta_fname) {
+        FILE *meta_f = fopen(meta_fname.c_str(), "w");
+        assert(meta_f);
+        for (size_t i=0; i<m_structure->m_cap; i++) {
+            if (m_structure->m_runs[i]) {
+                std::string fname = m_directory + "/level" + std::to_string(m_level_no) 
+                                     + "_run" + std::to_string(i) + "-0.dat";
+                m_structure->m_runs[i]->persist_to_file(fname);
+                fprintf(meta_f, "memory %s %ld %ld\n", fname.c_str(), m_structure->m_runs[i]->get_record_count(), m_structure->m_runs[i]->get_tombstone_count());
+            }
+        }
+        fclose(meta_f);
+    }
+
 private:
     ssize_t m_level_no;
     
     size_t m_run_cnt;
     size_t m_run_size_cap;
     std::shared_ptr<InternalLevelStructure> m_structure;
+    std::string m_directory;
 };
 
 }

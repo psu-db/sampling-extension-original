@@ -156,13 +156,16 @@ public:
         }
 
         this->pfile = pfile;
+        this->retain_file = false;
 
         free(buffer);
     }
 
 
     ~ISAMTree() {
-        this->pfile->remove_file();
+        if (!this->retain_file) {
+            this->pfile->remove_file();
+        }
     }
 
     /*
@@ -399,6 +402,15 @@ public:
         return this->tombstone_cnt;
     }
 
+    /*
+     *  Prevent the deletion of the backing file from the
+     *  underlying filesystem when this object's destructor
+     *  is called.
+     */
+    void retain() {
+        this->retain_file = true;
+    }
+
 private:
     PagedFile *pfile;
     PageNum root_page;
@@ -407,6 +419,8 @@ private:
 
     size_t rec_cnt;
     size_t tombstone_cnt; // number of tombstones within the ISAM Tree
+    
+    bool retain_file;
 
 
     PageNum search_internal_node_lower(PageNum pnum, const char *key, char *buffer) {

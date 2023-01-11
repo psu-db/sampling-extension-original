@@ -206,6 +206,15 @@ public:
     size_t get_memory_utilization() {
         return m_reccnt * record_size + m_internal_node_cnt * inmem_isam_node_size;
     }
+
+    void persist_to_file(std::string fname) {
+        FILE *file = fopen(fname.c_str(), "w");
+        assert(file);
+
+        fwrite(m_data, record_size, m_reccnt, file);
+
+        fclose(file);
+    }
     
 private:
     void build_internal_levels() {

@@ -68,7 +68,6 @@ public:
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             delete this->disk_levels[i];
         }
-
     }
 
     int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
@@ -398,12 +397,11 @@ public:
      * performance comparisons.
      */
     ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
-        auto mem_level = new MemoryLevel(-1, 1);
+        auto mem_level = new MemoryLevel(-1, 1, this->root_directory);
         mem_level->append_mem_table(this->memtable(), rng);
 
         std::vector<InMemRun *> runs;
         std::vector<ISAMTree *> trees;
-
 
         for (int i=memory_levels.size() - 1; i>= 0; i--) {
             if (memory_levels[i]) {
@@ -456,6 +454,35 @@ public:
         }
 
         return true;
+    }
+
+    void persist_tree(gsl_rng *rng) {
+        std::string meta_dir = this->root_directory + "/meta";
+        mkdir(meta_dir.c_str(), 0755);
+
+        std::string meta_fname = meta_dir + "/lsmtree.dat";
+        FILE *meta_f = fopen(meta_fname.c_str(), "w");
+        assert(meta_f);
+
+        // merge the memtable down to ensure it is persisted
+        this->merge_memtable(rng);
+        
+        // persist each level of the tree
+        for (size_t i=0; i<this->get_height(); i++) {
+            bool disk = false;
+
+            auto level_idx = this->decode_level_index(i, &disk);
+            std::string level_meta = meta_dir + "/level-" + std::to_string(i) +"-meta.dat";
+            fprintf(meta_f, "%s\n", level_meta.c_str());
+
+            if (disk) {
+                disk_levels[level_idx]->persist_level(level_meta);
+            } else {
+                memory_levels[level_idx]->persist_level(level_meta);
+            }
+        }
+
+        fclose(meta_f);
     }
 
 private:
@@ -538,7 +565,7 @@ private:
             if (new_idx > 0) {
                 assert(this->memory_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
-            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt));
+            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, this->root_directory));
         } else {
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
@@ -656,7 +683,7 @@ private:
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
         } else {
             // merging two memory levels
             if (LSM_LEVELING) {
@@ -668,7 +695,7 @@ private:
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
         }
     }
 
@@ -677,7 +704,7 @@ private:
         if (LSM_LEVELING) {
             // FIXME: Kludgey implementation due to interface constraints.
             auto old_level = this->memory_levels[0];
-            auto temp_level = new MemoryLevel(0, 1);
+            auto temp_level = new MemoryLevel(0, 1, this->root_directory);
             temp_level->append_mem_table(mtable, rng);
             auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
 
@@ -809,6 +836,7 @@ private:
         *disk_level = true;
         return idx - this->memory_level_cnt;
     }
+
 
 };
 }
