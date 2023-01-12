@@ -27,7 +27,7 @@ else
     reccnt=$(wc -l $data_file | cut -d' ' -f1)
 fi
 
-selectivities=(0.2 0.1 0.05 0.01)
+selectivities=(0.0001 0.0005 0.001 0.005 0.01 0.05 0.1)
 sample_sz=1000
 
 for sel in ${selectivities[@]}; do

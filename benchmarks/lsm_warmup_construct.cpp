@@ -4,21 +4,21 @@
 
 int main(int argc, char **argv)
 {
-    if (argc < 8) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion>\n");
+    if (argc < 9) {
+        fprintf(stderr, "Usage: lsm_warmup <filename> <target> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion>\n");
         exit(EXIT_FAILURE);
     }
 
     std::string filename = std::string(argv[1]);
-    size_t record_count = atol(argv[2]);
-    size_t memtable_size = atol(argv[3]);
-    size_t scale_factor = atol(argv[4]);
-    size_t memory_levels = atol(argv[5]);
-    double delete_prop = atof(argv[6]);
-    double max_delete_prop = atof(argv[7]);
-    double insert_batch = (argc == 9) ? atof(argv[8]) : 0.8;
+    std::string root_dir = std::string(argv[2]);
+    size_t record_count = atol(argv[3]);
+    size_t memtable_size = atol(argv[4]);
+    size_t scale_factor = atol(argv[5]);
+    size_t memory_levels = atol(argv[6]);
+    double delete_prop = atof(argv[7]);
+    double max_delete_prop = atof(argv[8]);
+    double insert_batch = (argc == 10) ? atof(argv[9]) : 0.6;
 
-    std::string root_dir = "benchmarks/data/default_bench";
     init_bench_env(true);
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, g_rng);

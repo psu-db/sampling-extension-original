@@ -194,6 +194,8 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             }
             del_vec.clear();
         }
+		
+		if (i % 1000000 == 0) fprintf(stderr, "Finished %zu operations...\n", i);
     }
 }
 

@@ -27,7 +27,7 @@ else
     reccnt=$(wc -l $data_file | cut -d' ' -f1)
 fi
 
-selectivities=(.001 .005 .01 .05 .1)
+selectivities=(.001)
 sample_sizes=(1 10 100 1000 10000)
 for sel in ${selectivities[@]}; do
     for sz in ${sample_sizes[@]}; do
