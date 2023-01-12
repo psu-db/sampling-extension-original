@@ -50,16 +50,14 @@ public:
         char typebuff[1028] = { 0 };
         size_t reccnt = 0;
         size_t tscnt = 0;
-        size_t idx = 0;
 
         // WARNING: this assumes that the file is correctly formatted, and that
         //          file names don't exceed 1027 characters. That should be the
         //          case here, but a more robust solution may be helpful
-        while (fscanf(meta_f, "%s %s %ld %ld\n", typebuff, fnamebuff, &reccnt, &tscnt) != EOF && idx < run_cap) {
+        while (fscanf(meta_f, "%s %s %ld %ld\n", typebuff, fnamebuff, &reccnt, &tscnt) != EOF && m_run_cnt < run_cap) {
             assert(strcmp(typebuff, "memory") == 0);
-            m_structure->m_bfs[idx] = new BloomFilter(BF_FPR, tscnt, BF_HASH_FUNCS, rng);
-            m_structure->m_runs[idx] = new WIRSRun(std::string(fnamebuff), reccnt, tscnt, m_structure->m_bfs[idx]);
-            idx++;
+            m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, tscnt, BF_HASH_FUNCS, rng);
+            m_structure->m_runs[m_run_cnt] = new WIRSRun(std::string(fnamebuff), reccnt, tscnt, m_structure->m_bfs[m_run_cnt]);
             m_run_cnt++;
         }
     }
