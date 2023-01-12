@@ -218,6 +218,49 @@ START_TEST(t_full_cancelation)
 }
 END_TEST
 
+
+START_TEST(t_persistence)
+{
+    size_t reccnt = 100000;
+    auto mtable = create_test_memtable(reccnt);
+    BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+
+    auto run = new InMemRun(mtable, bf1);
+    std::string fname1 = "tests/data/memrun_tests/data.dat";
+
+    run->persist_to_file(fname1);
+
+    auto run2 = new InMemRun(fname1, reccnt, 0, bf2);
+
+    // verify that the records are the same, and that boundary lookups
+    // also still work.
+    for (size_t i=0; i<reccnt; i++) {
+        auto rec1 = run->get_record_at(i);
+        auto rec2 = run2->get_record_at(i);
+        ck_assert_mem_eq(rec1, rec2, lsm::record_size);
+
+        auto lbound1 = run->get_lower_bound(get_key(rec1));
+        auto ubound1 = run->get_upper_bound(get_key(rec1));
+
+        auto lbound2 = run2->get_lower_bound(get_key(rec2));
+        auto ubound2 = run2->get_upper_bound(get_key(rec2));
+
+        ck_assert_int_eq(lbound1, lbound2);
+        ck_assert_int_eq(ubound1, ubound2);
+    }
+
+    delete run;
+    delete bf1;
+
+    delete run2;
+    delete bf2;
+
+    delete mtable;
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("InMemRun Unit Testing");
@@ -237,6 +280,11 @@ Suite *unit_testing()
     TCase *tombstone = tcase_create("lsm::InMemRun::tombstone cancellation Testing");
     tcase_add_test(tombstone, t_full_cancelation);
     suite_add_tcase(unit, tombstone);
+
+    TCase *persistence = tcase_create("lsm::InMemRun::persistence Testing");
+    tcase_add_test(persistence, t_persistence);
+    suite_add_tcase(unit, persistence);
+
     return unit;
 }
 

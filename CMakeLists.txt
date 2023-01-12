@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug false)
+set(debug true)
 set(tests True)
 set(bench True)
 
@@ -41,6 +41,7 @@ if (tests)
     target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
     target_compile_options(memtable_tests PUBLIC -llib)
 
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/memrun_tests")
     add_executable(inmemrun_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/inmemrun_tests.cpp)
     target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
     target_compile_options(inmemrun_tests PUBLIC -llib)

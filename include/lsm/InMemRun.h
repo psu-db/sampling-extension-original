@@ -21,6 +21,34 @@ thread_local size_t mrun_cancelations = 0;
 
 class InMemRun {
 public:
+    InMemRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf)
+    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt) {
+
+        // read the stored data file the file
+        size_t alloc_size = (record_cnt * record_size) + (CACHELINE_SIZE - (record_cnt * record_size) % CACHELINE_SIZE);
+        assert(alloc_size % CACHELINE_SIZE == 0);
+        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+
+        FILE *file = fopen(data_fname.c_str(), "rb");
+        assert(file);
+        auto res = fread(m_data, record_size, m_reccnt, file);
+        assert (res == m_reccnt);
+        fclose(file);
+
+        // We can't really persist the internal structure, as it uses
+        // pointers, which are invalidated by the move. So we'll just
+        // rebuild it.
+        this->build_internal_levels();
+
+        // rebuild the bloom filter
+        for (size_t i=0; i<m_reccnt; i++) {
+            auto rec = this->get_record_at(i);
+            if (is_tombstone(rec)) {
+                bf->insert(get_key(rec), key_size);
+            }
+        }
+    }
+
     InMemRun(MemTable* mem_table, BloomFilter* bf)
     :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
 
@@ -132,8 +160,7 @@ public:
     }
 
     const char* get_record_at(size_t idx) const {
-        if (idx >= m_reccnt) return nullptr;
-        return m_data + idx * record_size;
+        return (idx < m_reccnt) ? m_data + idx * record_size : nullptr;
     }
 
     size_t get_lower_bound(const char* key) const {
@@ -207,12 +234,10 @@ public:
         return m_reccnt * record_size + m_internal_node_cnt * inmem_isam_node_size;
     }
 
-    void persist_to_file(std::string fname) {
-        FILE *file = fopen(fname.c_str(), "w");
+    void persist_to_file(std::string data_fname) {
+        FILE *file = fopen(data_fname.c_str(), "wb");
         assert(file);
-
         fwrite(m_data, record_size, m_reccnt, file);
-
         fclose(file);
     }
     
