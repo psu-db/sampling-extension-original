@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <numeric>
+#include <cstdio>
 
 #include "lsm/IsamTree.h"
 #include "lsm/MemTable.h"
@@ -39,12 +40,45 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 typedef ssize_t level_index;
 
 class LSMTree {
 public:
+    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
+            double max_tombstone_prop, std::string meta_fname, gsl_rng *rng) 
+        : active_memtable(0), //memory_levels(memory_levels, 0),
+          scale_factor(scale_factor), 
+          max_tombstone_prop(max_tombstone_prop),
+          root_directory(root_dir),
+          last_level_idx(-1),
+          memory_level_cnt(memory_levels),
+          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
+          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
+          memtable_1_merging(false), memtable_2_merging(false) {
+
+        size_t run_cap =  (LSM_LEVELING) ? 1 : scale_factor;
+
+        FILE *meta_f = fopen(meta_fname.c_str(), "r");
+        assert(meta_f);
+
+        char fbuf[1028];
+        size_t idx = 0;
+        while (fscanf(meta_f, "%s\n", fbuf) != EOF) {
+            bool disk;
+            level_index l_idx = this->decode_level_index(idx, &disk);
+
+            if (disk) {
+                //this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
+            } else {
+                this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, rng));
+            }
+        }
+
+    }
+
+
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             double max_tombstone_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
@@ -333,8 +367,13 @@ public:
     size_t get_aux_memory_utilization() {
         size_t cnt = this->memtable_1->get_aux_memory_utilization() + this->memtable_2->get_aux_memory_utilization();
 
+        fprintf(stderr, "Memtable AMem: %ld\n", cnt);
+
         for (size_t i=0; i<this->memory_levels.size(); i++) {
-            if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_aux_memory_utilization();
+            if (this->memory_levels[i]) {
+                fprintf(stderr, "Level %ld AMem: %ld\n", i, this->memory_levels[i]->get_aux_memory_utilization());
+                cnt += this->memory_levels[i]->get_aux_memory_utilization();
+            }
         }
 
         for (size_t i=0; i<this->disk_levels.size(); i++) {

@@ -398,6 +398,94 @@ START_TEST(t_tombstone_merging_01)
 }
 END_TEST
 
+lsm::LSMTree *create_test_tree(size_t reccnt, size_t memlevel_cnt) {
+    auto lsm = new LSMTree(dir, 1000, 3000, 2, memlevel_cnt, 1, g_rng);
+
+    std::set<std::pair<key_type, value_type>> records; 
+    std::set<std::pair<key_type, value_type>> to_delete;
+    std::set<std::pair<key_type, value_type>> deleted;
+
+    while (records.size() < reccnt) {
+        key_type key = rand();
+        value_type val = rand();
+
+        if (records.find({key, val}) != records.end()) continue;
+
+        records.insert({key, val});
+    }
+
+    size_t deletes = 0;
+    for (auto rec : records) {
+        const char *key_ptr = (char *) &rec.first;
+        const char *val_ptr = (char *) &rec.second;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 0, g_rng), 1);
+
+         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
+            std::vector<std::pair<key_type, value_type>> del_vec;
+            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
+
+            for (size_t i=0; i<del_vec.size(); i++) {
+                const char *d_key_ptr = (char *) &del_vec[i].first;
+                const char *d_val_ptr = (char *) &del_vec[i].second;
+                lsm->append(d_key_ptr, d_val_ptr, true, g_rng);
+                deletes++;
+                to_delete.erase(del_vec[i]);
+                deleted.insert(del_vec[i]);
+            }
+        }
+
+        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
+            to_delete.insert(rec);
+        }
+    }
+
+    return lsm;
+}
+
+START_TEST(t_persist_mem) 
+{
+    size_t reccnt = 100000;
+    auto lsm = create_test_tree(reccnt, 100);
+
+    lsm->persist_tree(g_rng);
+
+    std::string meta_fname = dir + "/meta/lsmtree.dat";
+    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 100, 1, meta_fname, g_rng);
+
+    ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
+    ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());
+    //ck_assert_int_eq(lsm->get_aux_memory_utilization(), lsm2->get_aux_memory_utilization());
+    ck_assert_int_eq(lsm->get_memory_utilization(), lsm2->get_memory_utilization());
+
+    size_t len1;
+    auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
+
+    size_t len2;
+    auto sorted2 = lsm->get_sorted_array(&len2, g_rng);
+
+    ck_assert_int_eq(len1, len2);
+
+    for (size_t i=0; i<len1; i++) {
+        char *rec1 = sorted1 + i * lsm::record_size;
+        char *rec2 = sorted1 + i * lsm::record_size;
+
+        ck_assert_mem_eq(rec1, rec2, lsm::record_size);
+    }
+
+    delete lsm;
+    delete lsm2;
+    free(sorted1);
+    free(sorted2);
+}
+END_TEST
+
+
+START_TEST(t_persist_disk)
+{
+
+}
+END_TEST
+
 
 Suite *unit_testing()
 {
@@ -414,23 +502,27 @@ Suite *unit_testing()
     suite_add_tcase(unit, append);
 
     TCase *sampling = tcase_create("lsm::LSMTree::range_sample Testing");
+
     tcase_add_test(sampling, t_range_sample_memtable);
     tcase_add_test(sampling, t_range_sample_memlevels);
     tcase_add_test(sampling, t_range_sample_disklevels);
-
     suite_add_tcase(unit, sampling);
 
     TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
     tcase_add_test(flat, t_flat_isam);
     tcase_add_test(flat, t_sorted_array);
-
     suite_add_tcase(unit, flat);
-
 
     TCase *ts = tcase_create("lsm::LSMTree::tombstone_compaction Testing");
     tcase_add_test(ts, t_tombstone_merging_01);
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
+
+    TCase *persist = tcase_create("lsm::LSMTree::persistence Testing");
+    tcase_add_test(persist, t_persist_mem);
+    tcase_add_test(persist, t_persist_disk);
+    tcase_set_timeout(ts, 500);
+    suite_add_tcase(unit, persist);
 
     return unit;
 }
