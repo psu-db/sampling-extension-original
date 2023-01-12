@@ -14,6 +14,43 @@ namespace lsm {
 
 class DiskLevel {
 public:
+
+    DiskLevel(ssize_t level_no, size_t run_cap, std::string root_directory, std::string meta_fname, gsl_rng *rng) 
+    : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
+    , m_runs(new ISAMTree*[run_cap]{nullptr})
+    , m_bfs(new BloomFilter*[run_cap]{nullptr})
+    , m_pfiles(new PagedFile*[run_cap]{nullptr})
+    , m_owns(new bool[run_cap]{true})
+    , m_directory(root_directory)
+    , m_version(0)
+    , m_retain(false) {
+        FILE *meta_f = fopen(meta_fname.c_str(), "r");
+        assert(meta_f);
+
+        int owns = false;
+        char fnamebuff[1028] = { 0 };
+        char typebuff[1028] = { 0 };
+        size_t reccnt = 0;
+        size_t tscnt = 0;
+        size_t version = 0;
+        PageNum last_leaf = 0;
+        PageNum root_node = 0;
+        size_t idx = 0;
+        // WARNING: this assumes that the file is correctly formatted, and that
+        //          file names don't exceed 1027 characters. That should be the
+        //          case here, but a more robust solution may be helpful
+
+        while (fscanf(meta_f, "%s %d %s %ld %d %ld %ld %d\n", typebuff, &owns, fnamebuff, &version, &last_leaf, &reccnt, &tscnt, &root_node) != EOF && m_run_cnt < m_run_cap) {
+            assert(strcmp(typebuff, "disk") == 0);
+            m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, tscnt, BF_HASH_FUNCS, rng);
+            m_pfiles[m_run_cnt] = PagedFile::create(fnamebuff, false);
+            m_runs[m_run_cnt] = new ISAMTree(m_pfiles[m_run_cnt], reccnt, tscnt, last_leaf, root_node, m_bfs[m_run_cnt], rng);
+            m_version = version;
+            m_run_cnt++;
+        }
+    }
+
+
     DiskLevel(ssize_t level_no, size_t run_cap, std::string root_directory, size_t version=0)
     : m_level_no(level_no), m_run_cap(run_cap), m_run_cnt(0)
     , m_runs(new ISAMTree*[run_cap]{nullptr})
@@ -238,7 +275,7 @@ public:
         assert(meta_f);
         for (size_t i=0; i<m_run_cap; i++) {
             if (m_runs[i]) {
-                fprintf(meta_f, "disk %s %d %ld %ld\n", m_runs[i]->get_pfile()->get_fname().c_str(), m_runs[i]->get_last_leaf_pnum(), m_runs[i]->get_record_count(), m_runs[i]->get_tombstone_count());
+                fprintf(meta_f, "disk %d %s %ld %d %ld %ld %d\n", m_owns[i], m_runs[i]->get_pfile()->get_fname().c_str(), m_version, m_runs[i]->get_last_leaf_pnum(), m_runs[i]->get_record_count(), m_runs[i]->get_tombstone_count(), m_runs[i]->get_root_pnum());
                 m_runs[i]->retain();
             }
         }
