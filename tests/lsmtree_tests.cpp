@@ -454,7 +454,14 @@ START_TEST(t_persist_mem)
 
     ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
     ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());
+
+    // NOTE: The aux memory  usage is *not* the same between the two, because of tombstone
+    // cancellation. The original tree uses more memory, as the bloom filters are allocated
+    // based on the max number of tombstones possible on a level during a merge, before any
+    // cancellations occur. The second tree is built using the *actual*, smaller, tombstone
+    // number as it happens post merge. So this difference is not an error.
     //ck_assert_int_eq(lsm->get_aux_memory_utilization(), lsm2->get_aux_memory_utilization());
+    
     ck_assert_int_eq(lsm->get_memory_utilization(), lsm2->get_memory_utilization());
 
     size_t len1;
