@@ -46,6 +46,7 @@ static MemTable *create_double_seq_memtable(size_t cnt)
     return mtable;
 }
 
+
 START_TEST(t_memlevel_merge)
 {
     auto tbl1 = create_test_memtable(100);
@@ -72,6 +73,45 @@ START_TEST(t_memlevel_merge)
 }
 
 
+MemoryLevel *create_test_memlevel(size_t reccnt) {
+    auto tbl1 = create_test_memtable(reccnt/2);
+    auto tbl2 = create_test_memtable(reccnt/2);
+
+    auto base_level = new MemoryLevel(1, 2, root_dir);
+    base_level->append_mem_table(tbl1, g_rng);
+    base_level->append_mem_table(tbl2, g_rng);
+
+    delete tbl1;
+    delete tbl2;
+
+    return base_level;
+}
+
+START_TEST(t_persist) 
+{
+    auto level = create_test_memlevel(400000);
+
+    std::string meta_fname = "tests/data/memlevel_tests/meta";
+    level->persist_level(meta_fname);
+
+    auto level2 = new MemoryLevel(1, 4, root_dir, meta_fname, g_rng);
+
+    ck_assert_int_eq(level->get_record_cnt(), level2->get_record_cnt());
+    ck_assert_int_eq(level->get_tombstone_count(), level2->get_tombstone_count());
+    ck_assert_int_eq(level->get_run_count(), level2->get_run_count());
+
+    for (size_t i=0; i<level->get_run_count(); i++) {
+        for (size_t j=0; j<level->get_run(i)->get_record_count(); j++) {
+            ck_assert_mem_eq(level->get_record_at(i, j), level2->get_record_at(i, j), lsm::record_size);
+        }
+    }
+
+    delete level;
+    delete level2;
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("MemoryLevel Unit Testing");
@@ -79,6 +119,10 @@ Suite *unit_testing()
     TCase *merge = tcase_create("lsm::MemoryLevel::merge_level Testing");
     tcase_add_test(merge, t_memlevel_merge);
     suite_add_tcase(unit, merge);
+
+    TCase *persistence = tcase_create("lsm::MemoryLevel::persistence Testing");
+    tcase_add_test(persistence, t_persist);
+    suite_add_tcase(unit, persistence);
 
     return unit;
 }

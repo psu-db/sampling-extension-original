@@ -39,6 +39,31 @@ private:
     };
 
 public:
+    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory, std::string meta_fname, gsl_rng *rng) 
+    : m_level_no(level_no), m_run_cnt(0)
+    , m_structure(new InternalLevelStructure(run_cap))
+    , m_directory(root_directory) {
+        FILE *meta_f = fopen(meta_fname.c_str(), "r");
+        assert(meta_f);
+
+        char fnamebuff[1028] = { 0 };
+        char typebuff[1028] = { 0 };
+        size_t reccnt = 0;
+        size_t tscnt = 0;
+        size_t idx = 0;
+
+        // WARNING: this assumes that the file is correctly formatted, and that
+        //          file names don't exceed 1027 characters. That should be the
+        //          case here, but a more robust solution may be helpful
+        while (fscanf(meta_f, "%s %s %ld %ld\n", typebuff, fnamebuff, &reccnt, &tscnt) != EOF && idx < run_cap) {
+            assert(strcmp(typebuff, "memory") == 0);
+            m_structure->m_bfs[idx] = new BloomFilter(BF_FPR, tscnt, BF_HASH_FUNCS, rng);
+            m_structure->m_runs[idx] = new InMemRun(std::string(fnamebuff), reccnt, tscnt, m_structure->m_bfs[idx]);
+            idx++;
+            m_run_cnt++;
+        }
+    }
+
     MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory)
     : m_level_no(level_no), m_run_cnt(0)
     , m_structure(new InternalLevelStructure(run_cap))
