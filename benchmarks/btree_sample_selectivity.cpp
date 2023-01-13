@@ -20,20 +20,20 @@ static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts,
     double avg_latency = (double) total_latency.count() / sample_attempts;
 
     //fprintf(stderr, "Average Latency (ns)\n");
-    fprintf(stdout, "%zu %.0lf\n", k, avg_latency);
+    printf("%lf %.0lf\n", selectivity, avg_latency);
 }
 
 
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: btree_bench <filename> <record_count> <selectivity> <sample_size>\n");
+        fprintf(stderr, "Usage: btree_bench <filename> <record_count> <sample_size>\n");
         exit(EXIT_FAILURE);
     }
 
     std::string filename = std::string(argv[1]);
     size_t record_count = atol(argv[2]);
-    double selectivity = atof(argv[3]);
+    double sample_size = atof(argv[3]);
     //size_t sample_size = atol(argv[4]);
 
 
@@ -52,8 +52,9 @@ int main(int argc, char **argv)
     // records
     build_btree(&sampling_tree, &datafile);
 
+	std::vector<double> sel = {0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1};
     size_t n;
-	for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)
+	for (auto selectivity: sel)
 		benchmark(&sampling_tree, n, sample_size, 10000, min_key, max_key, selectivity);
 
     delete_bench_env();
