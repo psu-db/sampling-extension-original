@@ -199,6 +199,35 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     }
 }
 
+/*
+ * When using a pre-warmed up tree, we still need to populate the list of future
+ * deletes in such a way that it includes records from the original set. This
+ * function advances fstream to the first new record (that isn't already in the
+ * tree), selecting delete candidates while it goes. This will *only* work
+ * properly if the warmed up tree doesn't have any deletes in it already.
+ *
+ * NOTE: See the commit message (888b69650d4ed1390dd5f06794ff2783562da1b6) for
+ * an alternative, better solution to this problem.
+ */
+static void select_for_delete(std::fstream *file, size_t record_cnt, double delete_prop) {
+    auto key_buf = std::make_unique<char[]>(lsm::key_size);
+    auto val_buf = std::make_unique<char[]>(lsm::value_size);
+
+    for (size_t i=0; i<record_cnt; i++) {
+        if (!next_record(file, key_buf.get(), val_buf.get()))  {
+            break;
+        }
+
+        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
+            auto del_key_buf = new char[lsm::key_size]();
+            auto del_val_buf = new char[lsm::value_size]();
+            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
+            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
+            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        }
+    }
+}
+
 
 static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop) {
     std::string line;
