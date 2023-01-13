@@ -44,6 +44,36 @@ thread_local size_t cancelations = 0;
 
 class ISAMTree {
 public:
+    /*
+     * Create an ISAM Tree object from an already formatted PagedFile
+     */
+    ISAMTree(PagedFile *pfile, size_t record_cnt, size_t ts_cnt, PageNum last_leaf, PageNum root_leaf, BloomFilter *tomb_filter, const gsl_rng *rng) 
+    : pfile(pfile)
+    , root_page(root_leaf)
+    , first_data_page(BTREE_FIRST_LEAF_PNUM)
+    , last_data_page(last_leaf)
+    , rec_cnt(record_cnt)
+    , tombstone_cnt(ts_cnt)
+    , retain_file(false) {
+
+        // rebuild the bloom filters
+        auto iter = this->start_scan();
+        size_t records_processed = 0;
+        while (iter->next()) {
+            auto pg = iter->get_item();
+            for (size_t i=0; i < PAGE_SIZE/record_size; i++) {
+                if (++records_processed > this->rec_cnt) {
+                    break;
+                }
+
+                auto key = get_key(iter->get_item() + (i * record_size));
+                tomb_filter->insert(key, key_size);
+            }
+        }
+
+        delete iter;
+    }
+
     ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);
@@ -260,27 +290,6 @@ public:
     }
 
     /*
-     * Returns the first leaf page pnum within the tree that contains a key
-     * greater than or equal to the specified lower key boundary, and the last
-     * page page pnum that contains a key less than or equal to upper key.
-     *
-     * buffer1 and buffer2 are thread-local buffers to be used for IO. They must
-     * be SECTOR_SIZE aligned and at least PAGE_SIZE in length. Their contents
-     * will vary over the function call and are not defined at any point in time,
-     * and any data within them prior to this call will be lost.
-     *
-     * Two buffers are required here because at some points during function
-     * execution, two different pages must be kept in memory at once.
-     */
-    /*
-    std::pair<PageNum, PageNum> get_bounds(const char *lower_key, const char *upper_key, char *buffer) {
-        // TODO: Implement in a more clever fashion--we could save some traversals of the
-        // upper portion of the tree.
-        return {this->get_lower_bound(lower_key, buffer), this->get_upper_bound(upper_key, buffer)};
-    }
-    */
-
-    /*
      * Returns a pointer to the record_idx'th record starting to count from the
      * first record of start_page, or nullptr if this record doesn't exist
      * (passed the end of the tree). The pointer will point to a record contained
@@ -378,6 +387,14 @@ public:
      */
     inline PageNum get_last_leaf_pnum() {
         return this->last_data_page;
+    }
+
+    /*
+     * Returns the PageNum corresponding to the root node within the
+     * tree.
+     */
+    inline PageNum get_root_pnum() {
+        return this->root_page;
     }
 
     /*

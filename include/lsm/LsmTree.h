@@ -70,10 +70,11 @@ public:
             level_index l_idx = this->decode_level_index(idx, &disk);
 
             if (disk) {
-                //this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
+                this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
             } else {
                 this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, rng));
             }
+            idx++;
         }
 
     }
