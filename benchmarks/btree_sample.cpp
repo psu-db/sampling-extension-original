@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 
     // warm up the tree with initial_insertions number of initially inserted
     // records
-    build_btree(&sampling_tree, &datafile);
+	warmup(&datafile, &sampling_tree, record_count, 0.05);
 
     size_t n;
 	for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)

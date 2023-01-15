@@ -90,7 +90,8 @@ int main(int argc, char **argv)
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
-    build_lsm_tree(&sampling_lsm, &datafile);
+    //build_lsm_tree(&sampling_lsm, &datafile);
+	warmup(&datafile, &sampling_lsm, record_count, 0.05);
 
     size_t n;
     auto data = sampling_lsm.get_sorted_array(&n, g_rng);

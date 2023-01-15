@@ -8,36 +8,45 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 
     size_t start = 0, end = 0;
 
-    size_t low = 0, high = n - 1;
-    while (low <= high) {
+	//printf("first binary search...\n");
+    size_t low = 0, high = n;
+    while (low < high) {
         size_t mid = (low + high) / 2;
+		//printf("low = %zu high = %zu mid = %zu\n", low, high, mid);
 
         const char *key = lsm::get_key(data + mid * lsm::record_size);
 
         if (lsm::key_cmp(key, lower) < 0)
             low = mid + 1;
         else
-            high = mid - 1;
+            high = mid;
     }
 
     start = low;
 
-    low = 0, high = n - 1;
-    while (low <= high) {
+	//printf("second binary search...\n");
+    low = 0, high = n;
+    while (low < high) {
         size_t mid = (low + high) / 2;
+		//printf("low = %zu high = %zu mid = %zu\n", low, high, mid);
+		//printf("mid = %zu\n", mid);
 
         const char *key = lsm::get_key(data + mid * lsm::record_size);
 
-        if (lsm::key_cmp(key, upper) > 0)
-            high = mid - 1;
+        if (lsm::key_cmp(key, upper) <= 0)
+			low = mid + 1;
         else
-            low = mid + 1;
+            high = mid;
     }
 
     end = high;
 
+	//if (end == start) return result;
+
+	//printf("start = %zu, end = %zu\n", start, end);
     for (size_t i = 0; i < k; i++) {
-        size_t idx = gsl_rng_uniform_int(g_rng, end - start + 1) + start;
+        size_t idx = gsl_rng_uniform_int(g_rng, end - start) + start;
+		//printf("idx = %zu\n", idx);
         memcpy(result + i * lsm::record_size, data + idx * lsm::record_size, lsm::record_size);
     }
 
@@ -47,6 +56,7 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 
 static void benchmark(char *data, size_t n, size_t k, size_t sample_attempts, size_t min, size_t max, double selectivity)
 {
+	//printf("n = %zu\n", n);
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < sample_attempts; i++) {
@@ -90,7 +100,8 @@ int main(int argc, char **argv)
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
-    build_lsm_tree(&sampling_lsm, &datafile);
+    //build_lsm_tree(&sampling_lsm, &datafile);
+	warmup(&datafile, &sampling_lsm, record_count, 0.05);
 
     size_t n;
     auto data = sampling_lsm.get_sorted_array(&n, g_rng);

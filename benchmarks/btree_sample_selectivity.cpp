@@ -50,7 +50,8 @@ int main(int argc, char **argv)
 
     // warm up the tree with initial_insertions number of initially inserted
     // records
-    build_btree(&sampling_tree, &datafile);
+    //build_btree(&sampling_tree, &datafile);
+	warmup(&datafile, &sampling_tree, record_count, 0.05);
 
 	std::vector<double> sel = {0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1};
     size_t n;

@@ -52,7 +52,8 @@ int main(int argc, char **argv)
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
-    build_lsm_tree(&sampling_tree, &datafile);
+    //build_lsm_tree(&sampling_tree, &datafile);
+	warmup(&datafile, &sampling_tree, record_count, 0.05);
 	
 	std::vector<double> sel = {0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1};
 

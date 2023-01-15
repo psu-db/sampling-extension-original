@@ -31,7 +31,7 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, size_t min
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: static_bench <filename> <record_count> <selectivity> <sample_size>\n");
+        fprintf(stderr, "Usage: static_bench <filename> <record_count> <selectivity>\n");
         exit(EXIT_FAILURE);
     }
 
@@ -53,7 +53,8 @@ int main(int argc, char **argv)
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
-    build_lsm_tree(&sampling_tree, &datafile);
+    //build_lsm_tree(&sampling_tree, &datafile);
+	warmup(&datafile, &sampling_tree, record_count, 0.05);
 
     size_t n;
 	for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)
