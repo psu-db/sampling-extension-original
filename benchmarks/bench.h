@@ -46,6 +46,8 @@ btree_record to_btree(record *rec) {
 
 static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
+static lsm::key_type max_key = 0;
+static lsm::key_type min_key = UINT64_MAX;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
 
@@ -121,9 +123,21 @@ static bool next_record(std::fstream *file, char *key, char *val)
 
         std::getline(line_stream, value_field, '\t');
         std::getline(line_stream, key_field, '\t');
+        lsm::key_type key_value = atol(key_field.c_str());
+        lsm::value_type val_value = atol(value_field.c_str());
 
-        *((lsm::key_type*) key) = atol(key_field.c_str());
-        *((lsm::value_type*) val) = atol(value_field.c_str());
+
+        *((lsm::key_type*) key) = key_value;
+        *((lsm::value_type*) val) = val_value;
+
+        if (key_value < min_key) {
+            min_key = key_value;
+        } 
+
+        if (key_value > max_key) {
+            max_key = key_value;
+        }
+
         return true;
     }
 

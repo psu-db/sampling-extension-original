@@ -2,7 +2,7 @@
 
 #include "bench.h"
 
-static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, size_t min, size_t max, double selectivity)
+static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, double selectivity)
 {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
@@ -11,7 +11,7 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, size_t min
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < trial_cnt; i++) {
-        auto range = get_key_range(min, max, selectivity);
+        auto range = get_key_range(min_key, max_key, selectivity);
         tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
     }
 
@@ -44,10 +44,6 @@ int main(int argc, char **argv)
 
     init_bench_env(true);
 
-    // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
-
     auto sampling_tree = lsm::LSMTree(root_dir, 15000, 45000, 10, 1000, 1, g_rng);
 
     std::fstream datafile;
@@ -58,7 +54,7 @@ int main(int argc, char **argv)
 
     size_t n;
 	for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)
-	    benchmark(&sampling_tree, sample_size, 10000, min_key, max_key, selectivity);
+	    benchmark(&sampling_tree, sample_size, 10000, selectivity);
 
     delete_bench_env();
     exit(EXIT_SUCCESS);
