@@ -384,6 +384,10 @@ public:
         return cnt;
     }
 
+    size_t get_memtable_capacity() {
+        return this->memtable_1->get_capacity();
+    }
+
     /*
      * Flattens the entire LSM structure into a single in-memory sorted
      * array and return a pointer to it. Will be used as a simple baseline

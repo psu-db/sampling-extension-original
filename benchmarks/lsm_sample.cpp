@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     datafile.open(filename, std::ios::in);
 
     //build_lsm_tree(&sampling_tree, &datafile);
-	warmup(&datafile, &sampling_tree, record_count, 0.05);
+	warmup(&datafile, &sampling_tree, record_count, .05);
 
     size_t n;
 	for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)

@@ -20,6 +20,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t operation_cnt = 10000;
 
     size_t reccnt = tree->get_record_cnt();
+    char *delbuf = new char[trial_cnt*lsm::record_size]();
 
     size_t ops = 0;
     while (ops < operation_cnt) {
@@ -30,7 +31,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             operation = WRITE;
             // write records
             std::vector<shared_record> insert_vec;
-            if (!build_insert_vec(file, insert_vec, trial_cnt, del_prop))  {
+            if (!build_insert_vec(file, insert_vec, trial_cnt))  {
                 continue;
             }
 
@@ -45,24 +46,23 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             total_insert_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else if (op < (write_prop + del_prop)) {
             operation = DELETE;
-            std::vector<shared_record> del_vec;
-            std::sample(g_to_delete->begin(), g_to_delete->end(), 
-                        std::back_inserter(del_vec), trial_cnt, 
-                        std::mt19937{std::random_device{}()});
-
-            if (del_vec.size() == 0) {
-                continue;
-            }
-
+            tree->range_sample(delbuf, (char*) &min_key, (char*) &max_key, trial_cnt, buffer1, buffer2, g_rng);
+            std::set<lsm::key_type> deleted;
             ops++;
+
             auto start = std::chrono::high_resolution_clock::now();
-            for (int i=0; i<del_vec.size(); i++) {
-                tree->append(del_vec[i].first.get(), del_vec[i].second.get(), true, g_rng); 
-                g_to_delete->erase(del_vec[i]);
+            for (int i=0; i<trial_cnt; i++) {
+                auto key = lsm::get_key(delbuf + (i * lsm::record_size));
+                auto val = lsm::get_val(delbuf + (i * lsm::record_size));
+
+                if (deleted.find(*(lsm::key_type *) key) == deleted.end()) {
+                    tree->append(key, val, true, g_rng); 
+                    deleted.insert(*(lsm::key_type *) key);
+                    delete_cnt += 1;
+                }
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
-            delete_cnt += del_vec.size();
             total_delete_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else {
             operation = READ;
@@ -88,10 +88,11 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t avg_sample_tput = (avg_sample_latency) ? (double) (1.0 / (double) avg_sample_latency) * 1e9 : 0;
     size_t avg_delete_tput = (avg_delete_latency) ? (double) (1.0 / (double) avg_delete_latency) * 1e9 : 0;;
 
-    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_tput, avg_insert_latency, avg_delete_tput);
+    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_tput, avg_insert_tput, avg_delete_tput);
 
     free(buffer1);
     free(buffer2);
+    delete[] delbuf;
 }
 
 
@@ -125,7 +126,7 @@ int main(int argc, char **argv)
     if (argc == 8) {
         std::string meta_fname = root_dir + "/meta/lsmtree.dat";
         sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, meta_fname, g_rng);
-        select_for_delete(&datafile, sampling_lsm->get_record_cnt(), del_prop);
+        scan_for_key_range(&datafile);
     } else {
         sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, g_rng);
 
@@ -141,7 +142,7 @@ int main(int argc, char **argv)
     bool records_to_insert = true;
     while (records_to_insert) {
         benchmark(sampling_lsm, &datafile, sample_size, 1000, min_key, max_key, selectivity, write_prop, del_prop);
-        records_to_insert = insert_to(&datafile, sampling_lsm, phase_insert_cnt, del_prop);
+        records_to_insert = warmup(&datafile, sampling_lsm, phase_insert_cnt, del_prop);
     }
 
     benchmark(sampling_lsm, &datafile, sample_size, 1000, min_key, max_key, selectivity, write_prop, del_prop);

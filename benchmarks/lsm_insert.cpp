@@ -12,14 +12,18 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     bool out_of_data = false;
 
+    char *buf1 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+    char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+
     size_t inserted_records = 0;
     std::vector<shared_record> to_insert(g_insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
-    std::vector<shared_record> del_vec;
-    std::sample(g_to_delete->begin(), g_to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
-
+    char *delbuf = new char[deletes * lsm::record_size]();
+    tree->range_sample(delbuf, (char*) &min_key, (char*) &max_key, deletes, buf1, buf2, g_rng);
+    std::set<lsm::key_type> deleted;
     size_t applied_deletes = 0;
+
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<g_insert_batch_size; i++) {
@@ -28,6 +32,9 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
                     // If no new records were loaded, there's no reason to duplicate
                     // the last round of sampling.
                     if (i == 0) {
+                        free(buf1);
+                        free(buf2);
+                        delete[] delbuf;
                         return false;
                     }
 
@@ -39,22 +46,22 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
             inserted_records++;
             inserted_from_batch++;
             to_insert[i] = {rec.first, rec.second};
-
-            if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-                g_to_delete->insert({rec.first, rec.second});
-            }
         }
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<inserted_from_batch; i++) {
-            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop && del_vec[applied_deletes].first.get() != nullptr) {
-                tree->append(del_vec[applied_deletes].first.get(), del_vec[applied_deletes].second.get(), true, g_rng); 
-                g_to_delete->erase(del_vec[applied_deletes]);
-                applied_deletes++;
-                i--;
-            } else {
-                tree->append(to_insert[i].first.get(), to_insert[i].second.get(), false, g_rng);
-            }
+            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
+                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
+                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
+
+                if (deleted.find(*(lsm::key_type*) key) == deleted.end()) {
+                    tree->append(key, val, true, g_rng); 
+                    deleted.insert(*(lsm::key_type*) key);
+                    applied_deletes++;
+                }
+            } 
+
+            tree->append(to_insert[i].first.get(), to_insert[i].second.get(), false, g_rng);
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
 
@@ -69,6 +76,9 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     reset_lsm_perf_metrics();
 
+    free(buf1);
+    free(buf2);
+    delete[] delbuf;
     return !out_of_data;
 }
 

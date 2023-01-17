@@ -45,7 +45,6 @@ btree_record to_btree(record *rec) {
 }
 
 static gsl_rng *g_rng;
-static std::set<shared_record> *g_to_delete;
 static lsm::key_type max_key = 0;
 static lsm::key_type min_key = UINT64_MAX;
 
@@ -82,14 +81,12 @@ static void init_bench_env(bool random_seed)
 {
     unsigned int seed = (random_seed) ? get_random_seed() : DEFAULT_SEED;
     init_bench_rng(seed, gsl_rng_mt19937);
-    g_to_delete = new std::set<shared_record>();
 }
 
 
 static void delete_bench_env()
 {
     gsl_rng_free(g_rng);
-    delete g_to_delete;
 }
 
 
@@ -147,7 +144,7 @@ static bool next_record(std::fstream *file, char *key, char *val)
 }
 
 
-static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n, double del_prop) {
+static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n) {
     for (size_t i=0; i<n; i++) {
         auto rec = create_shared_record();
         if (!next_record(file, rec.first.get(), rec.second.get())) {
@@ -159,10 +156,6 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
         }
 
         vec.push_back({rec.first, rec.second});
-
-        if (gsl_rng_uniform(g_rng) < del_prop + .15) {
-            g_to_delete->insert({rec.first, rec.second});
-        }
     }
 
     return true;
@@ -170,128 +163,84 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
 
 /*
  * "Warm up" the LSM Tree data structure by inserting `count` records from
- * `file` into it. If `delete_prop` is non-zero, then the global to-delete
- * record vector will be populated with records during the warmup process (the
- * probability of a record being added to it is delete_prop + .15). If
- * `initial_delete_prop` is non-zero, then records will be deleted from the
- * tree during the warmup as well with probability `initial_delete_prop`.
+ * `file` into it. If `delete_prop` is non-zero, then on each insert following
+ * the first memtable-full of inserts there is a `delete_prop` probability that
+ * a record already inserted into the tree will be deleted (in addition to the
+ * insert) by inserting a tombstone. Returns true if the warmup cycle finishes
+ * without exhausting the file, and false if the warmup cycle exhausts the file
+ * before inserting the requisite number of records.
  */
-static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop, double initial_delete_prop=0)
+static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop=0)
 {
     std::string line;
 
     auto key_buf = std::make_unique<char[]>(lsm::key_size);
     auto val_buf = std::make_unique<char[]>(lsm::value_size);
     
-    std::vector<shared_record> del_vec;
+    size_t del_buf_size = 100;
+    size_t del_buf_ptr = del_buf_size;
+    char delbuf[del_buf_size * lsm::record_size];
+
+    char *buf1 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+    char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+
+    std::set<lsm::key_type> deleted_keys;
+
+    bool ret = true;
 
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get())) {
+            ret = false;
             break;
         }
 
         lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
 
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
+            lsmtree->range_sample(delbuf, (char *) &min_key, (char *) &max_key, del_buf_size, buf1, buf2, g_rng);
+            del_buf_ptr = 0;
         }
 
-        if (gsl_rng_uniform(g_rng) < initial_delete_prop) {
-            std::sample(g_to_delete->begin(), g_to_delete->end(), std::back_inserter(del_vec), 1, std::mt19937{std::random_device{}()});
-            if (del_vec.size() > 0) {
-                lsmtree->append(del_vec[0].first.get(), del_vec[0].second.get(), true, g_rng);
-                g_to_delete->erase(del_vec[0]);
-            }
-            del_vec.clear();
-        }
-		
-		if (i % 1000000 == 0) fprintf(stderr, "Finished %zu operations...\n", i);
-    }
-}
+        if (i > lsmtree->get_memtable_capacity() && gsl_rng_uniform(g_rng) < delete_prop) {
+            auto key = lsm::get_key(delbuf + (del_buf_ptr * lsm::record_size));
+            auto val = lsm::get_val(delbuf + (del_buf_ptr * lsm::record_size));
+            del_buf_ptr++;
 
-/*
- * When using a pre-warmed up tree, we still need to populate the list of future
- * deletes in such a way that it includes records from the original set. This
- * function advances fstream to the first new record (that isn't already in the
- * tree), selecting delete candidates while it goes. This will *only* work
- * properly if the warmed up tree doesn't have any deletes in it already.
- *
- * NOTE: See the commit message (888b69650d4ed1390dd5f06794ff2783562da1b6) for
- * an alternative, better solution to this problem.
- */
-static void select_for_delete(std::fstream *file, size_t record_cnt, double delete_prop) {
-    auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    auto val_buf = std::make_unique<char[]>(lsm::value_size);
-
-    for (size_t i=0; i<record_cnt; i++) {
-        if (!next_record(file, key_buf.get(), val_buf.get()))  {
-            break;
-        }
-
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
-        }
-    }
-}
-
-
-static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop) {
-    std::string line;
-
-    auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    auto val_buf = std::make_unique<char[]>(lsm::value_size);
-    
-    for (size_t i=0; i<count; i++) {
-        if (!next_record(file, key_buf.get(), val_buf.get())) {
-            return false;
-        }
-
-        lsmtree->append(key_buf.get(), val_buf.get(), false, g_rng);
-
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
-        }
-
-        if (gsl_rng_uniform(g_rng) < delete_prop) {
-            std::vector<shared_record> del_vec;
-            std::sample(g_to_delete->begin(), g_to_delete->end(), 
-                        std::back_inserter(del_vec), 1, 
-                        std::mt19937{std::random_device{}()});
-
-            if (del_vec.size() == 0) {
-                continue;
+            if (deleted_keys.find(*(lsm::key_type *) key) == deleted_keys.end()) {
+                lsmtree->append(key, val, true, g_rng);
+                deleted_keys.insert(*(lsm::key_type*) key);
             }
 
-            lsmtree->append(del_vec[0].first.get(), del_vec[0].second.get(), true, g_rng); 
-            g_to_delete->erase(del_vec[0]);
+        }
+
+		if (i % 1000000 == 0) {
+            fprintf(stderr, "Finished %zu operations...\n", i);
+            fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
         }
     }
 
-    return true;
+    free(buf1);
+    free(buf2);
+
+    return ret;
 }
 
-
-static void warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop)
+static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop)
 {
     std::string line;
 
     auto key_buf = std::make_unique<char[]>(lsm::key_size);
     auto val_buf = std::make_unique<char[]>(lsm::value_size);
-    
+
+    size_t del_buf_size = 100;
+    size_t del_buf_ptr = del_buf_size;
+    std::vector<lsm::key_type> delbuf;
+    delbuf.reserve(del_buf_size);
+    bool ret = true;
+
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get())) {
+            ret = false;
             break;
         }
 
@@ -300,14 +249,18 @@ static void warmup(std::fstream *file, TreeMap *btree, size_t count, double dele
         auto res = btree->insert({key, val});
         assert(res.second);
 
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf)});
+        if (del_buf_size > btree->size() && del_buf_ptr == del_buf_size) {
+            btree->range_sample(min_key, max_key, del_buf_size, delbuf, g_rng);
+            del_buf_ptr = 0;
+        }
+
+        if (del_buf_size > btree->size() && gsl_rng_uniform(g_rng) < delete_prop) {
+            del_buf_ptr++;
+            btree->erase_one(key);
         }
     }
+
+    return ret;
 }
 
 
@@ -368,6 +321,22 @@ static void build_btree(TreeMap *tree, std::fstream *file) {
     }
     delete[] key_buf;
     delete[] val_buf;
+}
+
+
+static void scan_for_key_range(std::fstream *file, size_t record_cnt=0) {
+    char key[lsm::key_size];
+    char val[lsm::value_size];
+
+    size_t processed_records = 0;
+    while (next_record(file, key, val)) {
+        processed_records++;
+        // If record_cnt is 0, as default, this condition will
+        // never be satisfied and the whole file will be processed.
+        if (record_cnt == processed_records)  {
+                break;
+        }
+    }
 }
 
 #endif // H_BENCH
