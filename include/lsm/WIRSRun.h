@@ -33,7 +33,7 @@ thread_local size_t m_wirsrun_cancelations = 0;
 class WIRSRun {
 public:
     WIRSRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf)
-    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt) {
+    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt), m_rejection_cnt(0) {
 
         // read the stored data file the file
         size_t alloc_size = (record_cnt * record_size) + (CACHELINE_SIZE - (record_cnt * record_size) % CACHELINE_SIZE);
@@ -62,7 +62,7 @@ public:
 
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr), m_rejection_cnt(0) {
 
         size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
@@ -97,7 +97,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr), m_rejection_cnt(0) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -246,7 +246,7 @@ public:
         return min;
     }
 
-    bool check_tombstone(const char* key, const char* val) const {
+    bool check_tombstone(const char* key, const char* val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -260,7 +260,10 @@ public:
             ptr += record_size;
         }
 
-        return record_match(ptr, key, val, true);
+        bool result = record_match(ptr, key, val, true);
+        m_rejection_cnt += result;
+
+        return result;
     }
 
 
@@ -275,6 +278,10 @@ public:
         fwrite(m_data, record_size, m_reccnt, file);
 
         fclose(file);
+    }
+
+    size_t get_rejection_count() {
+        return m_rejection_cnt;
     }
     
 private:
@@ -304,16 +311,6 @@ private:
         if (node->right && intersects(node->right, lower_key, upper_key)) ans += decompose_node(node->right, lower_key, upper_key, output);
         return ans;
     }
-
-    // double get_sample_weight_internal(struct wirs_node* node, const char* lower_key, const char* upper_key) {
-    //     if (node == nullptr) return 0.0;
-    //     else if (covered_by(node, lower_key, upper_key)) return node->weight;
-
-    //     double ans = 0.0;
-    //     if (node->left && intersects(node->left, lower_key, upper_key)) ans += get_sample_weight_internal(node->left, lower_key, upper_key);
-    //     if (node->right && intersects(node->right, lower_key, upper_key)) ans += get_sample_weight_internal(node->right, lower_key, upper_key);
-    //     return ans;
-    // }
 
     struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
         if (low == high) {
@@ -377,6 +374,10 @@ private:
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     size_t m_group_size;
+
+    // The number of rejections caused by tombstones
+    // in this WIRSRun.
+    size_t m_rejection_cnt;
 };
 
 }

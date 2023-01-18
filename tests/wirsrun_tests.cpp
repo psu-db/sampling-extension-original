@@ -28,6 +28,31 @@ static MemTable *create_test_memtable(size_t cnt)
     return mtable;
 }
 
+
+static MemTable *create_test_memtable_tombstones(size_t cnt, size_t ts_cnt) 
+{
+    auto mtable = new MemTable(cnt, true, ts_cnt, g_rng);
+
+    std::vector<std::pair<lsm::key_type, lsm::value_type>> tombstones;
+
+    for (size_t i = 0; i < cnt; i++) {
+        key_type key = rand();
+        value_type val = rand();
+
+        if (i < ts_cnt) {
+            tombstones.push_back({key, val});
+        }
+
+        mtable->append((char*) &key, (char*) &val);
+    }
+
+    for (size_t i=0; i<ts_cnt; i++) {
+        mtable->append((char*) &tombstones[i].first, (char*) &tombstones[i].second, 1.0, true);
+    }
+
+    return mtable;
+}
+
 static MemTable *create_weighted_memtable(size_t cnt)
 {
     auto mtable = new MemTable(cnt, true, cnt, g_rng);
@@ -299,6 +324,47 @@ START_TEST(t_persistence)
 }
 END_TEST
 
+
+START_TEST(t_tombstone_check)
+{
+    size_t cnt = 1024;
+    size_t ts_cnt = 256;
+    auto mtable = new MemTable(cnt + ts_cnt, true, ts_cnt, g_rng);
+
+    std::vector<std::pair<lsm::key_type, lsm::value_type>> tombstones;
+
+    key_type key = 1000;
+    value_type val = 101;
+    for (size_t i = 0; i < cnt; i++) {
+        mtable->append((char*) &key, (char*) &val);
+        key++;
+        val++;
+    }
+
+    // ensure that the key range doesn't overlap, so nothing
+    // gets cancelled.
+    for (size_t i=0; i<ts_cnt; i++) {
+        tombstones.push_back({i, i});
+    }
+
+    for (size_t i=0; i<ts_cnt; i++) {
+        mtable->append((char*) &tombstones[i].first, (char*) &tombstones[i].second, 1.0, true);
+    }
+
+    BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    auto run = new WIRSRun(mtable, bf1);
+
+    for (size_t i=0; i<tombstones.size(); i++) {
+        ck_assert(run->check_tombstone((char*) &tombstones[i].first, (char*) &tombstones[i].second));
+        ck_assert_int_eq(run->get_rejection_count(), i+1);
+    }
+
+    delete run;
+    delete mtable;
+    delete bf1;
+}
+END_TEST
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("WIRSRun Unit Testing");
@@ -330,6 +396,10 @@ Suite *unit_testing()
     TCase *persistence = tcase_create("lsm::InMemRun::persistence Testing");
     tcase_add_test(persistence, t_persistence);
     suite_add_tcase(unit, persistence);
+
+    TCase *check_ts = tcase_create("lsm::InMemRun::check_tombstone Testing");
+    tcase_add_test(check_ts, t_tombstone_check);
+    suite_add_tcase(unit, check_ts);
 
     return unit;
 }
