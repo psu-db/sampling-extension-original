@@ -481,6 +481,7 @@ START_TEST(t_multithread_insert)
         }
     }
 
+    lsm->await_merge_completion();
     ck_assert_int_eq(lsm->get_record_cnt(), record_cnt);
     ck_assert_int_eq(lsm->get_tombstone_cnt(), 0);
 
@@ -498,12 +499,9 @@ START_TEST(t_multithread_sample)
         lsm->append((char *) &i, (char*) &i, false, g_rng);
     }
 
-    size_t thread_cnt = 8;
-    size_t per_thread = record_cnt / thread_cnt;
+    size_t thread_cnt = 4;
 
     std::vector<std::thread> workers(thread_cnt);
-    size_t start = 0;
-    size_t stop = start + per_thread;
     for (size_t i=0; i<thread_cnt; i++) {
         workers[i] = std::thread(sample, lsm, 100);
     }
@@ -514,6 +512,10 @@ START_TEST(t_multithread_sample)
         }
     }
 
+    lsm->await_merge_completion();
+    ck_assert_int_eq(lsm->get_record_cnt(), record_cnt);
+    ck_assert_int_eq(lsm->get_tombstone_cnt(), 0);
+
     delete lsm;
 }
 END_TEST
@@ -521,7 +523,53 @@ END_TEST
 
 START_TEST(t_multithread_mix)
 {
+    size_t record_cnt = 100000;
+    auto lsm = new LSMTree(dir, 100, 50, 2, 1, .01, g_rng);
 
+    std::vector<std::pair<key_type, value_type>> records(record_cnt);
+    for (size_t i=0; i<record_cnt; i++) {
+        records[i] = {rand(), rand()};
+    }
+
+    // load a few records to get started
+    size_t warmup_record_cnt = record_cnt / 10;
+    for (size_t i=0; i<warmup_record_cnt; i++) {
+        lsm->append((char *) &i, (char*) &i, false, g_rng);
+    }
+
+
+    size_t insert_thread_cnt = 4;
+    size_t sample_thread_cnt = 4;
+    size_t per_thread = (record_cnt - warmup_record_cnt) / insert_thread_cnt;
+
+    std::vector<std::thread> insert_workers(insert_thread_cnt);
+    std::vector<std::thread> sample_workers(sample_thread_cnt);
+
+    size_t start = warmup_record_cnt;
+    size_t stop = start + per_thread;
+    for (size_t i=0; i<insert_thread_cnt; i++) {
+        insert_workers[i] = std::thread(insert_records, &records, start, stop, lsm);
+        start = stop;
+        stop = std::min(start + per_thread, record_cnt);
+    }
+
+    for (size_t i=0; i<sample_thread_cnt; i++) {
+        sample_workers[i] = std::thread(sample, lsm, 100);
+    }
+
+    for (size_t i=0; i<sample_thread_cnt; i++) {
+        if (sample_workers[i].joinable()) {
+            sample_workers[i].join();
+        }
+    }
+
+    for (size_t i=0; i<insert_thread_cnt; i++) {
+        if (insert_workers[i].joinable()) {
+            insert_workers[i].join();
+        }
+    }
+
+    delete lsm;
 }
 END_TEST
 
