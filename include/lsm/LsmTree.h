@@ -368,11 +368,8 @@ public:
     size_t get_aux_memory_utilization() {
         size_t cnt = this->memtable_1->get_aux_memory_utilization() + this->memtable_2->get_aux_memory_utilization();
 
-        fprintf(stderr, "Memtable AMem: %ld\n", cnt);
-
         for (size_t i=0; i<this->memory_levels.size(); i++) {
             if (this->memory_levels[i]) {
-                fprintf(stderr, "Level %ld AMem: %ld\n", i, this->memory_levels[i]->get_aux_memory_utilization());
                 cnt += this->memory_levels[i]->get_aux_memory_utilization();
             }
         }
@@ -517,7 +514,6 @@ public:
 
             auto level_idx = this->decode_level_index(i, &disk);
             std::string level_meta = meta_dir + "/level-" + std::to_string(i) +"-meta.dat";
-            fprintf(meta_f, "%s\n", level_meta.c_str());
 
             if (disk) {
                 disk_levels[level_idx]->persist_level(level_meta);
