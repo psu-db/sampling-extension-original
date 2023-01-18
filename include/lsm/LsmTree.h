@@ -96,7 +96,7 @@ public:
         return mtable->append(key, val, weight, tombstone);
     }
 
-    void range_sample(char *sample_set, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    void range_sample(char *sample_set, size_t sample_sz, gsl_rng *rng) {
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
@@ -133,7 +133,6 @@ public:
 
         sample_state state;
         state.tree = this;
-        state.buff = buffer;
         state.memtable = mtable;
         state.mtable_cutoff = mtable_cutoff;
 

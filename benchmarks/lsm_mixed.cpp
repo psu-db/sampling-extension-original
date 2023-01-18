@@ -3,10 +3,7 @@
 #include "bench.h"
 
 static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t trial_cnt, 
-                      size_t min, size_t max, double selectivity, double write_prop, 
-                      double del_prop) {
-    char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+                      double write_prop, double del_prop) {
     char sample_set[k*lsm::record_size];
 
     unsigned long total_sample_time = 0;
@@ -17,10 +14,10 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t insert_cnt = 0;
     size_t delete_cnt = 0;
 
-    size_t operation_cnt = 1000;
+    size_t operation_cnt = 10000;
 
     size_t reccnt = tree->get_record_cnt();
-
+    char *delbuf = new char[trial_cnt*lsm::record_size]();
 
     size_t ops = 0;
     while (ops < operation_cnt) {
@@ -31,12 +28,10 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             operation = WRITE;
             // write records
             std::vector<shared_record> insert_vec;
-            if (!build_insert_vec(file, insert_vec, trial_cnt, del_prop))  {
-                fprintf(stderr, "continuing...\n");
+            if (!build_insert_vec(file, insert_vec, trial_cnt))  {
                 continue;
             }
 
-            fprintf(stderr, "inserting...\n");
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<insert_vec.size(); i++) {
@@ -48,35 +43,32 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             total_insert_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else if (op < (write_prop + del_prop)) {
             operation = DELETE;
-            std::vector<shared_record> del_vec;
-            std::sample(g_to_delete->begin(), g_to_delete->end(), 
-                        std::back_inserter(del_vec), trial_cnt, 
-                        std::mt19937{std::random_device{}()});
-
-            if (del_vec.size() == 0) {
-                continue;
-            }
-
-            fprintf(stderr, "deleting...\n");
+            tree->range_sample(delbuf, trial_cnt, g_rng);
+            std::set<lsm::key_type> deleted;
             ops++;
+
             auto start = std::chrono::high_resolution_clock::now();
-            for (int i=0; i<del_vec.size(); i++) {
-                tree->append(del_vec[i].key.get(), del_vec[i].value.get(), 0, true, g_rng); 
-                g_to_delete->erase(del_vec[i]);
+            for (int i=0; i<trial_cnt; i++) {
+                auto key = lsm::get_key(delbuf + (i * lsm::record_size));
+                auto val = lsm::get_val(delbuf + (i * lsm::record_size));
+                auto weight = lsm::get_weight(delbuf + (i * lsm::record_size));
+
+                if (deleted.find(*(lsm::key_type *) key) == deleted.end()) {
+                    tree->append(key, val, weight, true, g_rng); 
+                    deleted.insert(*(lsm::key_type *) key);
+                    delete_cnt += 1;
+                }
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
-            delete_cnt += del_vec.size();
             total_delete_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else {
             operation = READ;
             //sample
-            fprintf(stderr, "sampling...\n");
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<trial_cnt/10; i++) {
-                auto range = get_key_range(g_min_key, g_max_key, selectivity);
-                tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
+                tree->range_sample(sample_set, k, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -93,17 +85,16 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t avg_sample_tput = (avg_sample_latency) ? (double) (1.0 / (double) avg_sample_latency) * 1e9 : 0;
     size_t avg_delete_tput = (avg_delete_latency) ? (double) (1.0 / (double) avg_delete_latency) * 1e9 : 0;;
 
-    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_latency, avg_insert_latency, avg_delete_tput);
+    fprintf(stdout, "%ld %ld %ld %ld\n", reccnt, avg_sample_tput, avg_insert_tput, avg_delete_tput);
 
-    free(buffer1);
-    free(buffer2);
+    delete[] delbuf;
 }
 
 
 int main(int argc, char **argv)
 {
     if (argc < 7) {
-        fprintf(stderr, "Usage: lsm_mixed <filename> <record_count> <selectivity> <sample_size> <write_prop> <delete_prop>\n");
+        fprintf(stderr, "Usage: lsm_mixed <filename> <record_count> <selectivity> <sample_size> <write_prop> <delete_prop> [existing_root_dir]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -114,33 +105,42 @@ int main(int argc, char **argv)
     double write_prop = atof(argv[5]);
     double del_prop = atof(argv[6]);
 
-    std::string root_dir = "benchmarks/data/lsm_mixed";
+    std::string root_dir = (argc == 8) ? std::string(argv[7]) : "benchmarks/data/lsm_mixed";
 
     init_bench_env(true);
 
-    // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
-
-    auto sampling_tree = lsm::LSMTree(root_dir, 10000, 30000, 10, 1000, 1, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
-    double warmup_prop = 0.1;
-    warmup(&datafile, &sampling_tree, record_count * warmup_prop, del_prop); 
+    lsm::LSMTree *sampling_lsm;
+
+    if (argc == 8) {
+        std::string meta_fname = root_dir + "/meta/lsmtree.dat";
+        assert(false);
+        //sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, meta_fname, g_rng);
+    } else {
+        sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, g_rng);
+
+        double warmup_prop = 0.6;
+        warmup(&datafile, sampling_lsm, record_count * warmup_prop, del_prop); 
+    }
 
     double phase_insert_prop = .1;
     size_t phase_insert_cnt = phase_insert_prop * record_count;
 
+    fprintf(stderr, "Record Count, Average Sampling Throughput (sample/s), Average Insertion Throughput (insert/s), Average Deletion Throughput (delete/s)\n");
+
     bool records_to_insert = true;
     while (records_to_insert) {
-        benchmark(&sampling_tree, &datafile, sample_size, 10000, min_key, max_key, selectivity, write_prop, del_prop);
-        records_to_insert = insert_to(&datafile, &sampling_tree, phase_insert_cnt, del_prop);
+        benchmark(sampling_lsm, &datafile, sample_size, 1000, write_prop, del_prop);
+        records_to_insert = warmup(&datafile, sampling_lsm, phase_insert_cnt, del_prop);
     }
 
-    benchmark(&sampling_tree, &datafile, sample_size, 10000, min_key, max_key, selectivity, write_prop, del_prop);
+    benchmark(sampling_lsm, &datafile, sample_size, 1000, write_prop, del_prop);
 
     delete_bench_env();
+
+    delete sampling_lsm;
     exit(EXIT_SUCCESS);
 }

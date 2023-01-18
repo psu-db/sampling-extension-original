@@ -150,7 +150,7 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
 }
 
 
-static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n, double del_prop) {
+static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n) {
     for (size_t i=0; i<n; i++) {
         auto rec = create_shared_record();
         if (!next_record(file, rec.key.get(), rec.value.get(), &rec.weight)) {
@@ -162,17 +162,13 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
         }
 
         vec.push_back({rec.key, rec.value, rec.weight});
-
-        if (gsl_rng_uniform(g_rng) < del_prop + .15) {
-            g_to_delete->insert({rec.key, rec.value, rec.weight});
-        }
     }
 
     return true;
 }
 
 
-static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
+static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
 {
     std::string line;
 
@@ -182,7 +178,7 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get(), &weight)) {
-            break;
+            return false;
         }
 
         lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
@@ -195,6 +191,8 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf), weight});
         }
     }
+
+    return true;
 }
 
 
