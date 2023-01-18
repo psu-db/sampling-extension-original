@@ -125,10 +125,10 @@ int main(int argc, char **argv)
 
     if (argc == 8) {
         std::string meta_fname = root_dir + "/meta/lsmtree.dat";
-        sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, meta_fname, g_rng);
+        sampling_lsm = new lsm::LSMTree(root_dir, 15000, 750, 10, 1000, 1, meta_fname, g_rng);
         scan_for_key_range(&datafile);
     } else {
-        sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, g_rng);
+        sampling_lsm = new lsm::LSMTree(root_dir, 15000, 750, 10, 1000, 1, g_rng);
 
         double warmup_prop = 0.6;
         warmup(&datafile, sampling_lsm, record_count * warmup_prop, del_prop); 

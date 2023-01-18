@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     lsm::key_type min_key = 0;
     lsm::key_type max_key = record_count - 1;
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*0.05, scale_factor, memory_levels, max_delete_prop, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

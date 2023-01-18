@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 
     init_bench_env(true);
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*0.05, scale_factor, memory_levels, max_delete_prop, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

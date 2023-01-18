@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 
     init_bench_env(true);
 
-    auto sampling_tree = lsm::LSMTree(root_dir, 15000, 45000, 10, 1000, 1, g_rng);
+    auto sampling_tree = lsm::LSMTree(root_dir, 15000, 750, 10, 1000, 1, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

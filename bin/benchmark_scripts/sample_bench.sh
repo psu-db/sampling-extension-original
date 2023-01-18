@@ -28,17 +28,17 @@ else
 fi
 
 
-memtable=(10000 20000 50000 100000)
-selectivity="0.5"
-memlevels=100
-scale_factors=(2 4 6 10)
-del_prop="0.1"
+memtable=(2000 5000 15000 45000 135000)
+selectivity="0.001"
+memlevels=1000
+scale_factors=(2 4 6 8 10)
+del_prop="0.05"
 max_ts_props=("0.01" "0.05" "0.1" "0.15")
 
 for mem in ${memtable[@]}; do
     for scale in ${scale_factors[@]}; do
         for del in ${max_ts_props[@]}; do
-            numactl -N${numa} bin/benchmarks/lsm_bench "$data_file" "$reccnt" "$mem" "$scale" "$selectivity" "$memlevels" "$del_prop" "$del" > ${result_dir}/results_"$mem"_"$scale"_"$del".dat
+            numactl -m${numa} -C${numa} bin/benchmarks/lsm_bench "$data_file" "$reccnt" "$mem" "$scale" "$selectivity" "$memlevels" "$del_prop" "$del" | tee ${result_dir}/results_"$mem"_"$scale"_"$del".dat
         done
     done
 done
