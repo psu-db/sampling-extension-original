@@ -40,7 +40,7 @@ thread_local size_t disklevel_sample_time = 0;
 static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = false;
+static constexpr bool LSM_LEVELING = true;
 
 static constexpr size_t LSM_MEMTABLE_CNT = 2;
 
