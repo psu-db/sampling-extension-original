@@ -5,6 +5,7 @@
 #include <cassert>
 
 #include "util/base.h"
+#include "util/bf_config.h"
 #include "ds/BloomFilter.h"
 #include "util/record.h"
 
@@ -12,14 +13,14 @@ namespace lsm {
 
 class MemTable {
 public:
-    MemTable(size_t capacity, bool rej_sampling, size_t filter_size, const gsl_rng* rng)
-    : m_cap(capacity), m_buffersize(capacity * record_size), m_reccnt(0)
+    MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
+    : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity * record_size), m_reccnt(0)
     , m_tombstonecnt(0), m_current_tail(0) {
         m_data = (char*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize);
         m_tombstone_filter = nullptr;
-        if (filter_size > 0) {
+        if (max_tombstone_cap > 0) {
             assert(rng != nullptr);
-            m_tombstone_filter = new BloomFilter(filter_size, 8, rng);
+            m_tombstone_filter = new BloomFilter(BF_FPR, max_tombstone_cap, BF_HASH_FUNCS, rng);
         }
     }
 
@@ -29,8 +30,11 @@ public:
     }
 
     int append(const char* key, const char* value, bool is_tombstone = false) {
+        if (is_tombstone && m_tombstonecnt + 1 > m_tombstone_cap) return 0;
+
         ssize_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
+
 
         layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size);
         if (is_tombstone) {
@@ -96,6 +100,10 @@ public:
         return m_tombstone_filter->get_memory_utilization();
     }
 
+    size_t get_tombstone_capacity() {
+        return m_tombstone_cap;
+    }
+
 private:
     ssize_t try_advance_tail() {
         size_t new_tail = m_current_tail.fetch_add(record_size);
@@ -106,6 +114,7 @@ private:
 
     size_t m_cap;
     size_t m_buffersize;
+    size_t m_tombstone_cap;
     
     char* m_data;
     BloomFilter* m_tombstone_filter;
