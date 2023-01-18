@@ -89,7 +89,6 @@ START_TEST(t_insert_tombstones)
         ck_assert_int_eq(mtable->get_record_count(), i+1);
         ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
         ck_assert_int_eq(mtable->is_full(), 0);
-        fprintf(stderr, "%ld\n", mtable->get_tombstone_count());
     }
 
     // inserting one more tombstone should not be possible
