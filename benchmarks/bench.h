@@ -269,6 +269,8 @@ static key_range get_key_range(lsm::key_type min, lsm::key_type max, double sele
     size_t range_length = (max - min) * selectivity;
 
     lsm::key_type max_bottom = max - range_length;
+    assert(max >= range_length);
+
     lsm::key_type bottom = gsl_rng_uniform_int(g_rng, max_bottom);
 
     return {bottom, bottom + range_length};
