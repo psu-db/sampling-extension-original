@@ -52,6 +52,7 @@ START_TEST(t_create)
     ck_assert_int_eq(mtable->is_full(), false);
     ck_assert_ptr_nonnull(mtable->sorted_output());
     ck_assert_int_eq(mtable->get_tombstone_count(), 0);
+    ck_assert_int_eq(mtable->get_tombstone_capacity(), 50);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -120,6 +121,10 @@ START_TEST(t_insert_tombstones)
         ck_assert_int_eq(mtable->get_tombstone_count(), ts_cnt);
         ck_assert_int_eq(mtable->is_full(), 0);
     }
+
+    // inserting one more tombstone should not be possible
+    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, true), 0);
+
 
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
 
@@ -191,8 +196,6 @@ START_TEST(t_sorted_output)
     mtable->append((char *) &keys[cnt-2], (char*) &val, true);
     mtable->append((char *) &keys[cnt-1], (char*) &val, true);
 
-
-    key_type ts_key = keys[cnt-1];
     char *sorted_records = mtable->sorted_output();
     std::sort(keys.begin(), keys.end());
 
