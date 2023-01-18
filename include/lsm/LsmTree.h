@@ -22,7 +22,7 @@ thread_local size_t tombstone_rejections = 0;
 /*
  * thread_local size_t various_sampling_times go here.
  */
-thread_local size_t sample_range_time = 0;
+thread_local size_t memtable_alias_time = 0;
 thread_local size_t alias_time = 0;
 thread_local size_t alias_query_time = 0;
 thread_local size_t rejection_check_time = 0;
@@ -97,13 +97,21 @@ public:
     }
 
     void range_sample(char *sample_set, size_t sample_sz, gsl_rng *rng) {
+        TIMER_INIT();
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
         Alias *memtable_alias;
         size_t mtable_cutoff = 0;
+        TIMER_START();
         double memtable_weight = mtable->get_sample_range(&memtable_alias, &mtable_cutoff);
+        TIMER_STOP();
 
+        memtable_alias_time += TIMER_RESULT();
+
+
+
+        TIMER_START();
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
         std::vector<std::pair<RunId, WIRSRun *>> runs;
@@ -125,6 +133,9 @@ public:
 
         // Construct alias structure
         auto alias = Alias(run_weights);
+        TIMER_STOP();
+
+        alias_time += TIMER_RESULT();
 
         std::vector<size_t> run_samples(run_weights.size(), 0);
 
@@ -137,12 +148,17 @@ public:
         state.mtable_cutoff = mtable_cutoff;
 
         do {
+            TIMER_START();
             for (size_t i=0; i<rejections; i++) {
                 run_samples[alias.get(rng)] += 1;
             }
+            TIMER_STOP();
+
+            alias_query_time += TIMER_RESULT();
 
             rejections = 0;
 
+            TIMER_START();
             while (run_samples[0] > 0) {
                 auto rec = mtable->get_record_at(memtable_alias->get(rng));
                 if (!mtable->check_tombstone(get_key(rec), get_val(rec))) {
@@ -152,7 +168,10 @@ public:
                 }
                 run_samples[0]--;
             }
+            TIMER_STOP();
+            memtable_sample_time += TIMER_RESULT();
 
+            TIMER_START();
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
                 state.rid = runs[i].first;
@@ -162,6 +181,8 @@ public:
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
             }
+            TIMER_STOP();
+            memlevel_sample_time += TIMER_RESULT();
         } while (sample_idx < sample_sz);
 
         delete memtable_alias;

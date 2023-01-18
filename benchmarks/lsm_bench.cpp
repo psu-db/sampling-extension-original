@@ -90,7 +90,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
           lsm::deletion_rejections, avg_insert_latency, avg_sample_latency);
 
     fprintf(stdout, "%ld %ld %ld %ld %ld %ld %ld %ld\n",
-          lsm::sample_range_time / samples, lsm::alias_time / samples,
+          lsm::memtable_alias_time / samples, lsm::alias_time / samples,
           lsm::alias_query_time / samples, lsm::memtable_sample_time / samples,
           lsm::memlevel_sample_time / samples,
           lsm::disklevel_sample_time / samples,
@@ -139,7 +139,7 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "Record Count, Tombstone Count, Tree Height, Memory Utilization, Auxiliary Memory Utilization, Average Sample Attempts, Average Sample Rejections, ");
     fprintf(stderr, "Average Bounds Rejections, Average Tombstone Rejections, Average Deletion Rejections, Average Insert Latency (ns), Average Sample Latency (ns), ");
-    fprintf(stderr, "Average Sample Range Construction Latency (ns), Average Alias Query Latency (ns), Average MemTable Sampling Latency (ns), Average MemLevel Sampling Latency (ns), ");
+    fprintf(stderr, "Average Memtable Alias Construction Latency (ns), Average Alias Query Latency (ns), Average MemTable Sampling Latency (ns), Average MemLevel Sampling Latency (ns), ");
     fprintf(stderr, "Average DiskLevel Sampling Latency (ns), Average Rejection Check Time (ns)\n");
     while (benchmark(&sampling_lsm, &datafile, inserts, samples, sample_size, selectivity, delete_prop)) 
         ;

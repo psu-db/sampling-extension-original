@@ -252,7 +252,7 @@ static key_range get_key_range(lsm::key_type min, lsm::key_type max, double sele
 
 
 static void reset_lsm_perf_metrics() {
-    lsm::sample_range_time = 0;
+    lsm::memtable_alias_time = 0;
     lsm::alias_time = 0;
     lsm::alias_query_time = 0;
     lsm::memtable_sample_time = 0;
