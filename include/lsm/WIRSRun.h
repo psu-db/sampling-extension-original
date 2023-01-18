@@ -19,8 +19,9 @@ thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
 public:
+
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0) {
+    :m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -195,7 +196,7 @@ public:
         return min;
     }
 
-    bool check_tombstone(const char* key, const char* val) const {
+    bool check_tombstone(const char* key, const char* val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -209,7 +210,10 @@ public:
             ptr += record_size;
         }
 
-        return record_match(ptr, key, val, true);
+        bool result = record_match(ptr, key, val, true);
+        m_rejection_cnt += result;
+
+        return result;
     }
 
 
@@ -221,14 +225,21 @@ public:
     double get_total_weight() {
         return m_total_weight;
     }
+
+    size_t get_rejection_count() {
+        return m_rejection_cnt;
+    }
     
 private:
-
     char* m_data;
     Alias *m_alias;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     double m_total_weight;
+
+    // The number of rejections caused by tombstones
+    // in this WIRSRun.
+    size_t m_rejection_cnt;
 };
 
 }

@@ -16,7 +16,7 @@ gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
 static MemTable *create_test_memtable(size_t cnt)
 {
-    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt; i++) {
         key_type key = rand();
@@ -30,7 +30,7 @@ static MemTable *create_test_memtable(size_t cnt)
 
 static MemTable *create_weighted_memtable(size_t cnt)
 {
-    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    auto mtable = new MemTable(cnt, true, cnt, g_rng);
     
     // Put in half of the count with weight one.
     key_type key = 1;
@@ -56,7 +56,7 @@ static MemTable *create_weighted_memtable(size_t cnt)
 
 static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false) 
 {
-    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
@@ -77,7 +77,7 @@ static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false)
 
 START_TEST(t_memtable_init)
 {
-    auto mem_table = new MemTable(1024, true, 50, g_rng);
+    auto mem_table = new MemTable(1024, true, 1024, g_rng);
     for (uint64_t i = 512; i > 0; i--) {
         uint32_t v = i;
         mem_table->append((const char*)&i, (const char*)&v);
@@ -256,6 +256,47 @@ START_TEST(t_weighted_sampling)
 }
 END_TEST
 
+
+START_TEST(t_tombstone_check)
+{
+    size_t cnt = 1024;
+    size_t ts_cnt = 256;
+    auto mtable = new MemTable(cnt + ts_cnt, true, ts_cnt, g_rng);
+
+    std::vector<std::pair<lsm::key_type, lsm::value_type>> tombstones;
+
+    key_type key = 1000;
+    value_type val = 101;
+    for (size_t i = 0; i < cnt; i++) {
+        mtable->append((char*) &key, (char*) &val);
+        key++;
+        val++;
+    }
+
+    // ensure that the key range doesn't overlap, so nothing
+    // gets cancelled.
+    for (size_t i=0; i<ts_cnt; i++) {
+        tombstones.push_back({i, i});
+    }
+
+    for (size_t i=0; i<ts_cnt; i++) {
+        mtable->append((char*) &tombstones[i].first, (char*) &tombstones[i].second, 1.0, true);
+    }
+
+    BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
+    auto run = new WIRSRun(mtable, bf1);
+
+    for (size_t i=0; i<tombstones.size(); i++) {
+        ck_assert(run->check_tombstone((char*) &tombstones[i].first, (char*) &tombstones[i].second));
+        ck_assert_int_eq(run->get_rejection_count(), i+1);
+    }
+
+    delete run;
+    delete mtable;
+    delete bf1;
+}
+END_TEST
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("WIRSRun Unit Testing");
@@ -282,6 +323,11 @@ Suite *unit_testing()
     tcase_add_test(sampling, t_weighted_sampling);
 
     suite_add_tcase(unit, sampling);
+
+    TCase *check_ts = tcase_create("lsm::InMemRun::check_tombstone Testing");
+    tcase_add_test(check_ts, t_tombstone_check);
+    suite_add_tcase(unit, check_ts);
+
     return unit;
 }
 
