@@ -21,6 +21,7 @@ START_TEST(t_create)
     ck_assert_int_eq(mtable->is_full(), false);
     ck_assert_ptr_nonnull(mtable->sorted_output());
     ck_assert_int_eq(mtable->get_tombstone_count(), 0);
+    ck_assert_int_eq(mtable->get_tombstone_capacity(), 50);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -90,6 +91,10 @@ START_TEST(t_insert_tombstones)
         ck_assert_int_eq(mtable->is_full(), 0);
     }
 
+    // inserting one more tombstone should not be possible
+    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, true), 0);
+
+
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, false), 1);
 
     key++;
@@ -107,7 +112,7 @@ END_TEST
 START_TEST(t_truncate)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, rng);
+    auto mtable = new MemTable(100, true, 100, rng);
 
     key_type key = 0;
     value_type val = 5;
@@ -174,8 +179,6 @@ START_TEST(t_sorted_output)
     mtable->append((char *) &keys[cnt-1], (char*) &val, 1.0, true);
 
 
-    size_t ts_found = 0;
-    key_type ts_key = keys[cnt-1];
     char *sorted_records = mtable->sorted_output();
     std::sort(keys.begin(), keys.end());
 
@@ -193,7 +196,7 @@ END_TEST
 void insert_records(std::vector<std::pair<key_type, value_type>> *values, size_t start, size_t stop, MemTable *mtable)
 {
     for (size_t i=start; i<stop; i++) {
-        mtable->append((char*) &((*values)[i].first), (char*) &((*values)[i].second));
+        mtable->append((char*) &((*values)[i].first), (char*) &((*values)[i].second), 1.0);
     }
 
 }
