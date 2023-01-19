@@ -102,13 +102,11 @@ public:
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
-        Alias *memtable_alias;
+        Alias *memtable_alias = nullptr;
         size_t mtable_cutoff = 0;
-        TIMER_START();
-        double memtable_weight = mtable->get_sample_range(&memtable_alias, &mtable_cutoff);
-        TIMER_STOP();
 
-        memtable_alias_time += TIMER_RESULT();
+        double memtable_weight = mtable->get_total_weight();
+
 
 
 
@@ -161,8 +159,22 @@ public:
 
             TIMER_START();
             while (run_samples[0] > 0) {
-                auto rec = mtable->get_record_at(memtable_alias->get(rng));
-                if (!mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                if (!LSM_REJ_SAMPLE && !memtable_alias) {
+                    TIMER_START();
+                    mtable->get_sample_range(&memtable_alias, &mtable_cutoff);
+                    TIMER_STOP();
+
+                    memtable_alias_time += TIMER_RESULT();
+                }
+
+                const char *rec;
+                if (LSM_REJ_SAMPLE) {
+                    rec = mtable->get_sample(rng);
+                } else {
+                    rec = mtable->get_record_at(memtable_alias->get(rng));
+                }
+
+                if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
                     memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 } else {
                     rejections++;

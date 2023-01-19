@@ -18,7 +18,7 @@ class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
     : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity * record_size), m_reccnt(0)
-    , m_tombstonecnt(0), m_current_tail(0) {
+    , m_tombstonecnt(0), m_current_tail(0), m_weight(0), m_max_weight(0) {
         size_t aligned_buffersize = m_buffersize + (CACHELINE_SIZE - (m_buffersize % CACHELINE_SIZE));
         m_data = (char*) std::aligned_alloc(CACHELINE_SIZE, aligned_buffersize);
         m_tombstone_filter = nullptr;
@@ -46,6 +46,19 @@ public:
             if (m_tombstone_filter) m_tombstone_filter->insert(key, key_size);
         }
         m_reccnt.fetch_add(1);
+
+        double old_val, new_val;
+        do {
+            old_val = m_weight.load();
+            new_val = old_val + weight;
+        } while (!m_weight.compare_exchange_strong(old_val, new_val));
+
+
+        double old = m_max_weight.load();
+        while (old < weight) {
+            m_max_weight.compare_exchange_strong(old, weight);
+            old = m_max_weight.load();
+        }
 
         return 1;     
     }
@@ -91,7 +104,6 @@ public:
         return false;
     }
 
-
     const char *get_record_at(size_t idx) {
         return m_data + (record_size * idx);
     }
@@ -128,8 +140,22 @@ public:
       return total_weight;
     }
 
+    // rejection sampling
+    const char *get_sample(gsl_rng *rng) {
+        auto idx = gsl_rng_uniform_int(rng, m_reccnt - 1);
+        auto rec = get_record_at(idx);
+
+        auto test = gsl_rng_uniform(rng) * m_max_weight.load();
+
+        return (test <= get_weight(rec)) ? rec : nullptr;
+    }
+
     size_t get_tombstone_capacity() {
         return m_tombstone_cap;
+    }
+
+    double get_total_weight() {
+        return m_weight.load();
     }
 
 private:
@@ -150,6 +176,8 @@ private:
     alignas(64) std::atomic<size_t> m_tombstonecnt;
     alignas(64) std::atomic<size_t> m_current_tail;
     alignas(64) std::atomic<size_t> m_reccnt;
+    alignas(64) std::atomic<double> m_weight;
+    alignas(64) std::atomic<double> m_max_weight;
 };
 
 }
