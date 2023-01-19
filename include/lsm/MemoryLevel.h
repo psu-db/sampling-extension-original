@@ -176,6 +176,30 @@ public:
         return (double) tscnt / (double) (tscnt + reccnt);
     }
 
+    size_t get_rejection_count() {
+        size_t rej_cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_runs[i]) {
+                rej_cnt += m_structure->m_runs[i]->get_rejection_count();
+            }
+        }
+
+        return rej_cnt;
+    }
+
+    double get_rejections_per_tombstone() {
+        size_t rej_cnt = 0;
+        size_t ts_cnt = 0;
+        for (size_t i=0; i<m_run_cnt; i++) {
+            if (m_structure->m_runs[i]) {
+                ts_cnt += m_structure->m_runs[i]->get_tombstone_count();
+                rej_cnt += m_structure->m_runs[i]->get_rejection_count();
+            }
+        }
+
+        return (double) rej_cnt / (double) ts_cnt;
+    }
+
 private:
     ssize_t m_level_no;
     
