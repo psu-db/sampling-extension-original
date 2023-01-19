@@ -17,7 +17,7 @@ bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
 
 START_TEST(t_create)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
 
     ck_assert_ptr_nonnull(lsm);
@@ -31,7 +31,7 @@ END_TEST
 
 START_TEST(t_append)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -53,7 +53,7 @@ END_TEST
 
 START_TEST(t_append_with_mem_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -75,7 +75,7 @@ END_TEST
 
 START_TEST(t_range_sample_memtable)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -115,7 +115,7 @@ END_TEST
 
 START_TEST(t_range_sample_memlevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -154,7 +154,7 @@ END_TEST
 
 START_TEST(t_range_sample_weighted)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
     size_t n = 10000;
 
     std::vector<key_type> keys;
@@ -224,7 +224,7 @@ END_TEST
 START_TEST(t_tombstone_merging_01)
 {
     size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, 100, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
@@ -274,7 +274,7 @@ START_TEST(t_tombstone_merging_01)
 END_TEST
 
 lsm::LSMTree *create_test_tree(size_t reccnt, size_t memlevel_cnt) {
-    auto lsm = new LSMTree(dir, 1000, 3000, 2, memlevel_cnt, 1, g_rng);
+    auto lsm = new LSMTree(dir, 1000, 3000, 2, memlevel_cnt, 1, 100, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
@@ -325,7 +325,7 @@ START_TEST(t_persist_mem)
     lsm->persist_tree(g_rng);
 
     std::string meta_fname = dir + "/meta/lsmtree.dat";
-    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 100, 1, meta_fname, g_rng);
+    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 100, 1, 100, meta_fname, g_rng);
 
     ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
     ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());

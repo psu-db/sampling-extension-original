@@ -58,16 +58,17 @@ class LSMTree {
     friend bool check_deleted();
 
 public:
-    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
-            double max_tombstone_prop, std::string meta_fname, gsl_rng *rng) 
+    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_tombstone_cap, size_t scale_factor, size_t memory_levels,
+            double max_tombstone_prop, double max_rejection_prop, std::string meta_fname, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
           max_tombstone_prop(max_tombstone_prop),
+          max_rejections_per_tombstone(max_rejection_prop),
           root_directory(root_dir),
           last_level_idx(-1),
           memory_level_cnt(memory_levels),
-          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
-          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
+          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)), 
+          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)),
           memtable_1_merging(false), memtable_2_merging(false) {
 
         size_t run_cap =  (LSM_LEVELING) ? 1 : scale_factor;
@@ -82,6 +83,7 @@ public:
             level_index l_idx = this->decode_level_index(idx, &disk);
 
             if (disk) {
+                assert(false); // not implemented
                 //this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
             } else {
                 this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, rng));
@@ -94,10 +96,11 @@ public:
 
 
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
-            double max_tombstone_prop, gsl_rng *rng) 
+            double max_tombstone_prop, double max_rejection_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
           max_tombstone_prop(max_tombstone_prop),
+          max_rejections_per_tombstone(max_rejection_prop),
           root_directory(root_dir),
           last_level_idx(-1),
           memory_level_cnt(memory_levels),
@@ -135,7 +138,6 @@ public:
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
-        // TODO: deal with memtable
         Alias *memtable_alias;
         std::vector<char *> memtable_records;
         size_t mtable_cutoff = 0;
@@ -206,6 +208,8 @@ public:
 
         delete memtable_alias;
         for (auto& x: states) delete x;
+
+        this->enforce_rejection_ratio_maximum(rng);
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -376,6 +380,7 @@ private:
 
     size_t scale_factor;
     double max_tombstone_prop;
+    double max_rejections_per_tombstone;
 
     std::vector<MemoryLevel *> memory_levels;
     size_t memory_level_cnt;
@@ -635,6 +640,28 @@ private:
         }
 
         return;
+    }
+
+    inline void enforce_rejection_ratio_maximum(gsl_rng *rng) {
+        if (this->memory_levels.size() == 0) {
+            return;
+        }
+
+        for (size_t i=0; i<this->last_level_idx; i++) {
+            bool disk = false;
+            level_index idx = decode_level_index(i, &disk);
+
+            if (disk) {
+                assert(false); // no disk support yet
+            }
+
+            if (this->memory_levels[idx]) {
+                double ratio = this->memory_levels[idx]->get_rejections_per_tombstone();
+                if (ratio > this->max_rejections_per_tombstone) {
+                    this->merge_down(i, rng);
+                }
+            }
+        } 
     }
 
     /*
