@@ -109,7 +109,6 @@ int main(int argc, char **argv)
 
     init_bench_env(true);
 
-
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
 
@@ -120,7 +119,7 @@ int main(int argc, char **argv)
         assert(false);
         //sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, meta_fname, g_rng);
     } else {
-        sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, g_rng);
+        sampling_lsm = new lsm::LSMTree(root_dir, 20000, 30000, 10, 1000, 1, 100, g_rng);
 
         double warmup_prop = 0.6;
         warmup(&datafile, sampling_lsm, record_count * warmup_prop, del_prop); 

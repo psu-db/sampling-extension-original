@@ -17,7 +17,7 @@ bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
 
 START_TEST(t_create)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
 
     ck_assert_ptr_nonnull(lsm);
@@ -31,7 +31,7 @@ END_TEST
 
 START_TEST(t_append)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -53,7 +53,7 @@ END_TEST
 
 START_TEST(t_append_with_mem_merges)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -75,7 +75,7 @@ END_TEST
 
 START_TEST(t_range_sample_memtable)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -110,7 +110,7 @@ END_TEST
 
 START_TEST(t_range_sample_memlevels)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
     key_type key = 0;
     value_type val = 0;
@@ -143,7 +143,7 @@ END_TEST
 
 START_TEST(t_range_sample_weighted)
 {
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
     size_t n = 10000;
 
     std::vector<key_type> keys;
@@ -209,7 +209,7 @@ END_TEST
 START_TEST(t_tombstone_merging_01)
 {
     size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, g_rng);
+    auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, 100, g_rng);
 
     std::set<std::pair<key_type, value_type>> records; 
     std::set<std::pair<key_type, value_type>> to_delete;
