@@ -215,7 +215,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
 		if (i % 1000000 == 0) {
             fprintf(stderr, "Finished %zu operations...\n", i);
-            fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
+            //fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
         }
     }
 
@@ -257,6 +257,10 @@ static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double dele
         if (del_buf_size > btree->size() && gsl_rng_uniform(g_rng) < delete_prop) {
             del_buf_ptr++;
             btree->erase_one(key);
+        }
+		if (i % 1000000 == 0) {
+            fprintf(stderr, "Finished %zu operations...\n", i);
+            //fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
         }
     }
 

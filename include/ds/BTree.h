@@ -122,7 +122,7 @@ template <typename Key, typename Value,
           typename KeyOfValue,
           typename Compare = std::less<Key>,
           typename Traits = btree_default_traits<Key, Value>,
-          bool Duplicates = false,
+          bool Duplicates = true,
           typename Allocator = std::allocator<Value> >
 class BTree
 {
