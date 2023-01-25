@@ -129,7 +129,8 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         std::getline(line_stream, key_field, '\t');
         std::getline(line_stream, weight_field, '\t');
 
-        *((lsm::key_type*) key) = atol(key_field.c_str());
+        double tmp_key = (atof(key_field.c_str()) + 180) * 10e6;
+        *((lsm::key_type*) key) = (lsm::key_type) tmp_key;
         *((lsm::value_type*) val) = atol(value_field.c_str());
         *(weight) = atof(weight_field.c_str());
 
@@ -179,6 +180,15 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     auto key_buf = std::make_unique<char[]>(lsm::key_size);
     auto val_buf = std::make_unique<char[]>(lsm::value_size);
     lsm::weight_type weight;
+
+    size_t del_buf_size = 100;
+    size_t del_buf_ptr = del_buf_size;
+    char delbuf[del_buf_size * lsm::record_size];
+
+    char *buf1 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+    char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
+
+    std::set<lsm::key_type> deleted_keys;
     
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get(), &weight)) {
@@ -187,12 +197,17 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
         lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
 
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf), weight});
+        if (i > 10000 && gsl_rng_uniform(g_rng) < delete_prop) {
+            lsmtree->range_sample(delbuf, (char *) &g_min_key, (char *) &g_max_key, del_buf_size, buf1, buf2, g_rng);
+            del_buf_ptr++;
+        }
+
+        if (i > 10000 & gsl_rng_uniform(g_rng) < delete_prop) {
+
+        }
+
+        if (i % 1000000 == 0) {
+            fprintf(stderr, "Finished %ld operations...\n", i);
         }
     }
 }
