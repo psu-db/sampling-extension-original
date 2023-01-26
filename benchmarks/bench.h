@@ -198,12 +198,20 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
         lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
 
-        if (i > 10000 && gsl_rng_uniform(g_rng) < delete_prop) {
+        if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
             lsmtree->range_sample(delbuf, del_buf_size, g_rng);
-            del_buf_ptr++;
+            del_buf_ptr = 0;
         }
 
-        if (i > 10000 & gsl_rng_uniform(g_rng) < delete_prop) {
+        if (i > lsmtree->get_memtable_capacity() && gsl_rng_uniform(g_rng) < delete_prop) {
+            auto key = lsm::get_key(delbuf + (del_buf_ptr * lsm::record_size));
+            auto val = lsm::get_val(delbuf + (del_buf_ptr * lsm::record_size));
+            del_buf_ptr++;
+
+            if (deleted_keys.find(*(lsm::key_type *) key) == deleted_keys.end()) {
+                lsmtree->append(key, val, 0, true, g_rng);
+                deleted_keys.insert(*(lsm::key_type*) key);
+            }
 
         }
 
