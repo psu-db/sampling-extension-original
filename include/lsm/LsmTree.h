@@ -138,10 +138,18 @@ public:
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
         auto mtable = this->memtable();
-        Alias *memtable_alias;
+        Alias *memtable_alias = nullptr;
         std::vector<char *> memtable_records;
         size_t mtable_cutoff = 0;
-        double memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias, &mtable_cutoff);
+
+        double memtable_weight;
+
+        if (LSM_REJ_SAMPLE) {
+            memtable_weight = mtable->get_total_weight(); 
+            mtable_cutoff = mtable->get_record_count() - 1;
+        } else {
+            memtable_weight = mtable->get_sample_range(lower_key, upper_key, memtable_records, &memtable_alias, &mtable_cutoff);
+        }
 
         // Get the run weights for each level. Index 0 is the memtable,
         // represented by nullptr.
@@ -186,8 +194,14 @@ public:
             rejections = 0;
 
             while (run_samples[0] > 0) {
-                auto rec = memtable_records[memtable_alias->get(rng)];
-                if (!mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                const char *rec;
+                if (LSM_REJ_SAMPLE) {
+                    rec = mtable->get_sample(lower_key, upper_key, rng);
+                } else {
+                    rec = memtable_records[memtable_alias->get(rng)];
+                }
+
+                if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
                     memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 } else {
                     rejections++;
@@ -206,7 +220,7 @@ public:
             }
         } while (sample_idx < sample_sz);
 
-        delete memtable_alias;
+        if (memtable_alias) delete memtable_alias;
         for (auto& x: states) delete x;
 
         this->enforce_rejection_ratio_maximum(rng);
