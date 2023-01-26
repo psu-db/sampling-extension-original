@@ -142,7 +142,12 @@ public:
 
     // rejection sampling
     const char *get_sample(gsl_rng *rng) {
-        auto idx = gsl_rng_uniform_int(rng, m_reccnt - 1);
+        size_t reccnt = m_reccnt.load();
+        if (reccnt == 0) {
+            return nullptr;
+        }
+
+        auto idx = (reccnt == 1) ? 0 : gsl_rng_uniform_int(rng, reccnt - 1);
         auto rec = get_record_at(idx);
 
         auto test = gsl_rng_uniform(rng) * m_max_weight.load();
