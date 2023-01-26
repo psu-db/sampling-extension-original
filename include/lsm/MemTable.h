@@ -47,6 +47,19 @@ public:
         }
         m_reccnt.fetch_add(1);
 
+        double old_val, new_val;
+        do {
+            old_val = m_weight.load();
+            new_val = old_val + weight;
+        } while (!m_weight.compare_exchange_strong(old_val, new_val));
+
+
+        double old = m_max_weight.load();
+        while (old < weight) {
+            m_max_weight.compare_exchange_strong(old, weight);
+            old = m_max_weight.load();
+        }
+
         return 1;     
     }
 
@@ -54,6 +67,8 @@ public:
         m_current_tail.store(0);
         m_tombstonecnt.store(0);
         m_reccnt.store(0);
+        m_max_weight.store(0);
+        m_weight.store(0);
         if (m_tombstone_filter) m_tombstone_filter->clear();
 
         return true;
@@ -132,6 +147,34 @@ public:
       return total_weight;
     }
 
+
+    // rejection sampling
+    const char *get_sample(const char *lower, const char *upper, gsl_rng *rng) {
+        size_t reccnt = m_reccnt.load();
+        if (reccnt == 0) {
+            return nullptr;
+        }
+
+        auto idx = (reccnt == 1) ? 0 : gsl_rng_uniform_int(rng, reccnt - 1);
+        auto rec = get_record_at(idx);
+
+        auto test = gsl_rng_uniform(rng) * m_max_weight.load();
+
+        if (test > get_weight(rec)) {
+            return nullptr;
+        }
+
+        if (test <= get_weight(rec) &&
+          key_cmp(get_key(rec), lower) > 0 &&
+          key_cmp(get_key(rec), upper) < 0 && 
+          !is_tombstone(rec)) {
+
+            return rec;
+        }
+
+        return nullptr;
+    }
+
     size_t get_tombstone_capacity() {
         return m_tombstone_cap;
     }
@@ -153,7 +196,9 @@ private:
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
     alignas(64) std::atomic<size_t> m_current_tail;
-    alignas(64) std::atomic<size_t> m_reccnt;
+    alignas(64) std::atomic<size_t> m_reccnt; 
+    alignas(64) std::atomic<double> m_weight;
+    alignas(64) std::atomic<double> m_max_weight;
 };
 
 }
