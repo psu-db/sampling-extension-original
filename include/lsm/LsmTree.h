@@ -371,6 +371,10 @@ public:
         fclose(meta_f);
     }
 
+    size_t get_memtable_capacity() {
+        return memtable_1->get_capacity();
+    }
+
 private:
     MemTable *memtable_1;
     MemTable *memtable_2;
