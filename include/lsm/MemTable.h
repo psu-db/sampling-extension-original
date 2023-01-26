@@ -67,6 +67,8 @@ public:
         m_current_tail.store(0);
         m_tombstonecnt.store(0);
         m_reccnt.store(0);
+        m_weight.store(0);
+        m_max_weight.store(0);
         if (m_tombstone_filter) m_tombstone_filter->clear();
 
         return true;
