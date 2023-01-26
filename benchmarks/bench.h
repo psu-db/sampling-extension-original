@@ -73,6 +73,12 @@ static unsigned int get_random_seed()
 }
 
 
+static lsm::key_type osm_to_key(const char *key_field) {
+    double tmp_key = (atof(key_field) + 180) * 10e6;
+    return (lsm::key_type) tmp_key;
+}
+
+
 static void init_bench_rng(unsigned int seed, const gsl_rng_type *type)
 {
     g_rng = gsl_rng_alloc(type);
@@ -129,8 +135,7 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         std::getline(line_stream, key_field, '\t');
         std::getline(line_stream, weight_field, '\t');
 
-        double tmp_key = (atof(key_field.c_str()) + 180) * 10e6;
-        *((lsm::key_type*) key) = (lsm::key_type) tmp_key;
+        *((lsm::key_type*) key) = osm_to_key(key_field.c_str());
         *((lsm::value_type*) val) = atol(value_field.c_str());
         *(weight) = atof(weight_field.c_str());
 
