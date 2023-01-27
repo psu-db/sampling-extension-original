@@ -60,6 +60,7 @@ endif()
 # Benchmark build instructions
 if (bench)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_CURRENT_SOURCE_DIR}/bin/benchmarks")
+
     add_executable(lsm_insert ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_insert.cpp)
     target_link_libraries(lsm_insert PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_insert PUBLIC -llib)
@@ -75,6 +76,11 @@ if (bench)
     target_compile_options(lsm_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample")
 
+    add_executable(lsm_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_mixed.cpp)
+    target_link_libraries(lsm_mixed PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_mixed PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
+
     add_executable(lsm_sample_selectivity ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_sample_selectivity.cpp)
     target_link_libraries(lsm_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_sample_selectivity PUBLIC -llib)
@@ -84,6 +90,7 @@ if (bench)
     target_link_libraries(lsm_warmup_construct PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_warmup_construct PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_warmup_construct")
+
 
     add_executable(btree_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_sample.cpp)
     target_link_libraries(btree_sample PUBLIC ${PROJECT_NAME} pthread)
@@ -95,15 +102,16 @@ if (bench)
     target_compile_options(btree_sample_selectivity PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_sample_selectivity")
     
-    add_executable(lsm_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_mixed.cpp)
-    target_link_libraries(lsm_mixed PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_mixed PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
+    add_executable(btree_insert ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_insert.cpp)
+    target_link_libraries(btree_insert PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(btree_insert PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_insert")
 
     #add_executable(btree_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_mixed.cpp)
     #target_link_libraries(btree_mixed PUBLIC ${PROJECT_NAME})
     #target_compile_options(btree_mixed PUBLIC -llib)
     #file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_mixed")
+
 
     add_executable(static_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_sample.cpp)
     target_link_libraries(static_sample PUBLIC ${PROJECT_NAME} pthread)
