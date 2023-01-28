@@ -194,7 +194,23 @@ public:
     WIRSRunState* get_sample_run_state(const char* lower_key, const char* upper_key) {
         WIRSRunState* res = new WIRSRunState();
         //std::vector<struct wirs_node*> nodes;
-        double tot_weight = decompose_node(m_root, lower_key, upper_key, res->nodes);
+        //double tot_weight = decompose_node(m_root, lower_key, upper_key, res->nodes);
+
+        // Simulate a stack to unfold recursion.        
+        double tot_weight = 0.0;
+        struct wirs_node* st[64];
+        st[0] = m_root;
+        size_t top = 1;
+        while(top > 0) {
+            auto now = st[--top];
+            if (covered_by(now, lower_key, upper_key)) {
+                res->nodes.emplace_back(now);
+                tot_weight += now->weight;
+            } else {
+                if (now->left && intersects(now->left, lower_key, upper_key)) st[top++] = now->left;
+                if (now->right && intersects(now->right, lower_key, upper_key)) st[top++] = now->left;
+            }
+        }
         
         //assert(tot_weight > 0.0);
         std::vector<double> weights;
@@ -306,7 +322,8 @@ private:
         return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 ||
                key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
     }
-
+    
+    /*
     double decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
         if (node == nullptr) return 0.0;
         else if (covered_by(node, lower_key, upper_key)) {
@@ -319,8 +336,9 @@ private:
         if (node->right && intersects(node->right, lower_key, upper_key)) ans += decompose_node(node->right, lower_key, upper_key, output);
         return ans;
     }
+    */
 
-    struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
+    struct wirs_node* construct_wirs_node(const std::vector<double>& weights, size_t low, size_t high) {
         if (low == high) {
             return new wirs_node{nullptr, nullptr, low, high, weights[low], new Alias({1.0})};
         } else if (low > high) return nullptr;
