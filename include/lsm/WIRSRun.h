@@ -19,13 +19,17 @@ struct wirs_node {
     struct wirs_node *left, *right;
     key_type low, high;
     double weight;
-    Alias alias;
+    Alias* alias;
 };
 
 struct WIRSRunState {
     double tot_weight;
     std::vector<wirs_node*> nodes;
-    Alias top_level_alias;
+    Alias* top_level_alias;
+
+    ~WIRSRunState() {
+        if (top_level_alias) delete top_level_alias;
+    }
 };
 
 thread_local size_t m_wirsrun_cancelations = 0;
@@ -161,6 +165,7 @@ public:
 
     void free_tree(struct wirs_node* node) {
         if (node) {
+            delete node->alias;
             free_tree(node->left);
             free_tree(node->right);
             delete node;
@@ -187,16 +192,19 @@ public:
     // low - high -> decompose to a set of nodes.
     // Build Alias across the decomposed nodes.
     WIRSRunState* get_sample_run_state(const char* lower_key, const char* upper_key) {
-        std::vector<struct wirs_node*> nodes;
-        double tot_weight = decompose_node(m_root, lower_key, upper_key, nodes);
+        WIRSRunState* res = new WIRSRunState();
+        //std::vector<struct wirs_node*> nodes;
+        double tot_weight = decompose_node(m_root, lower_key, upper_key, res->nodes);
         
         //assert(tot_weight > 0.0);
         std::vector<double> weights;
-        for (const auto& node: nodes) {
+        for (const auto& node: res->nodes) {
             weights.emplace_back(node->weight / tot_weight);
         }
+        res->tot_weight = tot_weight;
+        res->top_level_alias = new Alias(weights);
 
-        return new WIRSRunState{tot_weight, std::move(nodes), Alias(weights)};
+        return res;
     }
 
     // returns the number of records sampled
@@ -212,9 +220,9 @@ public:
         do {
             ++attempts;
             // first level....
-            auto node = run_state->nodes[run_state->top_level_alias.get(rng)];
+            auto node = run_state->nodes[run_state->top_level_alias->get(rng)];
             // second level...
-            auto fat_point = node->low + node->alias.get(rng);
+            auto fat_point = node->low + node->alias->get(rng);
             // third level...
             size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
             auto record = m_data + rec_offset * record_size;
@@ -314,7 +322,7 @@ private:
 
     struct wirs_node* construct_wirs_node(const std::vector<double> weights, size_t low, size_t high) {
         if (low == high) {
-            return new wirs_node{nullptr, nullptr, low, high, weights[low], Alias({1.0})};
+            return new wirs_node{nullptr, nullptr, low, high, weights[low], new Alias({1.0})};
         } else if (low > high) return nullptr;
         std::vector<double> node_weights;
         double sum = 0.0;
@@ -331,7 +339,7 @@ private:
         size_t mid = (low + high) / 2;
         return new wirs_node{construct_wirs_node(weights, low, mid),
                              construct_wirs_node(weights, mid + 1, high),
-                             low, high, sum, Alias(node_weights)};
+                             low, high, sum, new Alias(node_weights)};
     }
 
     void build_wirs_structure() {

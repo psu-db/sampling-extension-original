@@ -13,8 +13,9 @@ namespace lsm {
 class Alias {
 public:
     Alias(const std::vector<double>& weights)
-    : m_alias(weights.size()), m_cutoff(weights.size()) {
-        size_t n = weights.size();
+    : n(weights.size()) {
+        m_alias = new size_t[n];
+        m_cutoff = new double[n];
         auto overfull = std::vector<size_t>();
         auto underfull = std::vector<size_t>();
 
@@ -46,17 +47,23 @@ public:
         }
     }
 
+    ~Alias() {
+        if (m_alias) delete[] m_alias;
+        if (m_cutoff) delete[] m_cutoff;
+    }
+
     size_t get(const gsl_rng* rng) {
         double coin1 = gsl_rng_uniform(rng);
         double coin2 = gsl_rng_uniform(rng);
 
-        size_t k = ((double) m_alias.size()) * coin1;
+        size_t k = ((double) n) * coin1;
         return coin2 < m_cutoff[k] ? k : m_alias[k];
     }
 
 private:
-    std::vector<size_t> m_alias;
-    std::vector<double> m_cutoff;
+    size_t n;
+    size_t* m_alias;
+    double* m_cutoff;
 };
 
 }
