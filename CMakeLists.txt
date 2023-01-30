@@ -70,6 +70,11 @@ if (bench)
     target_link_libraries(lsm_sample PUBLIC ${PROJECT_NAME})
     target_compile_options(lsm_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample")
+
+    add_executable(wirs_playground ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/wirs_playground.cpp)
+    target_link_libraries(wirs_playground PUBLIC ${PROJECT_NAME})
+    target_compile_options(wirs_playground PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/wirs_playground")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
