@@ -216,6 +216,7 @@ public:
                 assert(sampled <= run_samples[i]);
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
+                bounds_rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
             }
         } while (sample_idx < sample_sz);

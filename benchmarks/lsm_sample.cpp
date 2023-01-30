@@ -19,12 +19,15 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, double sel
 
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / trial_cnt;
+    size_t avg_rejections = lsm::bounds_rejections / trial_cnt;
+
+    reset_lsm_perf_metrics();
 
     free(buffer1);
     free(buffer2);
 
-    //fprintf(stderr, "Average Sample Latency (ns)\n");
-    printf("%zu %.0lf\n", k, avg_latency);
+    //fprintf(stderr, "Sample Size, Average Sample Latency (ns), Average Rejections per Sample\n");
+    printf("%zu %.0lf %zu\n", k, avg_latency, avg_rejections);
 }
 
 static void benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)

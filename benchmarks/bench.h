@@ -73,16 +73,22 @@ static unsigned int get_random_seed()
 }
 
 
-static lsm::key_type osm_to_key(const char *key_field) {
+static lsm::key_type osm_to_key(const char *key_field) 
+{
     double tmp_key = (atof(key_field) + 180) * 10e6;
     return (lsm::key_type) tmp_key;
 }
 
 
+static lsm::key_type osm_to_key(double key_field) 
+{
+    double tmp_key = (key_field + 180) * 10e6;
+    return (lsm::key_type) tmp_key;
+}
+
 static void init_bench_rng(unsigned int seed, const gsl_rng_type *type)
 {
     g_rng = gsl_rng_alloc(type);
-
     gsl_rng_set(g_rng, seed);
 }
 
@@ -202,7 +208,6 @@ static void warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
         lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
 
-
         if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
             lsmtree->range_sample(delbuf, (char *) &g_min_key, (char *) &g_max_key, del_buf_size, buf1, buf2, g_rng);
             del_buf_ptr = 0;
@@ -291,10 +296,11 @@ static void reset_lsm_perf_metrics() {
     lsm::disklevel_sample_time = 0;
     lsm::rejection_check_time = 0;
 
-    /*
-     * rejection counters are zeroed automatically by the
-     * sampling function itself.
-     */
+    lsm::sampling_attempts = 0;
+    lsm::sampling_rejections = 0;
+    lsm::deletion_rejections = 0;
+    lsm::bounds_rejections = 0;
+    lsm::tombstone_rejections = 0;
 
     RESET_IO_CNT(); 
 }
