@@ -160,6 +160,10 @@ public:
 
     ~WIRSRun() {
         if (m_data) free(m_data);
+        for (size_t i=0; i<m_alias.size(); i++) {
+            if (m_alias[i]) delete m_alias[i];
+        }
+
         free_tree(m_root);
     }
 
@@ -240,7 +244,7 @@ public:
             // second level...
             auto fat_point = node->low + node->alias->get(rng);
             // third level...
-            size_t rec_offset = fat_point * m_group_size + m_alias[fat_point].get(rng);
+            size_t rec_offset = fat_point * m_group_size + m_alias[fat_point]->get(rng);
             auto record = m_data + rec_offset * record_size;
             if (!state || (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state))) {
                 memcpy(sample_set + cnt * record_size, record, record_size);
@@ -383,7 +387,7 @@ private:
             for (auto& w: group_norm_weight)
                 if (group_weight) w /= group_weight;
                 else w = 1.0 / group_norm_weight.size();
-            m_alias.emplace_back(Alias(group_norm_weight));
+            m_alias.emplace_back(new Alias(group_norm_weight));
 
             
             weights.emplace_back(group_weight);
@@ -395,7 +399,7 @@ private:
     }
 
     char* m_data;
-    std::vector<Alias> m_alias;
+    std::vector<Alias *> m_alias;
     wirs_node* m_root;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
