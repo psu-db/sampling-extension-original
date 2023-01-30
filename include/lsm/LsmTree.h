@@ -170,6 +170,7 @@ public:
 
         if (run_weights.size() == 1 && run_weights[0] == 0) {
             delete memtable_alias;
+            for (auto& x: states) delete x;
             return; // no records in the sampling range
         }
         double tot_weight = std::accumulate(run_weights.begin(), run_weights.end(), 0);

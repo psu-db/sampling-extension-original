@@ -119,6 +119,8 @@ public:
                     runs.push_back({{m_level_no, (ssize_t) i}, m_structure->m_runs[i]});
                     weights.push_back(run_state->tot_weight);
                     run_states.emplace_back(run_state);
+                } else {
+                    delete run_state;
                 }
             }
         }

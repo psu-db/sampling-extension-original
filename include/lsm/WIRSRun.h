@@ -349,6 +349,7 @@ private:
         if (low == high) {
             return new wirs_node{nullptr, nullptr, low, high, weights[low], new Alias({1.0})};
         } else if (low > high) return nullptr;
+
         std::vector<double> node_weights;
         double sum = 0.0;
         for (size_t i = low; i < high; ++i) {
