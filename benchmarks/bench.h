@@ -2,6 +2,7 @@
 #define H_BENCH
 #include "lsm/LsmTree.h"
 
+#include <ds/BTree.h>
 #include <cstdlib>
 #include <cstdio>
 #include <chrono>
@@ -15,6 +16,16 @@
 #include <set>
 #include <string>
 #include <random>
+
+
+typedef std::pair<lsm::key_type, lsm::value_type> btree_record;
+struct btree_key_extract {
+    static const lsm::key_type &get(const btree_record &v) {
+        return v.first;
+    }
+};
+
+typedef tlx::BTree<lsm::key_type, btree_record, btree_key_extract> TreeMap;
 
 typedef struct record {
     char *key;
@@ -59,7 +70,6 @@ typedef enum Operation {
     WRITE,
     DELETE
 } Operation;
-
 
 static unsigned int get_random_seed()
 {
@@ -310,4 +320,22 @@ static void build_lsm_tree(lsm::LSMTree *tree, std::fstream *file) {
     delete[] key_buf;
     delete[] val_buf;
 }
+
+static void build_btree(TreeMap *tree, std::fstream *file) {
+    // for looking at the insert time distribution
+    auto key_buf = new char[lsm::key_size]();
+    auto val_buf = new char[lsm::value_size]();
+    lsm::weight_type weight;
+
+    size_t i=0;
+    while (next_record(file, key_buf, val_buf, &weight)) {
+        lsm::key_type key = *(lsm::key_type*) key_buf;
+        lsm::value_type val = *(lsm::value_type*) val_buf;
+        auto res = tree->insert({key, val}, weight);
+        assert(res.second);
+    }
+    delete[] key_buf;
+    delete[] val_buf;
+}
+
 #endif // H_BENCH
