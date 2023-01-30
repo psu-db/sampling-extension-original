@@ -209,12 +209,13 @@ public:
         size_t top = 1;
         while(top > 0) {
             auto now = st[--top];
-            if (covered_by(now, lower_key, upper_key)) {
+            if (covered_by(now, lower_key, upper_key) ||
+                (now->left == nullptr && now->right == nullptr && intersects(now, lower_key, upper_key))) {
                 res->nodes.emplace_back(now);
                 tot_weight += now->weight;
             } else {
                 if (now->left && intersects(now->left, lower_key, upper_key)) st[top++] = now->left;
-                if (now->right && intersects(now->right, lower_key, upper_key)) st[top++] = now->left;
+                if (now->right && intersects(now->right, lower_key, upper_key)) st[top++] = now->right;
             }
         }
         
@@ -326,7 +327,7 @@ private:
     bool intersects(struct wirs_node* node, const char* lower_key, const char* upper_key) {
         auto low_index = node->low * m_group_size;
         auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
-        return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 ||
+        return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 &&
                key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
     }
     
