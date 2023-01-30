@@ -242,6 +242,16 @@ public:
         fclose(meta_f);
     }
 
+    WIRSRun *get_merged_run() {
+        WIRSRun *runs[m_run_cnt];
+
+        for (size_t i=0; i<m_run_cnt; i++) {
+            runs[i] = (m_structure->m_runs[i]) ? m_structure->m_runs[i] : nullptr;
+        }
+
+        return new WIRSRun(runs, m_run_cnt, nullptr);
+    }
+
 private:
     ssize_t m_level_no;
     

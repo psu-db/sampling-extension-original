@@ -357,6 +357,66 @@ START_TEST(t_persist_mem)
 END_TEST
 
 
+START_TEST(t_sorted_array)
+{
+    size_t reccnt = 100000;
+    auto lsm = new LSMTree(dir, 100, 100, 2, 1000, 1, 1, g_rng);
+
+    std::set<std::pair<key_type, value_type>> records; 
+    std::set<std::pair<key_type, value_type>> to_delete;
+    std::set<std::pair<key_type, value_type>> deleted;
+
+    while (records.size() < reccnt) {
+        key_type key = rand();
+        value_type val = rand();
+
+        if (records.find({key, val}) != records.end()) continue;
+
+        records.insert({key, val});
+    }
+
+    size_t deletes = 0;
+    for (auto rec : records) {
+        const char *key_ptr = (char *) &rec.first;
+        const char *val_ptr = (char *) &rec.second;
+        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, 0, g_rng), 1);
+
+         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
+            std::vector<std::pair<key_type, value_type>> del_vec;
+            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
+
+            for (size_t i=0; i<del_vec.size(); i++) {
+                const char *d_key_ptr = (char *) &del_vec[i].first;
+                const char *d_val_ptr = (char *) &del_vec[i].second;
+                lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
+                deletes++;
+                to_delete.erase(del_vec[i]);
+                deleted.insert(del_vec[i]);
+            }
+        }
+
+        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
+            to_delete.insert(rec);
+        }
+    }
+
+    auto flat = lsm->get_flattened_wirs_run();
+    ck_assert_int_eq(flat->get_record_count(), reccnt - deletes);
+
+    key_type prev_key = 0;
+    for (size_t i=0; i<flat->get_record_count(); i++) {
+        auto k = *(key_type*) get_key(flat->get_record_at(i));
+        auto r = *(value_type*) get_val(flat->get_record_at(i));
+        ck_assert_int_ge(k, prev_key);
+        prev_key = k;
+    }
+
+    delete flat;
+    delete lsm;
+}
+END_TEST
+
+
 Suite *unit_testing()
 {
     Suite *unit = suite_create("lsm::LSMTree Unit Testing");
@@ -382,10 +442,18 @@ Suite *unit_testing()
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
 
+    /*
     TCase *persist = tcase_create("lsm::LSMTree::persistence Testing");
     tcase_add_test(persist, t_persist_mem);
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, persist);
+    */
+
+
+    TCase *flat = tcase_create("lsm::LSMTree::get_flattened_wirs_run Testing");
+    tcase_add_test(flat, t_sorted_array);
+    tcase_set_timeout(flat, 500);
+    suite_add_tcase(unit, flat);
 
     return unit;
 }

@@ -37,7 +37,7 @@ thread_local size_t disklevel_sample_time = 0;
  */
 
 // True for memtable rejection sampling
-static constexpr bool LSM_REJ_SAMPLE = true;
+static constexpr bool LSM_REJ_SAMPLE = false;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
@@ -136,6 +136,7 @@ public:
 
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
+        TIMER_INIT();
 
         auto mtable = this->memtable();
         Alias *memtable_alias = nullptr;
@@ -161,9 +162,11 @@ public:
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
 
+        TIMER_START();
         for (auto &level : this->memory_levels) {
             level->get_run_weights(run_weights, runs, states, lower_key, upper_key);
         }
+        TIMER_STOP();
 
         if (run_weights.size() == 1 && run_weights[0] == 0) {
             delete memtable_alias;
@@ -317,11 +320,8 @@ public:
     size_t get_aux_memory_utilization() {
         size_t cnt = this->memtable_1->get_aux_memory_utilization() + this->memtable_2->get_aux_memory_utilization();
 
-        fprintf(stderr, "Memtable AMem: %ld\n", cnt);
-
         for (size_t i=0; i<this->memory_levels.size(); i++) {
             if (this->memory_levels[i]) {
-                fprintf(stderr, "Level %ld AMem: %ld\n", i, this->memory_levels[i]->get_aux_memory_utilization());
                 cnt += this->memory_levels[i]->get_aux_memory_utilization();
             }
         }
@@ -374,7 +374,6 @@ public:
 
             auto level_idx = this->decode_level_index(i, &disk);
             std::string level_meta = meta_dir + "/level-" + std::to_string(i) +"-meta.dat";
-            fprintf(meta_f, "%s\n", level_meta.c_str());
 
             if (disk) {
                 disk_levels[level_idx]->persist_level(level_meta);
@@ -388,6 +387,38 @@ public:
 
     size_t get_memtable_capacity() {
         return memtable_1->get_capacity();
+    }
+    
+
+    WIRSRun *get_flattened_wirs_run() {
+        std::vector<WIRSRun *> runs;
+
+        if (this->memory_levels.size() > 0) {
+            for (int i=this->memory_levels.size() - 1; i>= 0; i--) {
+                if (this->memory_levels[i]) {
+                    runs.emplace_back(this->memory_levels[i]->get_merged_run());
+                }
+            }
+        }
+
+        runs.emplace_back(new WIRSRun(this->memtable(), nullptr));
+
+        WIRSRun *runs_array[runs.size()];
+
+        size_t j = 0;
+        for (size_t i=0; i<runs.size(); i++) {
+            if (runs[i]) {
+                runs_array[j++] = runs[i];
+            }
+        }
+
+        WIRSRun *flattened = new WIRSRun(runs_array, j, nullptr);
+
+        for (auto run : runs) {
+            delete run;
+        }
+
+        return flattened;
     }
 
 private:

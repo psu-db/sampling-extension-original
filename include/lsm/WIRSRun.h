@@ -56,10 +56,12 @@ public:
         this->build_wirs_structure();
 
         // rebuild the bloom filter
-        for (size_t i=0; i<m_reccnt; i++) {
-            auto rec = this->get_record_at(i);
-            if (is_tombstone(rec)) {
-                bf->insert(get_key(rec), key_size);
+        if (bf) {
+            for (size_t i=0; i<m_reccnt; i++) {
+                auto rec = this->get_record_at(i);
+                if (is_tombstone(rec)) {
+                    bf->insert(get_key(rec), key_size);
+                }
             }
         }
     }
@@ -87,7 +89,7 @@ public:
                 memcpy(m_data + offset, base, record_size);
                 if (is_tombstone(base)) {
                     ++m_tombstone_cnt;
-                    bf->insert(get_key(base), key_size);
+                    if (bf) bf->insert(get_key(base), key_size);
                 }
                 offset += record_size;
                 ++m_reccnt;
@@ -143,7 +145,7 @@ public:
                 memcpy(m_data + offset, cursor.ptr, record_size);
                 if (is_tombstone(cursor.ptr)) {
                     ++m_tombstone_cnt;
-                    bf->insert(get_key(cursor.ptr), key_size);
+                    if (bf) bf->insert(get_key(cursor.ptr), key_size);
                 }
                 offset += record_size;
                 ++m_reccnt;
@@ -234,6 +236,7 @@ public:
         if (sample_sz == 0) {
             return 0;
         }
+
         // k -> sampling: three levels. 1. select a node -> select a fat point -> select a record.
         size_t cnt = 0;
         size_t attempts = 0;
