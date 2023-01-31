@@ -15,10 +15,13 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 
 if (debug) 
     add_compile_options(-g -O0)
+    add_compile_options(-fno-omit-frame-pointer)
     add_compile_options(-fsanitize=address)
     add_link_options(-fsanitize=address)
 else()
     add_compile_options(-O3)
+    add_compile_options(-g)
+    add_compile_options(-fno-omit-frame-pointer)
 endif()
 
 
@@ -65,11 +68,16 @@ if (bench)
     target_compile_options(lsm_mixed PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
 
-
     add_executable(lsm_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_sample.cpp)
     target_link_libraries(lsm_sample PUBLIC ${PROJECT_NAME})
     target_compile_options(lsm_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample")
+
+
+    add_executable(static_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_sample.cpp)
+    target_link_libraries(static_sample PUBLIC ${PROJECT_NAME})
+    target_compile_options(static_sample PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_sample")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
