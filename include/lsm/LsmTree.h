@@ -31,6 +31,7 @@ thread_local size_t rejection_check_time = 0;
 thread_local size_t memtable_sample_time = 0;
 thread_local size_t memlevel_sample_time = 0;
 thread_local size_t disklevel_sample_time = 0;
+thread_local size_t sampling_bailouts = 0;
 
 
 /*
@@ -137,7 +138,6 @@ public:
 
     void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
-        TIMER_INIT();
 
         auto mtable = this->memtable();
         Alias *memtable_alias = nullptr;
@@ -163,17 +163,17 @@ public:
         std::vector<double> run_weights;
         run_weights.push_back(memtable_weight);
 
-        TIMER_START();
         for (auto &level : this->memory_levels) {
             level->get_run_weights(run_weights, runs, states, lower_key, upper_key);
         }
-        TIMER_STOP();
 
         if (run_weights.size() == 1 && run_weights[0] == 0) {
-            delete memtable_alias;
+            if (memtable_alias) delete memtable_alias;
             for (auto& x: states) delete x;
+            sampling_bailouts++;
             return; // no records in the sampling range
         }
+
         double tot_weight = std::accumulate(run_weights.begin(), run_weights.end(), 0);
         for (auto& w: run_weights) w /= tot_weight;
 
@@ -190,6 +190,8 @@ public:
         state.buff = buffer;
         state.memtable = mtable;
         state.mtable_cutoff = mtable_cutoff;
+
+        size_t memtable_rejections = 0;
 
         do {
             for (size_t i=0; i<rejections; i++) {
@@ -217,6 +219,17 @@ public:
                 }
 
                 run_samples[0]--;
+
+                // Assume nothing in memtable and bail out.
+                // FIXME: rather than a bailout, we could switch to non-rejection 
+                // sampling, but that would require rebuilding the full alias structure. 
+                // Wouldn't be too hard to do, but for the moment I'll just do this.
+                if (LSM_REJ_SAMPLE && memtable_rejections >= sample_sz && sample_idx == 0 && run_weights.size() == 1) {
+                    if (memtable_alias) delete memtable_alias;
+                    for (auto& x: states) delete x;
+                    sampling_bailouts++;
+                    return; // no records in the sampling range
+                }
             }
 
             for (size_t i=1; i<run_samples.size(); i++) {
@@ -228,6 +241,7 @@ public:
                 rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
             }
+
         } while (sample_idx < sample_sz);
 
         if (memtable_alias) delete memtable_alias;

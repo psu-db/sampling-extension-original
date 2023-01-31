@@ -301,6 +301,9 @@ static void reset_lsm_perf_metrics() {
     lsm::deletion_rejections = 0;
     lsm::bounds_rejections = 0;
     lsm::tombstone_rejections = 0;
+    lsm::memtable_rejections = 0;
+
+    lsm::sampling_bailouts = 0;
 
     RESET_IO_CNT(); 
 }

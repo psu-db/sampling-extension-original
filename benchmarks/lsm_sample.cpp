@@ -8,6 +8,8 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, double sel
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char sample_set[k*lsm::record_size];
 
+    reset_lsm_perf_metrics();
+
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < trial_cnt; i++) {
@@ -19,15 +21,18 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, double sel
 
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / trial_cnt;
-    size_t avg_rejections = lsm::bounds_rejections / trial_cnt;
 
-    reset_lsm_perf_metrics();
+    size_t avg_bounds_rejections = lsm::bounds_rejections / trial_cnt;
+    size_t avg_ts_rejections = lsm::tombstone_rejections / trial_cnt;
+    size_t avg_mtable_rejections = lsm::memtable_rejections / trial_cnt;
+
 
     free(buffer1);
     free(buffer2);
 
-    //fprintf(stderr, "Sample Size, Average Sample Latency (ns), Average Rejections per Sample\n");
-    printf("%zu %.0lf %zu\n", k, avg_latency, avg_rejections);
+    //fprintf(stderr, "Sample Size, Average Sample Latency (ns), Average Rejections per Sample, Average Bailouts per Sample\n");
+    printf("%zu %.0lf %zu %zu %zu\n", k, avg_latency, avg_bounds_rejections, 
+           avg_ts_rejections, avg_mtable_rejections);
 }
 
 static void benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
@@ -35,6 +40,9 @@ static void benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const st
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char sample_set[k*lsm::record_size];
+
+    reset_lsm_perf_metrics();
+
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
@@ -46,8 +54,13 @@ static void benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const st
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / queries.size();
 
-    //fprintf(stderr, "Average Sample Latency (ns)");
-    printf("%zu %.0lf\n", k, avg_latency);
+    size_t avg_bounds_rejections = lsm::bounds_rejections / queries.size();
+    size_t avg_ts_rejections = lsm::tombstone_rejections / queries.size();
+    size_t avg_mtable_rejections = lsm::memtable_rejections / queries.size();
+
+    //fprintf(stderr, "Sample Size, Average Sample Latency (ns), Average Rejections per Sample, Average Bailouts per Sample\n");
+    printf("%zu %.0lf %zu %zu %zu\n", k, avg_latency, avg_bounds_rejections, 
+           avg_ts_rejections, avg_mtable_rejections);
 }
 
 
