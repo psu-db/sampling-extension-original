@@ -14,6 +14,8 @@ namespace lsm {
 
 struct sample_state;
 bool check_deleted(char *record, sample_state *state);
+extern thread_local size_t bounds_rejections;
+extern thread_local size_t tombstone_rejections;
 
 struct wirs_node {
     struct wirs_node *left, *right;
@@ -250,10 +252,19 @@ public:
             // third level...
             size_t rec_offset = fat_point * m_group_size + m_alias[fat_point]->get(rng);
             auto record = m_data + rec_offset * record_size;
-            if (!state || (!is_tombstone(record) && key_cmp(lower_key, get_key(record)) <= 0 && key_cmp(get_key(record), upper_key) <= 0 && !check_deleted(record, state))) {
-                memcpy(sample_set + cnt * record_size, record, record_size);
-                ++cnt;
+
+            if (key_cmp(lower_key, get_key(record)) > 0 || key_cmp(upper_key, get_key(record)) < 0) {
+                // bounds rejection
+                bounds_rejections++;
+                continue;
+            } else if (is_tombstone(record) || (state && check_deleted(record, state))) {
+                // tombstone/delete rejection
+                tombstone_rejections++;
+                continue;
             }
+
+            memcpy(sample_set + cnt * record_size, record, record_size);
+            ++cnt;
         } while (attempts < sample_sz);
 
         return cnt;

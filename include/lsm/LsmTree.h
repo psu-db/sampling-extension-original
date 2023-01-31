@@ -19,6 +19,7 @@ thread_local size_t sampling_rejections = 0;
 thread_local size_t deletion_rejections = 0;
 thread_local size_t bounds_rejections = 0;
 thread_local size_t tombstone_rejections = 0;
+thread_local size_t memtable_rejections = 0;
 
 /*
  * thread_local size_t various_sampling_times go here.
@@ -205,11 +206,16 @@ public:
                     rec = memtable_records[memtable_alias->get(rng)];
                 }
 
-                if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
-                    memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
-                } else {
+                if (LSM_REJ_SAMPLE && !rec) {
+                    memtable_rejections++;
                     rejections++;
+                } else if (mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                    tombstone_rejections++;
+                    rejections++;
+                } else {
+                    memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 }
+
                 run_samples[0]--;
             }
 
@@ -220,7 +226,6 @@ public:
                 assert(sampled <= run_samples[i]);
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
-                bounds_rejections += run_samples[i] - sampled;
                 run_samples[i] = 0;
             }
         } while (sample_idx < sample_sz);
