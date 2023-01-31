@@ -96,7 +96,7 @@ public:
     }
 
 
-    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
+    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_tombstone_cap, size_t scale_factor, size_t memory_levels,
             double max_tombstone_prop, double max_rejection_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
@@ -105,8 +105,8 @@ public:
           root_directory(root_dir),
           last_level_idx(-1),
           memory_level_cnt(memory_levels),
-          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
-          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
+          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)), 
+          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)),
           memtable_1_merging(false), memtable_2_merging(false) {}
 
     ~LSMTree() {
