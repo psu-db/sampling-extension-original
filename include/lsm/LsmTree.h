@@ -37,10 +37,10 @@ thread_local size_t disklevel_sample_time = 0;
  */
 
 // True for memtable rejection sampling
-static constexpr bool LSM_REJ_SAMPLE = false;
+static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 typedef ssize_t level_index;
 
