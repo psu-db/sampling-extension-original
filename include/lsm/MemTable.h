@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <cassert>
+#include <vector>
 
 #include "util/base.h"
 #include "util/bf_config.h"
@@ -87,6 +88,16 @@ public:
         return false;
     }
 
+    void create_sampling_vector(const char *min, const char *max, std::vector<const char *> &records) {
+        records.clear();
+        for (size_t i=0; i<m_reccnt.load(); i++) {
+            auto rec = this->get_record_at(i);
+            auto key = get_key(rec);
+            if (key_cmp(key, min) >= 0 && key_cmp(key, max) <= 0) {
+                records.push_back(rec);
+            }
+        }
+    }
 
     const char *get_record_at(size_t idx) {
         return m_data + (record_size * idx);
