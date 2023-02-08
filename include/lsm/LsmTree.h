@@ -37,7 +37,7 @@ thread_local size_t disklevel_sample_time = 0;
  */
 
 // True for memtable rejection sampling
-static constexpr bool LSM_REJ_SAMPLE = true;
+static constexpr bool LSM_REJ_SAMPLE = false;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
@@ -137,8 +137,16 @@ public:
 
         TIMER_START();
 
-        size_t memtable_cutoff = memtable->get_record_count() - 1;
-        record_counts.push_back(memtable_cutoff + 1);
+        size_t memtable_cutoff;
+        std::vector<const char*> memtable_records;
+        if (LSM_REJ_SAMPLE) {
+            memtable_cutoff = memtable->get_record_count() - 1;
+            record_counts.push_back(memtable_cutoff + 1);
+        } else {
+            memtable->create_sampling_vector(lower_key, upper_key, memtable_records);
+            memtable_cutoff = memtable_records.size() - 1;
+            record_counts.push_back(memtable_cutoff + 1);
+        }
 
         for (auto &level : this->memory_levels) {
             if (level) {
@@ -157,6 +165,8 @@ public:
 
         TIMER_START();
         size_t total_records = std::accumulate(record_counts.begin(), record_counts.end(), 0);
+
+        if (total_records == 0) return;
 
         std::vector<double> weights(record_counts.size());
         for (size_t i=0; i < record_counts.size(); i++) {
@@ -209,7 +219,7 @@ public:
             while (run_samples[0] > 0) {
                 TIMER_START();
                 size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
-                sample_record = memtable->get_record_at(idx);
+                sample_record = (LSM_REJ_SAMPLE) ? memtable->get_record_at(idx) : memtable_records[idx];
                 TIMER_STOP();
                 memtable_sample_time += TIMER_RESULT();
 
