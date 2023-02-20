@@ -161,6 +161,21 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
     return true;
 }
 
+
+/*
+ * helper routines for displaying progress bars to stderr
+ */
+static const char *g_prog_bar = "======================================================================";
+static const size_t g_prog_width = 70;
+
+static void progress_update(double percentage, std::string prompt) {
+    int val = (int) (percentage * 100);
+    int lpad = (int) (percentage * g_prog_width);
+    int rpad = (int) (g_prog_width - lpad);
+    fprintf(stderr, "\r(%3d%%) %s [%.*s%*s]", val, prompt.c_str(), lpad, g_prog_bar, rpad, "");
+    fflush(stderr);   
+}
+
 /*
  * "Warm up" the LSM Tree data structure by inserting `count` records from
  * `file` into it. If `delete_prop` is non-zero, then on each insert following
@@ -170,7 +185,7 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
  * without exhausting the file, and false if the warmup cycle exhausts the file
  * before inserting the requisite number of records.
  */
-static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop=0)
+static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop, bool progress=true)
 {
     std::string line;
 
@@ -187,6 +202,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     std::set<lsm::key_type> deleted_keys;
 
     bool ret = true;
+    double last_percent = 0;
 
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get())) {
@@ -213,10 +229,16 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
         }
 
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up: ");
+        }
+
+        /*
 		if (i % 1000000 == 0) {
             fprintf(stderr, "Finished %zu operations...\n", i);
             //fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
         }
+        */
     }
 
     free(buf1);
@@ -225,7 +247,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     return ret;
 }
 
-static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop)
+static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double delete_prop, bool progress=true)
 {
     std::string line;
 
