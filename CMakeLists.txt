@@ -85,6 +85,12 @@ if (bench)
     target_link_libraries(lsm_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_sample_selectivity PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample_selectivity")
+
+    add_executable(lsm_insert_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_insert_sample.cpp)
+    target_link_libraries(lsm_insert_sample PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_insert_sample PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_insert_sample")
+    
     
 	add_executable(lsm_warmup_construct ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_warmup_construct.cpp)
     target_link_libraries(lsm_warmup_construct PUBLIC ${PROJECT_NAME} pthread)
