@@ -167,6 +167,7 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
 
 
 static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n) {
+    vec.clear();
     for (size_t i=0; i<n; i++) {
         auto rec = create_shared_record();
         if (!next_record(file, rec.key.get(), rec.value.get(), &rec.weight)) {
@@ -183,8 +184,23 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
     return true;
 }
 
+/*
+ * helper routines for displaying progress bars to stderr
+ */
+static const char *g_prog_bar = "======================================================================";
+static const size_t g_prog_width = 70;
 
-static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop)
+static void progress_update(double percentage, std::string prompt) {
+    int val = (int) (percentage * 100);
+    int lpad = (int) (percentage * g_prog_width);
+    int rpad = (int) (g_prog_width - lpad);
+    fprintf(stderr, "\r(%3d%%) %s [%.*s%*s]", val, prompt.c_str(), lpad, g_prog_bar, rpad, "");
+    fflush(stderr);   
+}
+
+
+
+static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop, bool progress=true)
 {
     std::string line;
 
@@ -201,6 +217,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
     std::set<lsm::key_type> deleted_keys;
     
+    double last_percent = 0;
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key_buf.get(), val_buf.get(), &weight)) {
             return false;
@@ -222,11 +239,11 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
                 lsmtree->append(key, val, 0, true, g_rng);
                 deleted_keys.insert(*(lsm::key_type*) key);
             }
-
         }
 
-        if (i % 1000000 == 0) {
-            fprintf(stderr, "Finished %ld operations...\n", i);
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up: ");
+            last_percent = (double) i / (double) count;
         }
     }
 
