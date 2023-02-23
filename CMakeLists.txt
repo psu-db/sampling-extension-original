@@ -80,6 +80,12 @@ if (bench)
     target_link_libraries(lsm_insert_sample PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_insert_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_insert_sample")
+
+
+    add_executable(btree_insert_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_insert_sample.cpp)
+    target_link_libraries(btree_insert_sample PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(btree_insert_sample PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_insert_sample")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")

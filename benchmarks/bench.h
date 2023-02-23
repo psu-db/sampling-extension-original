@@ -61,8 +61,8 @@ static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
 static bool g_osm_data;
 
-static lsm::key_type g_min_key = INT64_MAX;
-static lsm::key_type g_max_key = INT64_MIN;
+static lsm::key_type g_min_key = UINT64_MAX;
+static lsm::key_type g_max_key = 0;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
 
@@ -185,6 +185,31 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
     return true;
 }
 
+
+static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btree_record, double>> &vec, size_t n)
+{
+    char key[lsm::key_size];
+    char val[lsm::value_size];
+    double weight;
+
+    vec.clear();
+    for (size_t i=0; i<n; i++) {
+        if (!next_record(file, key, val, &weight)) {
+            if (i == 0) {
+                return false;
+            }
+
+            break;
+        }
+
+        btree_record rec = {atol(key), atol(val)};
+        vec.push_back({rec, weight});
+    }
+
+    return true;
+
+}
+
 /*
  * helper routines for displaying progress bars to stderr
  */
@@ -250,6 +275,50 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 
     return true;
 }
+
+
+static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delete_prop, bool progress=true)
+{
+    std::string line;
+
+    lsm::key_type key;
+    lsm::value_type val;
+    lsm::weight_type weight;
+
+    size_t del_buf_size = 100;
+    size_t del_buf_idx = del_buf_size;
+    std::vector<lsm::key_type> delbuf(del_buf_size);
+
+    
+    double last_percent = 0;
+    for (size_t i=0; i<count; i++) {
+        if (!next_record(file, (char*) &key, (char*) &val, &weight)) {
+            return false;
+        }
+
+        tree->insert({key, val}, weight);
+
+        if ( i > 10*del_buf_size && del_buf_idx == del_buf_size) {
+            tree->range_sample(g_min_key, g_max_key, del_buf_size, delbuf, g_rng);
+            del_buf_idx = 0;
+        }
+
+        if (del_buf_idx != del_buf_size && gsl_rng_uniform(g_rng) < delete_prop) {
+            tree->erase_one(delbuf[del_buf_idx++]);
+        }
+
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up: ");
+            last_percent = (double) i / (double) count;
+        }
+    }
+
+    return true;
+}
+
+
+
+
 
 
 static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop) {

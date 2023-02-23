@@ -1648,7 +1648,7 @@ public:
                     continue;
             }
             assert(now->is_leafnode());
-            const LeafNode* leaf = static_cast<LeafNode*>(now);
+            const LeafNode* leaf = static_cast<const LeafNode*>(now);
             double sum = std::accumulate(leaf->weight, leaf->weight + leaf->slotuse, 0.0);
             double pos = gsl_rng_uniform(rng) * sum;
             double prefix_sum = 0.0;
@@ -1658,7 +1658,7 @@ public:
                 prefix_sum += leaf->weight[s];
             } while (prefix_sum < pos);
 
-            key_type sample = static_cast<const LeafNode*>(now)->key(pos);
+            key_type sample = static_cast<const LeafNode*>(now)->key(s);
 
             if (key_lessequal(lower, sample) && key_lessequal(sample, upper)) {
                 assert(sample <= upper && sample >= lower);
