@@ -107,7 +107,7 @@ int main(int argc, char **argv)
 
     std::string root_dir = (argc == 8) ? std::string(argv[7]) : "benchmarks/data/lsm_mixed";
 
-    init_bench_env(true);
+    init_bench_env(record_count, true);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

@@ -25,18 +25,24 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: lsm_sample <filename> <record_count>\n");
+        fprintf(stderr, "Usage: lsm_sample <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion>\n");
         exit(EXIT_FAILURE);
     }
 
     std::string filename = std::string(argv[1]);
     size_t record_count = atol(argv[2]);
+    size_t memtable_size = atol(argv[3]);
+    size_t scale_factor = atol(argv[4]);
+    size_t memory_levels = atol(argv[5]);
+    double delete_prop = atof(argv[6]);
+    double max_delete_prop = atof(argv[7]);
 
     std::string root_dir = "benchmarks/data/lsm_sample";
 
-    init_bench_env(true);
+    init_bench_env(record_count, true);
 
-    auto sampling_tree = lsm::LSMTree(root_dir, 15000, 45000, 10, 1000, 1, 100, g_rng);
+    auto sampling_tree = lsm::LSMTree(root_dir, memtable_size, memtable_size*max_delete_prop, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
+        //lsm::LSMTree(root_dir, 15000, 45000, 10, 1000, 1, 100, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
