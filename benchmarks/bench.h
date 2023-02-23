@@ -251,9 +251,6 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     size_t del_buf_ptr = del_buf_size;
     char delbuf[del_buf_size * lsm::record_size];
 
-    char *buf1 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-
     std::set<lsm::key_type> deleted_keys;
     
     double last_percent = 0;
