@@ -2,7 +2,7 @@
 
 #include "bench.h"
 
-size_t g_insert_batch_size = 100;
+size_t g_insert_batch_size = 1000;
 size_t g_insert_phase = 0;
 
 static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file, 
@@ -72,6 +72,8 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
 static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 {
+    fprintf(stderr, "Running Sample Benchmark for %ld sample size\n", k);
+
     char sample_set[k*lsm::record_size];
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -82,10 +84,12 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 
     auto stop = std::chrono::high_resolution_clock::now();
 
+    fprintf(stderr, "Completed Sample Benchmark for %ld sample size\n", k);
+
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     double avg_latency = (double) total_latency.count() / trial_cnt;
 
-    printf("%zu %.0lf\n", k, avg_latency);
+    fprintf(stdout, "%zu %.0lf\n", k, avg_latency);
 }
 
 
@@ -109,7 +113,7 @@ int main(int argc, char **argv)
 
     std::string root_dir = "benchmarks/data/lsm_insert_sample";
 
-    init_bench_env(true, use_osm);
+    init_bench_env(record_count, true, use_osm);
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*max_delete_prop, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
 
@@ -132,5 +136,8 @@ int main(int argc, char **argv)
     }
 
     delete_bench_env();
+    fflush(stdout);
+    fflush(stderr);
+
     exit(EXIT_SUCCESS);
 }

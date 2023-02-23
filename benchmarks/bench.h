@@ -64,6 +64,8 @@ static bool g_osm_data;
 static lsm::key_type g_min_key = UINT64_MAX;
 static lsm::key_type g_max_key = 0;
 
+static size_t g_max_record_cnt = 0;
+
 static constexpr unsigned int DEFAULT_SEED = 0;
 
 typedef enum Operation {
@@ -97,12 +99,13 @@ static void init_bench_rng(unsigned int seed, const gsl_rng_type *type)
 }
 
 
-static void init_bench_env(bool random_seed, bool osm_correction=true)
+static void init_bench_env(size_t max_reccnt, bool random_seed, bool osm_correction=true)
 {
     unsigned int seed = (random_seed) ? get_random_seed() : DEFAULT_SEED;
     init_bench_rng(seed, gsl_rng_mt19937);
     g_to_delete = new std::set<shared_record>();
     g_osm_data = osm_correction;
+    g_max_record_cnt = max_reccnt;
 }
 
 
@@ -135,6 +138,14 @@ static shared_record create_shared_record()
 
 static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_type *weight)
 {
+    static size_t reccnt = 0;
+
+    if (reccnt >= g_max_record_cnt) {
+        key = nullptr;
+        val = nullptr;
+        return false;
+    }
+
     std::string line;
     if (std::getline(*file, line, '\n')) {
         std::stringstream line_stream(line);
@@ -157,6 +168,8 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         if (*(lsm::key_type*) key > g_max_key) {
             g_max_key = *(lsm::key_type*) key;
         }
+
+        reccnt++;
 
         return true;
     }

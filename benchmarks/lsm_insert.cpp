@@ -73,7 +73,7 @@ end:
 int main(int argc, char **argv)
 {
     if (argc < 8) {
-        fprintf(stderr, "Usage: insert_bench <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [insert_batch_proportion]\n");
+        fprintf(stderr, "Usage: lsm_insert <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [insert_batch_proportion]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -88,9 +88,9 @@ int main(int argc, char **argv)
 
     std::string root_dir = "benchmarks/data/insert_bench";
 
-    init_bench_env(true);
+    init_bench_env(record_count, true);
 
-    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
+    auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*max_delete_prop, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 
     std::string root_dir = "benchmarks/data/btree_insert_sample";
 
-    init_bench_env(true, use_osm);
+    init_bench_env(record_count, true, use_osm);
 
     auto sampling_tree = TreeMap();
 

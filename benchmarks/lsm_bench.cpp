@@ -121,7 +121,7 @@ int main(int argc, char **argv)
     double insert_batch = (argc == 10) ? atof(argv[9]) : 0.1;
 
     std::string root_dir = "benchmarks/data/lsm_bench";
-    init_bench_env(true);
+    init_bench_env(record_count, true);
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
 
