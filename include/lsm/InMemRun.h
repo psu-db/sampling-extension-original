@@ -11,7 +11,7 @@
 
 namespace lsm {
 
-constexpr size_t inmem_isam_node_size = 64;
+constexpr size_t inmem_isam_node_size = 256;
 
 constexpr size_t inmem_isam_fanout = inmem_isam_node_size / (key_size + sizeof(char*));
 constexpr size_t inmem_isam_leaf_fanout = inmem_isam_node_size / record_size;
