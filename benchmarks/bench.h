@@ -59,6 +59,7 @@ typedef std::pair<lsm::key_type, lsm::key_type> key_range;
 
 static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
+static bool g_osm_data;
 
 static lsm::key_type g_min_key = INT64_MAX;
 static lsm::key_type g_max_key = INT64_MIN;
@@ -89,19 +90,19 @@ static lsm::key_type osm_to_key(const char *key_field) {
 }
 
 
-static void init_bench_rng(unsigned int seed, const gsl_rng_type *type)
+static void init_bench_rng(unsigned int seed, const gsl_rng_type *type) 
 {
     g_rng = gsl_rng_alloc(type);
-
     gsl_rng_set(g_rng, seed);
 }
 
 
-static void init_bench_env(bool random_seed)
+static void init_bench_env(bool random_seed, bool osm_correction=true)
 {
     unsigned int seed = (random_seed) ? get_random_seed() : DEFAULT_SEED;
     init_bench_rng(seed, gsl_rng_mt19937);
     g_to_delete = new std::set<shared_record>();
+    g_osm_data = osm_correction;
 }
 
 
@@ -145,7 +146,7 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         std::getline(line_stream, key_field, '\t');
         std::getline(line_stream, weight_field, '\t');
 
-        *((lsm::key_type*) key) = osm_to_key(key_field.c_str());
+        *((lsm::key_type*) key) = (g_osm_data) ? osm_to_key(key_field.c_str()) : atol(key_field.c_str());
         *((lsm::value_type*) val) = atol(value_field.c_str());
         *(weight) = atof(weight_field.c_str());
 

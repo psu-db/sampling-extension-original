@@ -92,7 +92,7 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 int main(int argc, char **argv)
 {
     if (argc < 8) {
-        fprintf(stderr, "Usage: lsm_insert_sample <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [insert_batch_proportion]\n");
+        fprintf(stderr, "Usage: lsm_insert_sample <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [osm_data]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -103,11 +103,13 @@ int main(int argc, char **argv)
     size_t memory_levels = atol(argv[5]);
     double delete_prop = atof(argv[6]);
     double max_delete_prop = atof(argv[7]);
-    double insert_batch = (argc == 9) ? atof(argv[8]) : 0.1;
+    bool use_osm = (argc == 9) ? atoi(argv[8]) : 0;
+
+    double insert_batch = 0.1; 
 
     std::string root_dir = "benchmarks/data/lsm_insert_sample";
 
-    init_bench_env(true);
+    init_bench_env(true, use_osm);
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*max_delete_prop, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
 
