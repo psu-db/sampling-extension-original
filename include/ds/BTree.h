@@ -1651,6 +1651,10 @@ public:
             const LeafNode* leaf = static_cast<const LeafNode*>(now);
             double sum = std::accumulate(leaf->weight, leaf->weight + leaf->slotuse, 0.0);
             double pos = gsl_rng_uniform(rng) * sum;
+
+            if (sum <= 0) {
+                continue;
+            }
             double prefix_sum = 0.0;
             unsigned short s = -1;
             do {
@@ -2172,6 +2176,10 @@ private:
             std::copy_backward(
                 leaf->slotdata + slot, leaf->slotdata + leaf->slotuse,
                 leaf->slotdata + leaf->slotuse + 1);
+
+            std::copy_backward(
+                    leaf->weight + slot, leaf->weight + leaf->slotuse,
+                    leaf->weight + leaf->slotuse + 1);
 
             leaf->slotdata[slot] = value;
             leaf->weight[slot] = weight;
