@@ -197,6 +197,8 @@ public:
             }
         }
 
+        if (ts_cnt == 0) return 0;
+
         return (double) rej_cnt / (double) ts_cnt;
     }
 
