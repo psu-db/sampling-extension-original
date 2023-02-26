@@ -65,6 +65,7 @@ static lsm::key_type g_min_key = UINT64_MAX;
 static lsm::key_type g_max_key = 0;
 
 static size_t g_max_record_cnt = 0;
+static size_t g_reccnt = 0;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
 
@@ -106,6 +107,7 @@ static void init_bench_env(size_t max_reccnt, bool random_seed, bool osm_correct
     g_to_delete = new std::set<shared_record>();
     g_osm_data = osm_correction;
     g_max_record_cnt = max_reccnt;
+    g_reccnt = 0;
 }
 
 
@@ -138,9 +140,7 @@ static shared_record create_shared_record()
 
 static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_type *weight)
 {
-    static size_t reccnt = 0;
-
-    if (reccnt >= g_max_record_cnt) {
+    if (g_reccnt >= g_max_record_cnt) {
         key = nullptr;
         val = nullptr;
         return false;
@@ -169,7 +169,7 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
             g_max_key = *(lsm::key_type*) key;
         }
 
-        reccnt++;
+        g_reccnt++;
 
         return true;
     }
@@ -252,6 +252,8 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     char delbuf[del_buf_size * lsm::record_size];
 
     std::set<lsm::key_type> deleted_keys;
+
+    size_t inserted = 0;
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
@@ -259,6 +261,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             return false;
         }
 
+        inserted++;
         lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
 
         if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
@@ -281,6 +284,11 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             progress_update((double) i / (double) count, "warming up: ");
             last_percent = (double) i / (double) count;
         }
+    }
+
+    if (progress) {
+        progress_update(1, "warming up: ");
+        fprintf(stderr, "\n");
     }
 
     return true;
