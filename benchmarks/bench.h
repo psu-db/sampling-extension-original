@@ -227,14 +227,16 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
  * helper routines for displaying progress bars to stderr
  */
 static const char *g_prog_bar = "======================================================================";
-static const size_t g_prog_width = 70;
+static const size_t g_prog_width = 50;
 
 static void progress_update(double percentage, std::string prompt) {
     int val = (int) (percentage * 100);
     int lpad = (int) (percentage * g_prog_width);
     int rpad = (int) (g_prog_width - lpad);
-    fprintf(stderr, "\r(%3d%%) %s [%.*s%*s]", val, prompt.c_str(), lpad, g_prog_bar, rpad, "");
+    fprintf(stderr, "\r(%3d%%) %20s [%.*s%*s]", val, prompt.c_str(), lpad, g_prog_bar, rpad, "");
     fflush(stderr);   
+
+    if (percentage >= 1) fprintf(stderr, "\n");
 }
 
 
@@ -281,14 +283,13 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
         }
 
         if (progress && ((double) i / (double) count) - last_percent > .01) {
-            progress_update((double) i / (double) count, "warming up: ");
+            progress_update((double) i / (double) count, "warming up:");
             last_percent = (double) i / (double) count;
         }
     }
 
     if (progress) {
-        progress_update(1, "warming up: ");
-        fprintf(stderr, "\n");
+        progress_update(1, "warming up:");
     }
 
     return true;

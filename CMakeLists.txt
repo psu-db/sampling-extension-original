@@ -76,10 +76,20 @@ if (bench)
     target_compile_options(lsm_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample")
 
+    add_executable(lsm_test_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_test_sample.cpp)
+    target_link_libraries(lsm_test_sample PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_test_sample PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_test_sample")
+
     add_executable(lsm_insert_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_insert_sample.cpp)
     target_link_libraries(lsm_insert_sample PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_insert_sample PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_insert_sample")
+
+    add_executable(lsm_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_throughput.cpp)
+    target_link_libraries(lsm_throughput PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_throughput PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_throughput")
 
     add_executable(lsm_bloom ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_bloom.cpp)
     target_link_libraries(lsm_bloom PUBLIC ${PROJECT_NAME} pthread)
