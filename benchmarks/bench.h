@@ -332,6 +332,10 @@ static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delet
         }
     }
 
+    if (progress) {
+        progress_update(1, "warming up:");
+    }
+
     return true;
 }
 
