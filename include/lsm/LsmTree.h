@@ -42,6 +42,8 @@ static constexpr bool LSM_REJ_SAMPLE = false;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
 
+static constexpr bool DELETE_TAGGING = false;
+
 typedef ssize_t level_index;
 
 class LSMTree;
@@ -58,43 +60,6 @@ class LSMTree {
     friend bool check_deleted();
 
 public:
-    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_tombstone_cap, size_t scale_factor, size_t memory_levels,
-            double max_tombstone_prop, double max_rejection_prop, std::string meta_fname, gsl_rng *rng) 
-        : active_memtable(0), //memory_levels(memory_levels, 0),
-          scale_factor(scale_factor), 
-          max_tombstone_prop(max_tombstone_prop),
-          max_rejections_per_tombstone(max_rejection_prop),
-          root_directory(root_dir),
-          last_level_idx(-1),
-          memory_level_cnt(memory_levels),
-          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)), 
-          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_tombstone_cap, rng)),
-          memtable_1_merging(false), memtable_2_merging(false) {
-
-        size_t run_cap =  (LSM_LEVELING) ? 1 : scale_factor;
-
-        FILE *meta_f = fopen(meta_fname.c_str(), "r");
-        assert(meta_f);
-
-        char fbuf[1028];
-        size_t idx = 0;
-        while (fscanf(meta_f, "%s\n", fbuf) != EOF) {
-            bool disk;
-            level_index l_idx = this->decode_level_index(idx);
-
-            if (disk) {
-                assert(false); // not implemented
-                //this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
-            } else {
-                this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, rng));
-            }
-
-            idx++;
-        }
-
-    }
-
-
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_tombstone_cap, size_t scale_factor, size_t memory_levels,
             double max_tombstone_prop, double max_rejection_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
@@ -202,14 +167,18 @@ public:
                     rec = memtable_records[memtable_alias->get(rng)];
                 }
 
-                if (LSM_REJ_SAMPLE && !rec) {
-                    memtable_rejections++;
-                    rejections++;
-                } else if (mtable->check_tombstone(rec->key, rec->value)) {
-                    tombstone_rejections++;
-                    rejections++;
+                if (DELETE_TAGGING) {
+                    if (rec && !rec->get_delete_status()) {
+                        sample_set[sample_idx++] = *rec;
+                    } else {
+                        rejections++;
+                    }
                 } else {
-                    sample_set[sample_idx++] = *rec;
+                    if (rec && !mtable->check_tombstone(rec->key, rec->value)) {
+                        sample_set[sample_idx++] = *rec;
+                    } else {
+                        rejections++;
+                    }
                 }
 
                 run_samples[0]--;
@@ -250,6 +219,13 @@ public:
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const record_t *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        // If tagging is enabled, we just need to check if the record has the delete tag set
+        if (DELETE_TAGGING) {
+            return record->get_delete_status();
+        }
+
+        // Otherwise, we need to look for a tombstone.
+
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
         if (memtable->check_tombstone(record->key, record->value)) {
             return true;
@@ -260,23 +236,14 @@ public:
             return false;
         }
 
-        for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
-            if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
-                    return true;
-                }
-            } else {
-                assert(false);
+        for (size_t lvl=0; lvl<=rid.level_idx; lvl++) {
+            if (memory_levels[lvl]->check_tombstone(0, record->key, record->value)) {
+                return true;
             }
         }
 
         // check the level containing the run
-        if (rid.level_idx < memory_levels.size()) {
-            size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->tombstone_check(run_idx, record->key, record->value);
-        } else {
-            assert(false);
-        }
+        return memory_levels[rid.level_idx]->check_tombstone(rid.run_idx + 1, record->key, record->value);
     }
 
 
@@ -344,30 +311,6 @@ public:
         return true;
     }
 
-    void persist_tree(gsl_rng *rng) {
-        std::string meta_dir = this->root_directory + "/meta";
-        mkdir(meta_dir.c_str(), 0755);
-
-        std::string meta_fname = meta_dir + "/lsmtree.dat";
-        FILE *meta_f = fopen(meta_fname.c_str(), "w");
-        assert(meta_f);
-
-        // merge the memtable down to ensure it is persisted
-        this->merge_memtable(rng);
-        
-        // persist each level of the tree
-        for (size_t i=0; i<this->get_height(); i++) {
-           // bool disk = false;
-
-            auto level_idx = this->decode_level_index(i);
-            std::string level_meta = meta_dir + "/level-" + std::to_string(i) +"-meta.dat";
-
-            memory_levels[level_idx]->persist_level(level_meta);
-        }
-
-        fclose(meta_f);
-    }
-
     size_t get_memtable_capacity() {
         return memtable_1->get_capacity();
     }
@@ -384,7 +327,7 @@ public:
             }
         }
 
-        runs.emplace_back(new WIRSRun(this->memtable(), nullptr));
+        runs.emplace_back(new WIRSRun(this->memtable(), nullptr, DELETE_TAGGING));
 
         WIRSRun *runs_array[runs.size()];
 
@@ -395,7 +338,7 @@ public:
             }
         }
 
-        WIRSRun *flattened = new WIRSRun(runs_array, j, nullptr);
+        WIRSRun *flattened = new WIRSRun(runs_array, j, nullptr, DELETE_TAGGING);
 
         for (auto run : runs) {
             delete run;
@@ -483,7 +426,7 @@ private:
             if (new_idx > 0) {
                 assert(this->memory_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
-            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, this->root_directory));
+            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, DELETE_TAGGING));
         } else {
             assert(false);
         } 
@@ -569,14 +512,24 @@ private:
         // merging two memory levels
         if (LSM_LEVELING) {
             auto tmp = this->memory_levels[base_idx];
-            this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], rng);
-            this->mark_as_unused(tmp);
+            this->mark_as_unused(this->memory_levels[incoming_idx]);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
         } else {
-            this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
+            // merging two memory levels
+            if (LSM_LEVELING) {
+                auto tmp = this->memory_levels[base_idx];
+                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], DELETE_TAGGING, rng);
+                this->mark_as_unused(tmp);
+            } else {
+                this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
+            }
+
+            this->mark_as_unused(this->memory_levels[incoming_idx]);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
         }
 
         this->mark_as_unused(this->memory_levels[incoming_idx]);
-        this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
+        this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
     }
 
     inline void merge_memtable_into_l0(MemTable *mtable, gsl_rng *rng) {
@@ -584,9 +537,9 @@ private:
         if (LSM_LEVELING) {
             // FIXME: Kludgey implementation due to interface constraints.
             auto old_level = this->memory_levels[0];
-            auto temp_level = new MemoryLevel(0, 1, this->root_directory);
+            auto temp_level = new MemoryLevel(0, 1, DELETE_TAGGING);
             temp_level->append_mem_table(mtable, rng);
-            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
+            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, DELETE_TAGGING, rng);
 
             this->memory_levels[0] = new_level;
             delete temp_level;
@@ -632,7 +585,7 @@ private:
             level_index idx = decode_level_index(i);
 
             if (this->memory_levels[idx]) {
-                double ratio = this->memory_levels[idx]->get_rejections_per_tombstone();
+                double ratio = this->memory_levels[idx]->get_rejection_rate();
                 if (ratio > this->max_rejections_per_tombstone) {
                     this->merge_down(i, rng);
                 }

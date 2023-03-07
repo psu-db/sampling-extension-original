@@ -20,7 +20,7 @@ extern thread_local size_t tombstone_rejections;
 struct wirs_node {
     struct wirs_node *left, *right;
     lsm::key_t low, high;
-    double weight;
+    weight_t weight;
     Alias* alias;
 };
 
@@ -38,39 +38,9 @@ thread_local size_t m_wirsrun_cancelations = 0;
 
 class WIRSRun {
 public:
-    WIRSRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf)
-    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt), m_rejection_cnt(0) {
-
-        // read the stored data file the file
-        size_t alloc_size = (record_cnt * sizeof(record_t)) + (CACHELINE_SIZE - (record_cnt * sizeof(record_t)) % CACHELINE_SIZE);
-        assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
-
-        FILE *file = fopen(data_fname.c_str(), "rb");
-        assert(file);
-        auto res = fread(m_data, sizeof(record_t), m_reccnt, file);
-        assert (res == m_reccnt);
-        fclose(file);
-
-        // We can't really persist the internal structure, as it uses
-        // pointers, which are invalidated by the move. So we'll just
-        // rebuild it.
-        this->build_wirs_structure();
-
-        // rebuild the bloom filter
-        if (bf) {
-            for (size_t i=0; i<m_reccnt; i++) {
-                const record_t* rec = get_record_at(i);
-                if (rec->is_tombstone()) {
-                    bf->insert(rec->key);
-                }
-            }
-        }
-    }
-
-
-    WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr), m_rejection_cnt(0) {
+    WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
+    : m_reccnt(0), m_tombstone_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_rejection_cnt(0), 
+      m_ts_check_cnt(0), m_tagging(tagging), m_root(nullptr) {
 
         size_t alloc_size = (mem_table->get_record_count() * sizeof(record_t)) + (CACHELINE_SIZE - (mem_table->get_record_count() * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
@@ -80,21 +50,31 @@ public:
         m_reccnt = 0;
         auto base = mem_table->sorted_output();
         auto stop = base + mem_table->get_record_count();
+
         while (base < stop) {
-            if (!base->is_tombstone() && (base + 1 < stop)
-                && base->match(base + 1) && (base + 1)->is_tombstone()) {
-                base += 2;
-                m_wirsrun_cancelations++;
-            } else {
-                //Masking off the ts.
-                base->header &= 1;
-                m_data[m_reccnt++] = *base;
-                if (base->is_tombstone()) {
-                    ++m_tombstone_cnt;
-                    if (bf) bf->insert(base->key);
+            if (!m_tagging) {
+                if (!(base->is_tombstone()) && (base + 1) < stop) {
+                    if (base->match(base + 1) && (base + 1)->is_tombstone()) {
+                        base += 2;
+                        m_wirsrun_cancelations++;
+                        continue;
+                    }
                 }
-                base ++;
+            } else if (base->get_delete_status()) {
+                base += 1;
+                continue;
             }
+
+            base->header &= 1;
+            m_data[m_reccnt++] = *base;
+            m_total_weight+= base->weight;
+
+            if (bf && base->is_tombstone()) {
+                m_tombstone_cnt++;
+                bf->insert(base->key);
+            }
+            
+            base++;
         }
 
         if (m_reccnt > 0) {
@@ -102,8 +82,9 @@ public:
         }
     }
 
-    WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr), m_rejection_cnt(0) {
+    WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
+    : m_reccnt(0), m_tombstone_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_rejection_cnt(0), m_ts_check_cnt(0), 
+      m_tagging(tagging), m_root(nullptr) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -130,7 +111,7 @@ public:
         while (pq.size()) {
             auto now = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
-            if (!now.data->is_tombstone() && next.data != nullptr &&
+            if (!m_tagging && !now.data->is_tombstone() && next.data != nullptr &&
                 now.data->match(next.data) && next.data->is_tombstone()) {
                 
                 pq.pop(); pq.pop();
@@ -140,10 +121,13 @@ public:
                 if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
             } else {
                 auto& cursor = cursors[now.version];
-                m_data[m_reccnt++] = *cursor.ptr;
-                if (cursor.ptr->is_tombstone()) {
-                    ++m_tombstone_cnt;
-                    if (bf) bf->insert(cursor.ptr->key);
+                if (!m_tagging || !cursor.ptr->get_delete_status()) {
+                    m_data[m_reccnt++] = *cursor.ptr;
+                    m_total_weight += cursor.ptr->weight;
+                    if (bf && cursor.ptr->is_tombstone()) {
+                        ++m_tombstone_cnt;
+                        if (bf) bf->insert(cursor.ptr->key);
+                    }
                 }
                 pq.pop();
                 
@@ -163,6 +147,23 @@ public:
         }
 
         free_tree(m_root);
+    }
+
+    bool delete_record(const key_t& key, const value_t& val) {
+        size_t idx = get_lower_bound(key);
+        if (idx >= m_reccnt) {
+            return false;
+        }
+
+        while (idx < m_reccnt && m_data[idx].lt(key, val)) ++idx;
+
+        if (m_data[idx].match(key, val, false)) {
+            m_data[idx].set_delete_status();
+            m_deleted_cnt++;
+            return true;
+        }
+
+        return false;
     }
 
     void free_tree(struct wirs_node* node) {
@@ -200,7 +201,7 @@ public:
 
         // Simulate a stack to unfold recursion.        
         double tot_weight = 0.0;
-        struct wirs_node* st[64];
+        struct wirs_node* st[64] = {0};
         st[0] = m_root;
         size_t top = 1;
         while(top > 0) {
@@ -282,7 +283,26 @@ public:
         return min;
     }
 
+    bool check_delete(key_t key, value_t val) {
+        size_t idx = get_lower_bound(key);
+        if (idx >= m_reccnt) {
+            return false;
+        }
+
+        auto ptr = m_data + get_lower_bound(key);
+
+        while (ptr < m_data + m_reccnt && ptr->lt(key, val)) {
+            ptr ++;
+        }
+
+        bool result = (m_tagging) ? ptr->get_delete_status()
+                                  : ptr->match(key, val, true);
+        m_rejection_cnt += result;
+        return result;
+    }
+
     bool check_tombstone(const key_t& key, const value_t& val) {
+        m_ts_check_cnt++;
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -305,17 +325,13 @@ public:
         return 0;
     }
 
-    void persist_to_file(std::string fname) {
-        FILE *file = fopen(fname.c_str(), "w");
-        assert(file);
-
-        fwrite(m_data, sizeof(record_t), m_reccnt, file);
-
-        fclose(file);
-    }
 
     size_t get_rejection_count() {
         return m_rejection_cnt;
+    }
+
+    size_t get_ts_check_count() {
+        return m_ts_check_cnt;
     }
     
 private:
@@ -331,28 +347,13 @@ private:
         return lower_key < m_data[high_index].key && m_data[low_index].key < upper_key;
     }
     
-    /*
-    double decompose_node(struct wirs_node* node, const char* lower_key, const char* upper_key, std::vector<struct wirs_node*>& output) {
-        if (node == nullptr) return 0.0;
-        else if (covered_by(node, lower_key, upper_key)) {
-            output.emplace_back(node);
-            return node->weight;
-        }
-
-        double ans = 0.0;
-        if (node->left && intersects(node->left, lower_key, upper_key)) ans += decompose_node(node->left, lower_key, upper_key, output);
-        if (node->right && intersects(node->right, lower_key, upper_key)) ans += decompose_node(node->right, lower_key, upper_key, output);
-        return ans;
-    }
-    */
-
-    struct wirs_node* construct_wirs_node(const std::vector<double>& weights, size_t low, size_t high) {
+    struct wirs_node* construct_wirs_node(const std::vector<weight_t>& weights, size_t low, size_t high) {
         if (low == high) {
             return new wirs_node{nullptr, nullptr, low, high, weights[low], new Alias({1.0})};
         } else if (low > high) return nullptr;
 
         std::vector<double> node_weights;
-        double sum = 0.0;
+        weight_t sum = 0;
         for (size_t i = low; i < high; ++i) {
             node_weights.emplace_back(weights[i]);
             sum += weights[i];
@@ -375,7 +376,7 @@ private:
         
         // Fat point construction + low level alias....
         double sum_weight = 0.0;
-        std::vector<double> weights;
+        std::vector<weight_t> weights;
         std::vector<double> group_norm_weight;
         size_t i = 0;
         size_t group_no = 0;
@@ -406,9 +407,13 @@ private:
     record_t* m_data;
     std::vector<Alias *> m_alias;
     wirs_node* m_root;
+    bool m_tagging;
+    weight_t m_total_weight;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     size_t m_group_size;
+    size_t m_ts_check_cnt;
+    size_t m_deleted_cnt;
 
     // The number of rejections caused by tombstones
     // in this WIRSRun.

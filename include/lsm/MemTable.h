@@ -11,6 +11,7 @@
 #include "ds/BloomFilter.h"
 #include "util/record.h"
 #include "ds/Alias.h"
+#include  "util/timer.h"
 
 namespace lsm {
 
@@ -19,8 +20,8 @@ class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
     : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_reccnt(0)
-    , m_tombstonecnt(0) {
-        size_t len = capacity * sizeof(record_t);
+    , m_tombstonecnt(0), m_weight(0), m_max_weight(0) {
+        auto len = capacity * sizeof(record_t);
         size_t aligned_buffersize = len + (CACHELINE_SIZE - (len % CACHELINE_SIZE));
         m_data = (record_t*) std::aligned_alloc(CACHELINE_SIZE, aligned_buffersize);
         m_tombstone_filter = nullptr;
@@ -35,15 +36,19 @@ public:
         if (m_tombstone_filter) delete m_tombstone_filter;
     }
 
-    int append(const key_t& key, const value_t& value, double weight=1.0, bool is_tombstone = false) {
+    int append(const key_t& key, const value_t& value, weight_t weight = 1, bool is_tombstone = false) {
         if (is_tombstone && m_tombstonecnt + 1 > m_tombstone_cap) return 0;
 
         int32_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
 
+        if (is_tombstone) {
+            weight = 0;
+        }
+
         m_data[pos].key = key;
         m_data[pos].value = value;
-        m_data[pos].header = (pos << 2) | (is_tombstone ? 1 : 0);
+        m_data[pos].header = ((pos << 2) | (is_tombstone ? 1 : 0));
         m_data[pos].weight = weight;
 
         if (is_tombstone) {
@@ -70,20 +75,27 @@ public:
     bool truncate() {
         m_tombstonecnt.store(0);
         m_reccnt.store(0);
-        m_max_weight.store(0);
         m_weight.store(0);
+        m_max_weight.store(0);
         if (m_tombstone_filter) m_tombstone_filter->clear();
 
         return true;
     }
 
     record_t* sorted_output() {
+        TIMER_INIT();
+        TIMER_START();
         std::sort(m_data, m_data + m_reccnt.load(), memtable_record_cmp);
+        TIMER_STOP();
+
+        #ifdef INSTRUMENT_MERGING
+        fprintf(stderr, "sort\t%ld\n", TIMER_RESULT());
+        #endif
         return m_data;
     }
     
     size_t get_record_count() {
-        return m_reccnt.load();
+        return m_reccnt;
     }
     
     size_t get_capacity() {
@@ -98,30 +110,42 @@ public:
         return m_tombstonecnt.load();
     }
 
+    bool delete_record(const key_t& key, const value_t& val) {
+        auto offset = 0;
+        while (offset < m_reccnt.load()) {
+            if (m_data[offset].match(key, val, false)) {
+                m_data[offset].set_delete_status();
+                return true;
+            }
+            offset++;
+        }
+
+        return false;
+    }
+
     bool check_tombstone(const key_t& key, const value_t& value) {
         if (m_tombstone_filter && !m_tombstone_filter->lookup(key)) return false;
 
         auto offset = 0;
         while (offset < m_reccnt.load()) {
             if (m_data[offset].match(key, value, true)) return true;
-            offset++;
+            offset++;;
         }
         return false;
     }
 
-
-    const record_t *get_record_at(size_t idx) {
+    const record_t* get_record_at(size_t idx) {
         return m_data + idx;
     }
 
     size_t get_memory_utilization() {
-        return m_cap * m_reccnt.load();
+        return m_cap * sizeof(record_t);
     }
 
     size_t get_aux_memory_utilization() {
         return m_tombstone_filter->get_memory_utilization();
     }
-
+    //
     // NOTE: This operation samples from records strictly between the upper and
     // lower bounds, not including them
     double get_sample_range(const key_t& lower, const key_t& upper, std::vector<record_t *> &records, 
@@ -134,7 +158,7 @@ public:
       for (size_t i = 0; i < (*cutoff) + 1; i++) {
         record_t *rec = m_data + i;
 
-        if (rec->key >= lower && rec->key <= upper && !rec->is_tombstone()) {
+        if (rec->key >= lower && rec->key <= upper && !rec->is_tombstone() && !rec->get_delete_status()) {
           weights.push_back(rec->weight);
           records.push_back(rec);
           tot_weight += rec->weight;
@@ -149,7 +173,6 @@ public:
 
       return tot_weight;
     }
-
 
     // rejection sampling
     const record_t *get_sample(const key_t& lower, const key_t& upper, gsl_rng *rng) {
@@ -170,7 +193,7 @@ public:
         if (test <= rec->weight &&
           rec->key >= lower &&
           rec->key <= upper && 
-          !rec->is_tombstone()) {
+          !rec->is_tombstone() && !rec->get_delete_status()) {
 
             return rec;
         }
@@ -195,13 +218,16 @@ private:
     }
 
     size_t m_cap;
+    //size_t m_buffersize;
     size_t m_tombstone_cap;
     
+    //char* m_data;
     record_t* m_data;
     BloomFilter* m_tombstone_filter;
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
-    alignas(64) std::atomic<size_t> m_reccnt; 
+    //alignas(64) std::atomic<uint32_t> m_current_tail;
+    alignas(64) std::atomic<uint32_t> m_reccnt;
     alignas(64) std::atomic<double> m_weight;
     alignas(64) std::atomic<double> m_max_weight;
 };

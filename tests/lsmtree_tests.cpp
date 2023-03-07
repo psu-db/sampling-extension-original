@@ -293,46 +293,6 @@ lsm::LSMTree *create_test_tree(size_t reccnt, size_t memlevel_cnt) {
     return lsm;
 }
 
-START_TEST(t_persist_mem) 
-{
-    size_t reccnt = 100000;
-    auto lsm = create_test_tree(reccnt, 100);
-
-    lsm->persist_tree(g_rng);
-
-    std::string meta_fname = dir + "/meta/lsmtree.dat";
-    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 100, 1, 100, meta_fname, g_rng);
-
-    ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
-    ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());
-    //ck_assert_int_eq(lsm->get_aux_memory_utilization(), lsm2->get_aux_memory_utilization());
-    ck_assert_int_eq(lsm->get_memory_utilization(), lsm2->get_memory_utilization());
-
-    /*
-    size_t len1;
-    auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
-
-    size_t len2;
-    auto sorted2 = lsm->get_sorted_array(&len2, g_rng);
-
-    ck_assert_int_eq(len1, len2);
-
-    for (size_t i=0; i<len1; i++) {
-        char *rec1 = sorted1 + i * lsm::record_size;
-        char *rec2 = sorted1 + i * lsm::record_size;
-
-        ck_assert_mem_eq(rec1, rec2, lsm::record_size);
-    }
-    */
-
-    delete lsm;
-    delete lsm2;
-    //free(sorted1);
-    //free(sorted2);
-}
-END_TEST
-
-
 START_TEST(t_sorted_array)
 {
     size_t reccnt = 100000;
@@ -412,14 +372,6 @@ Suite *unit_testing()
     tcase_add_test(ts, t_tombstone_merging_01);
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
-
-    /*
-    TCase *persist = tcase_create("lsm::LSMTree::persistence Testing");
-    tcase_add_test(persist, t_persist_mem);
-    tcase_set_timeout(ts, 500);
-    suite_add_tcase(unit, persist);
-    */
-
 
     TCase *flat = tcase_create("lsm::LSMTree::get_flattened_wirs_run Testing");
     tcase_add_test(flat, t_sorted_array);
