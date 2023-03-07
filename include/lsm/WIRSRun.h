@@ -20,8 +20,8 @@ thread_local size_t m_wirsrun_cancelations = 0;
 class WIRSRun {
 public:
 
-    WIRSRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0) {
+    WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
+    :m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_tagging(tagging) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -33,24 +33,37 @@ public:
         m_reccnt = 0;
         auto base = mem_table->sorted_output();
         auto stop = base + mem_table->get_record_count() * record_size;
-        while (base < stop) {
-            if (!is_tombstone(base) && (base + record_size < stop)
-                && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
-                base += record_size * 2;
-                m_wirsrun_cancelations++;
-            } else {
-                //Masking off the ts.
-                *((rec_hdr*)get_hdr(base)) &= 1;
-                memcpy(m_data + offset, base, record_size);
-                if (is_tombstone(base)) {
-                    ++m_tombstone_cnt;
-                    bf->insert(get_key(base), key_size);
+
+        if (m_tagging) {
+            while (base < stop) {
+                if (!get_delete_status(base)) {
+                    *((rec_hdr*)get_hdr(base)) &= 3;
+                    memcpy(m_data + offset, base, record_size);
+                    offset += record_size;
+                    ++m_reccnt;
                 }
-                offset += record_size;
-                ++m_reccnt;
                 base += record_size;
-                m_total_weight += get_weight(base);
-                weights.push_back(get_weight(base));
+            }
+        } else {
+            while (base < stop) {
+                if (!is_tombstone(base) && (base + record_size < stop)
+                    && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
+                    base += record_size * 2;
+                    m_wirsrun_cancelations++;
+                } else {
+                    //Masking off the ts.
+                    *((rec_hdr*)get_hdr(base)) &= 1;
+                    memcpy(m_data + offset, base, record_size);
+                    if (is_tombstone(base)) {
+                        ++m_tombstone_cnt;
+                        bf->insert(get_key(base), key_size);
+                    }
+                    offset += record_size;
+                    ++m_reccnt;
+                    base += record_size;
+                    m_total_weight += get_weight(base);
+                    weights.push_back(get_weight(base));
+                }
             }
         }
 
@@ -63,8 +76,8 @@ public:
         m_alias = new Alias(weights);
     }
 
-    WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0) {
+    WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
+    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_tagging {
         std::vector<Cursor> cursors;
         std::vector<double> weights;
         cursors.reserve(len);
@@ -91,32 +104,47 @@ public:
         weights.reserve(attemp_reccnt);
 
         size_t offset = 0;
-        
-        while (pq.size()) {
-            auto now = pq.peek();
-            auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
-            if (!is_tombstone(now.data) && next.data != nullptr &&
-                !record_cmp(now.data, next.data) && is_tombstone(next.data)) {
-                
-                pq.pop(); pq.pop();
-                auto& cursor1 = cursors[now.version];
-                auto& cursor2 = cursors[next.version];
-                if (advance_cursor(cursor1)) pq.push(cursor1.ptr, now.version);
-                if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
-            } else {
-                auto& cursor = cursors[now.version];
-                memcpy(m_data + offset, cursor.ptr, record_size);
-                if (is_tombstone(cursor.ptr)) {
-                    ++m_tombstone_cnt;
-                    bf->insert(get_key(cursor.ptr), key_size);
+
+        if (m_tagging) {
+            while (pq.size()) {
+                auto now = pq.peek(); pq.pop();
+                if (get_delete_status(now.data)) {
+                    auto cur = cursors[now.version];
+                    if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
+                } else {
+                    auto& cursor = cursors[now.version];
+                    memcpy(m_data + offset, cursor.ptr, record_size);
+                    offset += record_size;
+                    ++m_reccnt;
                 }
-                offset += record_size;
-                ++m_reccnt;
-                m_total_weight += get_weight(cursor.ptr);
-                weights.push_back(get_weight(cursor.ptr));
-                pq.pop();
-                
-                if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
+            }
+        } else {
+            while (pq.size()) {
+                auto now = pq.peek();
+                auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
+                if (!is_tombstone(now.data) && next.data != nullptr &&
+                    !record_cmp(now.data, next.data) && is_tombstone(next.data)) {
+                    
+                    pq.pop(); pq.pop();
+                    auto& cursor1 = cursors[now.version];
+                    auto& cursor2 = cursors[next.version];
+                    if (advance_cursor(cursor1)) pq.push(cursor1.ptr, now.version);
+                    if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
+                } else {
+                    auto& cursor = cursors[now.version];
+                    memcpy(m_data + offset, cursor.ptr, record_size);
+                    if (is_tombstone(cursor.ptr)) {
+                        ++m_tombstone_cnt;
+                        bf->insert(get_key(cursor.ptr), key_size);
+                    }
+                    offset += record_size;
+                    ++m_reccnt;
+                    m_total_weight += get_weight(cursor.ptr);
+                    weights.push_back(get_weight(cursor.ptr));
+                    pq.pop();
+                    
+                    if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
+                }
             }
         }
         
@@ -196,7 +224,7 @@ public:
         return min;
     }
 
-    bool check_tombstone(const char* key, const char* val) {
+    bool check_delete(const char* key, const char* val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -210,9 +238,9 @@ public:
             ptr += record_size;
         }
 
-        bool result = record_match(ptr, key, val, true);
+        bool result = (m_tagging) ? get_delete_status(ptr)
+                                  : record_match(ptr, key, val, true);
         m_rejection_cnt += result;
-
         return result;
     }
 

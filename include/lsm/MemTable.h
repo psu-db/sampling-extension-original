@@ -95,12 +95,21 @@ public:
         return m_tombstonecnt.load();
     }
 
-    bool check_tombstone(const char* key, const char* value) {
-        if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
+    bool check_deleted(const char* key, const char* value, bool tagging=false) {
+        if (!tagging) {
+            if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
+        }
 
         auto offset = 0;
         while (offset < m_current_tail) {
-            if (record_match(m_data + offset, key, value, true)) return true;
+            if (tagging) {
+                if (record_match(m_data + offset, key, value) 
+                    && check_delete_status(m_data + offset)) {
+                    return true;
+                }
+            } else {
+                if (record_match(m_data + offset, key, value, true)) return true;
+            }
             offset += record_size;
         }
         return false;

@@ -41,6 +41,8 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
 
+static constexpr cool DELETE_TAGGING = true;
+
 typedef ssize_t level_index;
 
 class LSMTree;
@@ -174,7 +176,7 @@ public:
                     rec = mtable->get_record_at(memtable_alias->get(rng));
                 }
 
-                if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                if (rec && !mtable->check_delete(get_key(rec), get_val(rec))) {
                     memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 } else {
                     rejections++;
@@ -210,7 +212,7 @@ public:
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_tombstone(get_key(record), get_val(record))) {
+        if (memtable->check_delete(get_key(record), get_val(record))) {
             return true;
         }
 
@@ -221,7 +223,7 @@ public:
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
+                if (memory_levels[lvl]->check_delete(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
                     return true;
                 }
             } else {
@@ -236,7 +238,7 @@ public:
         // check the level containing the run
         if (rid.level_idx < memory_levels.size()) {
             size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->tombstone_check(run_idx, get_key(record), get_val(record));
+            return memory_levels[rid.level_idx]->check_delete(run_idx, get_key(record), get_val(record));
         } else {
             size_t isam_lvl = rid.level_idx - memory_levels.size();
             size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
@@ -412,7 +414,7 @@ private:
             if (new_idx > 0) {
                 assert(this->memory_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
-            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt));
+            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, DELETE_TAGGING));
         } else {
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
@@ -530,7 +532,7 @@ private:
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
         } else {
             // merging two memory levels
             if (LSM_LEVELING) {
@@ -542,7 +544,7 @@ private:
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
         }
     }
 
@@ -551,7 +553,7 @@ private:
         if (LSM_LEVELING) {
             // FIXME: Kludgey implementation due to interface constraints.
             auto old_level = this->memory_levels[0];
-            auto temp_level = new MemoryLevel(0, 1);
+            auto temp_level = new MemoryLevel(0, 1, DELETE_TAGGING);
             temp_level->append_mem_table(mtable, rng);
             auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
 
