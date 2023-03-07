@@ -115,6 +115,16 @@ public:
         return false;
     }
 
+    bool delete_record(const char *key, const char *val)
+        for (size_t i = 0; i < run_stop;  ++i) {
+            if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     const char* get_record_at(size_t run_no, size_t idx) {
         return m_structure->m_runs[run_no]->get_record_at(idx);
     }

@@ -99,6 +99,25 @@ public:
         return mtable->append(key, val, weight, tombstone);
     }
 
+
+    int delete(const char *key, const char *val, gsl_rng *rng) {
+        static_assert(DELETE_TAGGING);
+
+        auto mtable = this->memtable();
+        // Check the levels first. This assumes there aren't 
+        // any undeleted duplicate records.
+        if (auto &level : this->memory_levels) {
+            if (level->delete_record(key, val)) {
+                return 1;
+            }
+        }
+
+        // the memtable will take the longest amount of time, and 
+        // probably has the lowest probability of having the record,
+        // so we'll check it last.
+        return mtable->delete_record(key, val);
+    }
+
     void range_sample(char *sample_set, size_t sample_sz, gsl_rng *rng) {
         TIMER_INIT();
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
@@ -108,9 +127,6 @@ public:
         size_t mtable_cutoff = 0;
 
         double memtable_weight = mtable->get_total_weight();
-
-
-
 
         TIMER_START();
         // Get the run weights for each level. Index 0 is the memtable,

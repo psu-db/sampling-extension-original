@@ -163,6 +163,28 @@ public:
     }
 
 
+    bool delete_record(const char *key, const char *val) {
+        size_t idx = get_lower_bound(key);
+        if (idx >= m_reccnt) {
+            return false;
+        }
+
+        auto ptr = m_data + (get_lower_bound(key) * record_size);
+
+        char buf[record_size];
+        layout_record(buf, key, val, false, 0.0);
+        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
+            ptr += record_size;
+        }
+
+        if (record_match(ptr, key, val, false)) {
+            set_delete_status(ptr);
+            return true;
+        }
+
+        return false;
+    }
+
     char* sorted_output() const {
         return m_data;
     }
