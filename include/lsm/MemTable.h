@@ -95,7 +95,7 @@ public:
         return m_tombstonecnt.load();
     }
 
-    bool check_deleted(const char* key, const char* value, bool tagging=false) {
+    bool check_delete(const char* key, const char* value, bool tagging) {
         if (!tagging) {
             if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
         }
@@ -103,8 +103,8 @@ public:
         auto offset = 0;
         while (offset < m_current_tail) {
             if (tagging) {
-                if (record_match(m_data + offset, key, value) 
-                    && check_delete_status(m_data + offset)) {
+                if (record_match(m_data + offset, key, value, false) 
+                    && get_delete_status(m_data + offset)) {
                     return true;
                 }
             } else {

@@ -56,9 +56,6 @@ inline static const char *get_val(const char *buffer) {
     return buffer + MAXALIGN(key_size);
 }
 
-inline static void set_delete_status(char *buffer) {
-    *((rec_hdr *)get_hdr(buffer)) |= 2;
-}
 
 inline static const char *get_record(const char *buffer, size_t idx) {
     return buffer + record_size*idx;
@@ -66,6 +63,11 @@ inline static const char *get_record(const char *buffer, size_t idx) {
 
 inline static const char* get_hdr(const char *buffer) {
     return buffer + MAXALIGN(key_size) + value_size;
+}
+
+
+inline static void set_delete_status(char *buffer) {
+    *((rec_hdr *)get_hdr(buffer)) |= 2;
 }
 
 inline static bool is_tombstone(const char *buffer) {

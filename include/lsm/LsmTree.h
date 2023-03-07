@@ -41,7 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
 
-static constexpr cool DELETE_TAGGING = true;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 
@@ -176,7 +176,7 @@ public:
                     rec = mtable->get_record_at(memtable_alias->get(rng));
                 }
 
-                if (rec && !mtable->check_delete(get_key(rec), get_val(rec))) {
+                if (rec && !mtable->check_delete(get_key(rec), get_val(rec), DELETE_TAGGING)) {
                     memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                 } else {
                     rejections++;
@@ -212,7 +212,7 @@ public:
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_delete(get_key(record), get_val(record))) {
+        if (memtable->check_delete(get_key(record), get_val(record), DELETE_TAGGING)) {
             return true;
         }
 
@@ -537,7 +537,7 @@ private:
             // merging two memory levels
             if (LSM_LEVELING) {
                 auto tmp = this->memory_levels[base_idx];
-                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], rng);
+                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], DELETE_TAGGING, rng);
                 this->mark_as_unused(tmp);
             } else {
                 this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
@@ -555,7 +555,7 @@ private:
             auto old_level = this->memory_levels[0];
             auto temp_level = new MemoryLevel(0, 1, DELETE_TAGGING);
             temp_level->append_mem_table(mtable, rng);
-            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
+            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, DELETE_TAGGING, rng);
 
             this->memory_levels[0] = new_level;
             delete temp_level;

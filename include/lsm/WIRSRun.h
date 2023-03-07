@@ -21,7 +21,7 @@ class WIRSRun {
 public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
-    :m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_tagging(tagging) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -77,7 +77,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
-    :m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_tagging {
+    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_tagging(tagging) {
         std::vector<Cursor> cursors;
         std::vector<double> weights;
         cursors.reserve(len);
@@ -264,6 +264,7 @@ private:
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     double m_total_weight;
+    bool m_tagging;
 
     // The number of rejections caused by tombstones
     // in this WIRSRun.

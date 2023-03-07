@@ -58,9 +58,9 @@ public:
 
     // WARNING: for leveling only.
     // assuming the base level is the level new level is merging into. (base_level is larger.)
-    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
+    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, bool tagging, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
-        auto res = new MemoryLevel(base_level->m_level_no, 1, m_tagging);
+        auto res = new MemoryLevel(base_level->m_level_no, 1, tagging);
         res->m_run_cnt = 1;
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
@@ -70,7 +70,7 @@ public:
         runs[0] = base_level->m_structure->m_runs[0];
         runs[1] = new_level->m_structure->m_runs[0];
 
-        res->m_structure->m_runs[0] = new WIRSRun(runs, 2, res->m_structure->m_bfs[0], m_tagging);
+        res->m_structure->m_runs[0] = new WIRSRun(runs, 2, res->m_structure->m_bfs[0], tagging);
         return res;
     }
 

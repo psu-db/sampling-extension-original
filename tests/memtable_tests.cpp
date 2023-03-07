@@ -39,7 +39,7 @@ START_TEST(t_insert)
 
     for (size_t i=0; i<99; i++) {
         ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, false), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), 0);
+        ck_assert_int_eq(mtable->check_delete((char*) &key, (char*) &val, false), 0);
 
         key++;
         val++;
@@ -81,7 +81,7 @@ START_TEST(t_insert_tombstones)
         }
 
         ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, ts), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
+        ck_assert_int_eq(mtable->check_delete((char*) &key, (char*) &val, false), ts);
 
         key++;
         val++;
@@ -126,7 +126,7 @@ START_TEST(t_truncate)
         }
 
         ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, ts), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
+        ck_assert_int_eq(mtable->check_delete((char*) &key, (char*) &val, false), ts);
 
         key++;
         val++;
