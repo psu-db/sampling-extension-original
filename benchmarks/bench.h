@@ -2,7 +2,9 @@
 #define H_BENCH
 #include "lsm/LsmTree.h"
 
+#include <ds/avl_container.h>
 #include <ds/BTree.h>
+
 #include <cstdlib>
 #include <cstdio>
 #include <chrono>
@@ -26,6 +28,7 @@ struct btree_key_extract {
 };
 
 typedef tlx::BTree<lsm::key_type, btree_record, btree_key_extract> TreeMap;
+typedef dsimpl::avl_weighted_multiset<lsm::key_type, lsm::weight_type> AvlSet;
 
 typedef struct record {
     char *key;
@@ -199,11 +202,11 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
 }
 
 
-static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btree_record, double>> &vec, size_t n)
+static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btree_record, lsm::weight_type>> &vec, size_t n)
 {
     char key[lsm::key_size];
     char val[lsm::value_size];
-    double weight;
+    lsm::weight_type weight;
 
     vec.clear();
     for (size_t i=0; i<n; i++) {
@@ -223,6 +226,28 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
 
 }
 
+static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::key_type, lsm::weight_type>> &vec, size_t n)
+{
+    char key[lsm::key_size];
+    char val[lsm::value_size];
+    lsm::weight_type weight;
+
+    vec.clear();
+    for (size_t i=0; i<n; i++) {
+        if (!next_record(file, key, val, &weight)) {
+            if (i == 0) {
+                return false;
+            }
+
+            break;
+        }
+
+        vec.push_back({atol(key), weight});
+    }
+
+    return true;
+
+}
 /*
  * helper routines for displaying progress bars to stderr
  */
@@ -299,6 +324,62 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     return true;
 }
 
+
+static void avl_sample(AvlSet *tree, std::vector<lsm::key_type> &sampled_records, size_t k) {
+    auto lb_rank = tree->get_rank(g_min_key);
+    auto ub_rank = tree->get_rank(g_max_key);
+
+    size_t total_weight = ub_rank - lb_rank;
+    for (size_t i=0; i<k; i++) {
+        auto r = lb_rank + gsl_rng_uniform_int(g_rng, total_weight);
+        auto rec = tree->get_nth(r);
+
+        sampled_records[i] = *rec;
+    }
+
+}
+
+static bool warmup(std::fstream *file, AvlSet *tree, size_t count, double delete_prop, bool progress=true)
+{
+    std::string line;
+
+    lsm::key_type key;
+    lsm::value_type val;
+    lsm::weight_type weight;
+
+    size_t del_buf_size = 100;
+    size_t del_buf_idx = del_buf_size;
+    std::vector<lsm::key_type> delbuf(del_buf_size);
+
+    
+    double last_percent = 0;
+    for (size_t i=0; i<count; i++) {
+        if (!next_record(file, (char*) &key, (char*) &val, &weight)) {
+            return false;
+        }
+
+        tree->insert(key, weight);
+
+        if ( i > 10*del_buf_size && del_buf_idx == del_buf_size) {
+            avl_sample(tree, delbuf, del_buf_size);
+            del_buf_idx = 0;
+        }
+
+        if (del_buf_idx != del_buf_size && gsl_rng_uniform(g_rng) < delete_prop) {
+            tree->erase(delbuf[del_buf_idx++]);
+        }
+
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up: ");
+            last_percent = (double) i / (double) count;
+        }
+    }
+
+    if (progress) {
+        progress_update(1, "warming up:");
+    }
+    return true;
+}
 
 static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delete_prop, bool progress=true)
 {

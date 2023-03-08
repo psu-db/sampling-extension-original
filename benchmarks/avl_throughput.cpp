@@ -2,22 +2,22 @@
 
 size_t g_insert_batch_size = 1000;
 
-static bool insert_benchmark(TreeMap *tree, std::fstream *file, 
+static bool insert_benchmark(AvlSet *tree, std::fstream *file, 
                       size_t insert_cnt, double delete_prop) {
     size_t deletes = insert_cnt * delete_prop;
-    std::vector<lsm::key_type> delbuf;
-    tree->range_sample(g_min_key, g_max_key, deletes, delbuf, g_rng);
+    std::vector<lsm::key_type> delbuf(deletes);
+    avl_sample(tree, delbuf, deletes);
     size_t applied_deletes = 0;
 
     size_t applied_inserts = 0;
-    std::vector<std::pair<btree_record, lsm::weight_type>> insert_vec;
+    std::vector<std::pair<lsm::key_type, lsm::weight_type>> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
 
     size_t total_time = 0;
 
     while (applied_inserts < insert_cnt && continue_benchmark) { 
-        continue_benchmark = build_btree_insert_vec(file, insert_vec, g_insert_batch_size);
+        continue_benchmark = build_avl_insert_vec(file, insert_vec, g_insert_batch_size);
         if (insert_vec.size() == 0) {
             break;
         }
@@ -30,7 +30,7 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
         for (size_t i=0; i<insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                tree->erase_one(delbuf[applied_deletes]);
+                tree->erase(delbuf[applied_deletes]);
                 local_deleted++;
             }
             // insert the record;
@@ -53,7 +53,7 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
 }
 
 
-static void sample_benchmark(TreeMap *tree, size_t k, size_t trial_cnt)
+static void sample_benchmark(AvlSet *tree, size_t k, size_t trial_cnt)
 {
     char progbuf[25];
     sprintf(progbuf, "sampling (%ld):", k);
@@ -69,7 +69,7 @@ static void sample_benchmark(TreeMap *tree, size_t k, size_t trial_cnt)
         progress_update((double) (i * batch_size) / (double) trial_cnt, progbuf);
         auto start = std::chrono::high_resolution_clock::now();
         for (int j=0; j < batch_size; j++) {
-            tree->range_sample(g_min_key, g_max_key, k, sample_set, g_rng);
+            avl_sample(tree, sample_set, k);
         }
         auto stop = std::chrono::high_resolution_clock::now();
 
@@ -87,7 +87,7 @@ static void sample_benchmark(TreeMap *tree, size_t k, size_t trial_cnt)
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: btree_throughput <filename> <record_count> <delete_proportion> [osm_data]\n");
+        fprintf(stderr, "Usage: avl_throughput <filename> <record_count> <delete_proportion> [osm_data]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -98,11 +98,11 @@ int main(int argc, char **argv)
 
     double insert_batch = 0.1; 
 
-    std::string root_dir = "benchmarks/data/lsm_insert_sample";
+    std::string root_dir = "benchmarks/data/avl_throughput";
 
     init_bench_env(record_count, true, use_osm);
 
-    auto sampling_tree = TreeMap();
+    auto sampling_tree = AvlSet();
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);
