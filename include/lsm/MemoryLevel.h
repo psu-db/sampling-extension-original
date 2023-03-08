@@ -106,17 +106,17 @@ public:
         return false;
     }
 
-    bool check_delete(size_t run_stop, const char* key, const char* val) {
+    bool check_tombstone(size_t run_stop, const char* key, const char* val) {
         for (size_t i = 0; i < run_stop;  ++i) {
             if (m_structure->m_runs[i] && (m_tagging || m_structure->m_bfs[i]->lookup(key, key_size))
-                && m_structure->m_runs[i]->check_delete(key, val))
+                && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
         }
         return false;
     }
 
-    bool delete_record(const char *key, const char *val)
-        for (size_t i = 0; i < run_stop;  ++i) {
+    bool delete_record(const char *key, const char *val) {
+        for (size_t i = 0; i < m_structure->m_cap;  ++i) {
             if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
                 return true;
             }

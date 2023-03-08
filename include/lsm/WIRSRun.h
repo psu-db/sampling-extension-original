@@ -21,7 +21,7 @@ class WIRSRun {
 public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -77,7 +77,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_deleted_cnt(0), m_tagging(tagging) {
         std::vector<Cursor> cursors;
         std::vector<double> weights;
         cursors.reserve(len);
@@ -108,14 +108,16 @@ public:
         if (m_tagging) {
             while (pq.size()) {
                 auto now = pq.peek(); pq.pop();
+                auto &cur = cursors[now.version];
                 if (get_delete_status(now.data)) {
-                    auto cur = cursors[now.version];
                     if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
                 } else {
-                    auto& cursor = cursors[now.version];
-                    memcpy(m_data + offset, cursor.ptr, record_size);
+                    memcpy(m_data + offset, cur.ptr, record_size);
                     offset += record_size;
                     ++m_reccnt;
+                    m_total_weight += get_weight(cur.ptr);
+                    weights.push_back(get_weight(cur.ptr));
+                    if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
                 }
             }
         } else {
@@ -179,6 +181,7 @@ public:
 
         if (record_match(ptr, key, val, false)) {
             set_delete_status(ptr);
+            m_deleted_cnt++;
             return true;
         }
 
@@ -215,8 +218,14 @@ public:
         for (size_t i=0; i<sample_sz; i++) {
             size_t idx = m_alias->get(rng);
             const char *rec = this->get_record_at(idx);
-            if (state) {
+            if (m_tagging) {
+                if (get_delete_status(rec)) {
+                    m_rejection_cnt++;
+                    continue;
+                }
+            } else if (state) {
                 if (check_deleted(rec, state)) {
+                    m_rejection_cnt++;
                     continue;
                 }
             }
@@ -246,7 +255,7 @@ public:
         return min;
     }
 
-    bool check_delete(const char* key, const char* val) {
+    bool check_tombstone(const char* key, const char* val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -260,9 +269,7 @@ public:
             ptr += record_size;
         }
 
-        bool result = (m_tagging) ? get_delete_status(ptr)
-                                  : record_match(ptr, key, val, true);
-        m_rejection_cnt += result;
+        bool result = record_match(ptr, key, val, true);
         return result;
     }
 
@@ -279,12 +286,18 @@ public:
     size_t get_rejection_count() {
         return m_rejection_cnt;
     }
+
+    size_t get_deleted_count() {
+        assert(m_tagging);
+        return m_deleted_cnt;
+    }
     
 private:
     char* m_data;
     Alias *m_alias;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
+    size_t m_deleted_cnt;
     double m_total_weight;
     bool m_tagging;
 

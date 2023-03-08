@@ -41,7 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = true;
 
-static constexpr bool DELETE_TAGGING = true;
+static constexpr bool DELETE_TAGGING = false;
 
 typedef ssize_t level_index;
 
@@ -100,14 +100,14 @@ public:
     }
 
 
-    int delete(const char *key, const char *val, gsl_rng *rng) {
-        static_assert(DELETE_TAGGING);
+    int delete_record(const char *key, const char *val, gsl_rng *rng) {
+        assert(DELETE_TAGGING);
 
         auto mtable = this->memtable();
         // Check the levels first. This assumes there aren't 
         // any undeleted duplicate records.
-        if (auto &level : this->memory_levels) {
-            if (level->delete_record(key, val)) {
+        for (auto level : this->memory_levels) {
+            if (level && level->delete_record(key, val)) {
                 return 1;
             }
         }
@@ -164,6 +164,7 @@ public:
         state.memtable = mtable;
         state.mtable_cutoff = mtable_cutoff;
 
+        size_t passes = 0;
         do {
             TIMER_START();
             for (size_t i=0; i<rejections; i++) {
@@ -192,11 +193,20 @@ public:
                     rec = mtable->get_record_at(memtable_alias->get(rng));
                 }
 
-                if (rec && !mtable->check_delete(get_key(rec), get_val(rec), DELETE_TAGGING)) {
-                    memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                if (DELETE_TAGGING) {
+                    if (rec && !get_delete_status(rec)) {
+                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                    } else {
+                        rejections++;
+                    }
                 } else {
-                    rejections++;
+                    if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
+                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                    } else {
+                        rejections++;
+                    }
                 }
+
                 run_samples[0]--;
             }
             TIMER_STOP();
@@ -214,6 +224,7 @@ public:
             }
             TIMER_STOP();
             memlevel_sample_time += TIMER_RESULT();
+            passes++;
         } while (sample_idx < sample_sz);
 
         delete memtable_alias;
@@ -227,8 +238,17 @@ public:
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+
+        // If tagging is enabled, we just need to check if the record has the delete
+        // tag set
+        if (DELETE_TAGGING) {
+            return get_delete_status(record);
+        }
+
+        // Otherwise, we need to look for a tombstone.
+
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_delete(get_key(record), get_val(record), DELETE_TAGGING)) {
+        if (memtable->check_tombstone(get_key(record), get_val(record))) {
             return true;
         }
 
@@ -239,7 +259,7 @@ public:
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->check_delete(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
+                if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
                     return true;
                 }
             } else {
@@ -254,7 +274,7 @@ public:
         // check the level containing the run
         if (rid.level_idx < memory_levels.size()) {
             size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->check_delete(run_idx, get_key(record), get_val(record));
+            return memory_levels[rid.level_idx]->check_tombstone(run_idx, get_key(record), get_val(record));
         } else {
             size_t isam_lvl = rid.level_idx - memory_levels.size();
             size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());

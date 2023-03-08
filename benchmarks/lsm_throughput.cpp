@@ -36,7 +36,11 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
                 auto weight = lsm::get_weight(delbuf + (applied_deletes * lsm::record_size));
 
                 if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
-                    tree->append(key, val, weight, true, g_rng);
+                    if (lsm::DELETE_TAGGING) {
+                        tree->delete_record(key, val, g_rng);
+                    } else {
+                        tree->append(key, val, weight, true, g_rng);
+                    }
                     deleted.insert(*(lsm::key_type *)key);
                     local_deleted++;
                 }

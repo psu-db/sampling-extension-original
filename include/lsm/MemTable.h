@@ -98,7 +98,7 @@ public:
     bool delete_record(const char *key, const char *val) {
         auto offset = 0;
         while (offset < m_current_tail) {
-            if (record_match(m_data + offset, key, value, false) {
+            if (record_match(m_data + offset, key, val, false)) {
                 set_delete_status(m_data + offset);
                 return true;
             }
@@ -108,21 +108,12 @@ public:
         return false;
     }
 
-    bool check_delete(const char* key, const char* value, bool tagging) {
-        if (!tagging) {
-            if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
-        }
+    bool check_tombstone(const char* key, const char* value) {
+        if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
 
         auto offset = 0;
         while (offset < m_current_tail) {
-            if (tagging) {
-                if (record_match(m_data + offset, key, value, false) 
-                    && get_delete_status(m_data + offset)) {
-                    return true;
-                }
-            } else {
-                if (record_match(m_data + offset, key, value, true)) return true;
-            }
+            if (record_match(m_data + offset, key, value, true)) return true;
             offset += record_size;
         }
         return false;

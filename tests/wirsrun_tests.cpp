@@ -287,7 +287,7 @@ START_TEST(t_tombstone_check)
     auto run = new WIRSRun(mtable, bf1, false);
 
     for (size_t i=0; i<tombstones.size(); i++) {
-        ck_assert(run->check_delete((char*) &tombstones[i].first, (char*) &tombstones[i].second));
+        ck_assert(run->check_tombstone((char*) &tombstones[i].first, (char*) &tombstones[i].second));
         ck_assert_int_eq(run->get_rejection_count(), i+1);
     }
 

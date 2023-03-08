@@ -277,7 +277,11 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             del_buf_ptr++;
 
             if (deleted_keys.find(*(lsm::key_type *) key) == deleted_keys.end()) {
-                lsmtree->append(key, val, 0, true, g_rng);
+                if (lsm::DELETE_TAGGING) {
+                    lsmtree->delete_record(key, val, g_rng);
+                } else {
+                    lsmtree->append(key, val, 0, true, g_rng);
+                }
                 deleted_keys.insert(*(lsm::key_type*) key);
             }
         }
@@ -334,51 +338,6 @@ static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delet
 
     if (progress) {
         progress_update(1, "warming up:");
-    }
-
-    return true;
-}
-
-
-
-
-
-
-static bool insert_to(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, double delete_prop) {
-    std::string line;
-
-    auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    auto val_buf = std::make_unique<char[]>(lsm::value_size);
-    lsm::weight_type weight;
-    
-    for (size_t i=0; i<count; i++) {
-        if (!next_record(file, key_buf.get(), val_buf.get(), &weight)) {
-            return false;
-        }
-
-        lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
-
-        if (gsl_rng_uniform(g_rng) < delete_prop + .15) {
-            auto del_key_buf = new char[lsm::key_size]();
-            auto del_val_buf = new char[lsm::value_size]();
-            memcpy(del_key_buf, key_buf.get(), lsm::key_size);
-            memcpy(del_val_buf, val_buf.get(), lsm::value_size);
-            g_to_delete->insert({std::shared_ptr<char[]>(del_key_buf), std::shared_ptr<char[]>(del_val_buf), weight});
-        }
-
-        if (gsl_rng_uniform(g_rng) < delete_prop) {
-            std::vector<shared_record> del_vec;
-            std::sample(g_to_delete->begin(), g_to_delete->end(), 
-                        std::back_inserter(del_vec), 1, 
-                        std::mt19937{std::random_device{}()});
-
-            if (del_vec.size() == 0) {
-                continue;
-            }
-
-            lsmtree->append(del_vec[0].key.get(), del_vec[0].value.get(), 0, true, g_rng); 
-            g_to_delete->erase(del_vec[0]);
-        }
     }
 
     return true;
