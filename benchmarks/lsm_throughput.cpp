@@ -134,7 +134,7 @@ int main(int argc, char **argv)
 
     insert_benchmark(&sampling_lsm, &datafile, insert_cnt, delete_prop);
 
-    size_t max_sample_size = 100000;
+    size_t max_sample_size = 1000000;
     for (size_t sample_size =1; sample_size < max_sample_size; sample_size *= 10) {
         sample_benchmark(&sampling_lsm, sample_size, 10000);
     }
