@@ -18,6 +18,8 @@ public:
         m_cutoff = new double[n];
         auto overfull = std::vector<size_t>();
         auto underfull = std::vector<size_t>();
+        overfull.reserve(n);
+        underfull.reserve(n);
 
         // initialize the probability_table with n*p(i) as well as the overfull and
         // underfull lists.
@@ -40,9 +42,9 @@ public:
             m_cutoff[i] = m_cutoff[i] + m_cutoff[j] - 1.0;
 
             if (m_cutoff[i] > 1.0) {
-                overfull.push_back(i);
+                overfull.emplace_back(i);
             } else if (m_cutoff[i] < 1.0) {
-                underfull.push_back(i);
+                underfull.emplace_back(i);
             }
         }
     }
