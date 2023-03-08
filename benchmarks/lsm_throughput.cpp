@@ -4,13 +4,18 @@ size_t g_insert_batch_size = 1000;
 
 static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file, 
                       size_t insert_cnt, double delete_prop) {
-    size_t deletes = insert_cnt * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
-    tree->range_sample(delbuf, deletes, g_rng);
-    std::set<lsm::key_type> deleted;
-    size_t applied_deletes = 0;
 
+    size_t delete_cnt = insert_cnt * delete_prop;
+    size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
+    size_t delete_idx = delete_batch_size;
+
+    char *delbuf = new char[delete_batch_size * lsm::record_size]();
+
+    std::set<lsm::key_type> deleted;
+
+    size_t applied_deletes = 0;
     size_t applied_inserts = 0;
+
     std::vector<shared_record> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
@@ -19,8 +24,16 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     while (applied_inserts < insert_cnt && continue_benchmark) { 
         continue_benchmark = build_insert_vec(file, insert_vec, g_insert_batch_size);
+
         if (insert_vec.size() == 0) {
             break;
+        }
+
+        // if we've fully processed the delete vector, sample a new
+        // set of records to delete.
+        if (delete_idx > delete_batch_size) {
+            tree->range_sample(delbuf, delete_batch_size, g_rng);
+            deleted.clear();
         }
 
         progress_update((double) applied_inserts / (double) insert_cnt, "inserting:");
@@ -30,10 +43,11 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<insert_vec.size(); i++) {
             // process a delete if necessary
-            if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
-                auto weight = lsm::get_weight(delbuf + (applied_deletes * lsm::record_size));
+            if (applied_deletes < delete_cnt && delete_idx < delete_batch_size && gsl_rng_uniform(g_rng) < delete_prop) {
+                auto key = lsm::get_key(delbuf + (delete_idx * lsm::record_size));
+                auto val = lsm::get_val(delbuf + (delete_idx * lsm::record_size));
+                auto weight = lsm::get_weight(delbuf + (delete_idx * lsm::record_size));
+                delete_idx++;
 
                 if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
                     if (lsm::DELETE_TAGGING) {

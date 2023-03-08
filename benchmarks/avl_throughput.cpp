@@ -5,8 +5,10 @@ size_t g_insert_batch_size = 1000;
 static bool insert_benchmark(AvlSet *tree, std::fstream *file, 
                       size_t insert_cnt, double delete_prop) {
     size_t deletes = insert_cnt * delete_prop;
+    size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
+    size_t delete_idx = delete_batch_size;
+    std::set<lsm::key_type> deleted;
     std::vector<lsm::key_type> delbuf(deletes);
-    avl_sample(tree, delbuf, deletes);
     size_t applied_deletes = 0;
 
     size_t applied_inserts = 0;
@@ -22,6 +24,12 @@ static bool insert_benchmark(AvlSet *tree, std::fstream *file,
             break;
         }
 
+
+        if (delete_idx > delete_batch_size) {
+            avl_sample(tree, delbuf, deletes);
+            deleted.clear();
+        }
+
         progress_update((double) applied_inserts / (double) insert_cnt, "inserting:");
         size_t local_inserted = 0;
         size_t local_deleted = 0;
@@ -29,9 +37,15 @@ static bool insert_benchmark(AvlSet *tree, std::fstream *file,
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<insert_vec.size(); i++) {
             // process a delete if necessary
-            if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                tree->erase(delbuf[applied_deletes]);
-                local_deleted++;
+            if (applied_deletes < deletes && delete_idx < delete_batch_size && gsl_rng_uniform(g_rng) < delete_prop) {
+
+                if (deleted.find(delbuf[delete_idx]) == deleted.end()) {
+                    tree->erase(delbuf[applied_deletes]);
+                    local_deleted++;
+                    deleted.insert(delbuf[delete_idx]);
+                }
+
+                delete_idx++;
             }
             // insert the record;
             tree->insert(insert_vec[local_inserted].first, insert_vec[local_inserted].second);
