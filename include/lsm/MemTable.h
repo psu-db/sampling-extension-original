@@ -10,6 +10,7 @@
 #include "ds/BloomFilter.h"
 #include "util/record.h"
 #include "ds/Alias.h"
+#include  "util/timer.h"
 
 namespace lsm {
 
@@ -75,7 +76,14 @@ public:
     }
 
     char* sorted_output() {
+        TIMER_INIT();
+        TIMER_START();
         qsort(m_data, m_reccnt.load(), record_size, memtable_record_cmp);
+        TIMER_STOP();
+
+        #ifdef INSTRUMENT_MERGING
+        fprintf(stderr, "sort\t%ld\n", TIMER_RESULT());
+        #endif
         return m_data;
     }
     

@@ -467,6 +467,8 @@ private:
     // Merge the memory table down into the tree, completing any required other
     // merges to make room for it.
     inline void merge_memtable(gsl_rng *rng) {
+        TIMER_INIT();
+        TIMER_START();
         auto mtable = this->memtable();
 
         if (!this->can_merge_with(0, mtable->get_record_count())) {
@@ -474,9 +476,15 @@ private:
         }
 
         this->merge_memtable_into_l0(mtable, rng);
+        TIMER_STOP();
+
         this->enforce_tombstone_maximum(0, rng);
 
         mtable->truncate();
+
+        #ifdef INSTRUMENT_MERGING
+            fprintf(stderr, "merge\t%ld\t%ld\n", TIMER_RESULT(), this->get_record_cnt());
+        #endif
         return;
     }
 

@@ -8,6 +8,7 @@
 #include "lsm/MemTable.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
+#include "util/timer.h"
 #include "ds/Alias.h"
 
 namespace lsm {
@@ -34,6 +35,8 @@ public:
         auto base = mem_table->sorted_output();
         auto stop = base + mem_table->get_record_count() * record_size;
 
+        TIMER_INIT();
+        TIMER_START();
         if (m_tagging) {
             while (base < stop) {
                 if (!get_delete_status(base)) {
@@ -68,7 +71,11 @@ public:
                 }
             }
         }
+        TIMER_STOP();
 
+        auto merge_time = TIMER_RESULT();
+
+        TIMER_START();
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
             weights[i] = weights[i] / (double) m_total_weight;
@@ -76,6 +83,13 @@ public:
 
         // build the alias structure
         m_alias = new Alias(weights);
+        TIMER_STOP();
+
+        auto alias_time = TIMER_RESULT();
+
+        #ifdef INSTRUMENT_MERGING
+        fprintf(stderr, "run\t%ld\t%ld\n", merge_time, alias_time);
+        #endif
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
