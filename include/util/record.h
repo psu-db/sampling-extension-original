@@ -8,7 +8,7 @@ namespace lsm {
 typedef uint32_t rec_hdr;
 typedef uint64_t key_type;
 typedef uint32_t value_type;
-typedef double   weight_type;
+typedef uint64_t weight_type;
 
 constexpr static size_t key_size = sizeof(key_type);
 constexpr static size_t value_size = sizeof(value_type);
@@ -31,7 +31,7 @@ inline static void layout_memtable_record(char* buffer, const char* key, const c
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
-    *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 1) | (tombstone ? 1 : 0));
+    *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 2) | (tombstone ? 1 : 0));
     *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
@@ -56,6 +56,7 @@ inline static const char *get_val(const char *buffer) {
     return buffer + MAXALIGN(key_size);
 }
 
+
 inline static const char *get_record(const char *buffer, size_t idx) {
     return buffer + record_size*idx;
 }
@@ -64,8 +65,18 @@ inline static const char* get_hdr(const char *buffer) {
     return buffer + MAXALIGN(key_size) + value_size;
 }
 
+
+inline static void set_delete_status(char *buffer) {
+    *((rec_hdr *)get_hdr(buffer)) |= 2;
+}
+
 inline static bool is_tombstone(const char *buffer) {
     return *((rec_hdr *)get_hdr(buffer)) & 1;
+}
+
+
+inline static bool get_delete_status(const char *buffer) {
+    return *((rec_hdr *)get_hdr(buffer)) & 2;
 }
 
 inline static double get_weight(const char* buffer) {

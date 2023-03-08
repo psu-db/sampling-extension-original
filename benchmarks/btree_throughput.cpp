@@ -10,7 +10,7 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
     size_t applied_deletes = 0;
 
     size_t applied_inserts = 0;
-    std::vector<std::pair<btree_record, double>> insert_vec;
+    std::vector<std::pair<btree_record, lsm::weight_type>> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
 

@@ -94,7 +94,7 @@ START_TEST(t_memtable_init)
     }
 
     BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
-    WIRSRun* run = new WIRSRun(mem_table, bf);
+    WIRSRun* run = new WIRSRun(mem_table, bf, false);
     ck_assert_uint_eq(run->get_record_count(), 512);
 
     delete bf;
@@ -112,13 +112,13 @@ START_TEST(t_inmemrun_init)
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    auto run1 = new WIRSRun(memtable1, bf1);
-    auto run2 = new WIRSRun(memtable2, bf2);
-    auto run3 = new WIRSRun(memtable3, bf3);
+    auto run1 = new WIRSRun(memtable1, bf1, false);
+    auto run2 = new WIRSRun(memtable2, bf2, false);
+    auto run3 = new WIRSRun(memtable3, bf3, false);
 
     BloomFilter* bf4 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     WIRSRun* runs[3] = {run1, run2, run3};
-    auto run4 = new WIRSRun(runs, 3, bf4);
+    auto run4 = new WIRSRun(runs, 3, bf4, false);
 
     ck_assert_int_eq(run4->get_record_count(), n * 3);
     ck_assert_int_eq(run4->get_tombstone_count(), 0);
@@ -167,7 +167,7 @@ START_TEST(t_get_lower_bound_index)
 
     ck_assert_ptr_nonnull(memtable);
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    WIRSRun* run = new WIRSRun(memtable, bf);
+    WIRSRun* run = new WIRSRun(memtable, bf, false);
 
     ck_assert_int_eq(run->get_record_count(), n);
     ck_assert_int_eq(run->get_tombstone_count(), 0);
@@ -195,8 +195,8 @@ START_TEST(t_full_cancelation)
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
 
-    WIRSRun* run = new WIRSRun(mtable, bf1);
-    WIRSRun* run_ts = new WIRSRun(mtable_ts, bf2);
+    WIRSRun* run = new WIRSRun(mtable, bf1, false);
+    WIRSRun* run_ts = new WIRSRun(mtable_ts, bf2, false);
 
     ck_assert_int_eq(run->get_record_count(), n);
     ck_assert_int_eq(run->get_tombstone_count(), 0);
@@ -205,7 +205,7 @@ START_TEST(t_full_cancelation)
 
     WIRSRun* runs[] = {run, run_ts};
 
-    WIRSRun* merged = new WIRSRun(runs, 2, bf3);
+    WIRSRun* merged = new WIRSRun(runs, 2, bf3, false);
 
     ck_assert_int_eq(merged->get_tombstone_count(), 0);
     ck_assert_int_eq(merged->get_record_count(), 0);
@@ -228,7 +228,7 @@ START_TEST(t_weighted_sampling)
     auto mtable = create_weighted_memtable(n);
 
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    WIRSRun* run = new WIRSRun(mtable, bf);
+    WIRSRun* run = new WIRSRun(mtable, bf, false);
 
     key_type lower_key = 0;
     key_type upper_key = 5;
@@ -284,7 +284,7 @@ START_TEST(t_tombstone_check)
     }
 
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    auto run = new WIRSRun(mtable, bf1);
+    auto run = new WIRSRun(mtable, bf1, false);
 
     for (size_t i=0; i<tombstones.size(); i++) {
         ck_assert(run->check_tombstone((char*) &tombstones[i].first, (char*) &tombstones[i].second));

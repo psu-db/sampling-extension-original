@@ -12,7 +12,9 @@ gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 std::string dir = "./tests/data/lsmtree";
 
 bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
-    return ((double) std::abs(n1 - n2) / (double) mag) < epsilon;
+    double delta = ((double) std::abs(n1 - n2) / (double) mag);
+    fprintf(stderr, "%d\t%d\t%lf\n", n1, n2, delta);
+    return delta < epsilon;
 }
 
 START_TEST(t_create)
@@ -238,7 +240,11 @@ START_TEST(t_tombstone_merging_01)
             for (size_t i=0; i<del_vec.size(); i++) {
                 const char *d_key_ptr = (char *) &del_vec[i].first;
                 const char *d_val_ptr = (char *) &del_vec[i].second;
-                lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
+                if (lsm::DELETE_TAGGING) {
+                    lsm->delete_record(d_key_ptr, d_val_ptr, g_rng);
+                } else {
+                    lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
+                }
                 deletes++;
                 to_delete.erase(del_vec[i]);
                 deleted.insert(del_vec[i]);

@@ -99,6 +99,12 @@ if (bench)
     add_executable(btree_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_throughput.cpp)
     target_link_libraries(btree_throughput PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(btree_throughput PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_throughput")
+
+    add_executable(avl_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/avl_throughput.cpp)
+    target_link_libraries(avl_throughput PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(avl_throughput PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/avl_throughput")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")

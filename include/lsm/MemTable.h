@@ -95,6 +95,19 @@ public:
         return m_tombstonecnt.load();
     }
 
+    bool delete_record(const char *key, const char *val) {
+        auto offset = 0;
+        while (offset < m_current_tail) {
+            if (record_match(m_data + offset, key, val, false)) {
+                set_delete_status(m_data + offset);
+                return true;
+            }
+            offset += record_size;
+        }
+
+        return false;
+    }
+
     bool check_tombstone(const char* key, const char* value) {
         if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
 

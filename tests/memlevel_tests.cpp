@@ -49,16 +49,16 @@ START_TEST(t_memlevel_merge)
     auto tbl1 = create_test_memtable(100);
     auto tbl2 = create_test_memtable(100);
 
-    auto base_level = new MemoryLevel(1, 1);
+    auto base_level = new MemoryLevel(1, 1, false);
     base_level->append_mem_table(tbl1, g_rng);
     ck_assert_int_eq(base_level->get_record_cnt(), 100);
 
-    auto merging_level = new MemoryLevel(0, 1);
+    auto merging_level = new MemoryLevel(0, 1, false);
     merging_level->append_mem_table(tbl2, g_rng);
     ck_assert_int_eq(merging_level->get_record_cnt(), 100);
 
     auto old_level = base_level;
-    base_level = MemoryLevel::merge_levels(old_level, merging_level, g_rng);
+    base_level = MemoryLevel::merge_levels(old_level, merging_level, false, g_rng);
 
     delete old_level;
     delete merging_level;

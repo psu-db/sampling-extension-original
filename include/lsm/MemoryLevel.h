@@ -40,15 +40,17 @@ private:
     };
 
 public:
-    MemoryLevel(ssize_t level_no, size_t run_cap)
+    MemoryLevel(ssize_t level_no, size_t run_cap, bool tagging)
     : m_level_no(level_no), m_run_cnt(0)
-    , m_structure(new InternalLevelStructure(run_cap)) {}
+    , m_structure(new InternalLevelStructure(run_cap))
+    , m_tagging(tagging) {}
 
     // Create a new memory level sharing the runs and repurposing it as previous level_no + 1
     // WARNING: for leveling only.
-    MemoryLevel(MemoryLevel* level)
+    MemoryLevel(MemoryLevel* level, bool tagging)
     : m_level_no(level->m_level_no + 1), m_run_cnt(level->m_run_cnt)
-    , m_structure(level->m_structure) {
+    , m_structure(level->m_structure)
+    , m_tagging(tagging) {
         assert(m_structure->m_cap == 1 && m_run_cnt == 1);
     }
 
@@ -57,9 +59,9 @@ public:
 
     // WARNING: for leveling only.
     // assuming the base level is the level new level is merging into. (base_level is larger.)
-    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
+    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, bool tagging, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
-        auto res = new MemoryLevel(base_level->m_level_no, 1);
+        auto res = new MemoryLevel(base_level->m_level_no, 1, tagging);
         res->m_run_cnt = 1;
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
@@ -69,21 +71,21 @@ public:
         runs[0] = base_level->m_structure->m_runs[0];
         runs[1] = new_level->m_structure->m_runs[0];
 
-        res->m_structure->m_runs[0] = new WIRSRun(runs, 2, res->m_structure->m_bfs[0]);
+        res->m_structure->m_runs[0] = new WIRSRun(runs, 2, res->m_structure->m_bfs[0], tagging);
         return res;
     }
 
     void append_mem_table(MemTable* memtable, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, memtable->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new WIRSRun(memtable, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new WIRSRun(memtable, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
     }
 
     void append_merged_runs(MemoryLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new WIRSRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new WIRSRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
     }
 
@@ -105,11 +107,22 @@ public:
         return false;
     }
 
-    bool tombstone_check(size_t run_stop, const char* key, const char* val) {
+    bool check_tombstone(size_t run_stop, const char* key, const char* val) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_structure->m_runs[i] && m_structure->m_bfs[i]->lookup(key, key_size) && m_structure->m_runs[i]->check_tombstone(key, val))
+            if (m_structure->m_runs[i] && (m_tagging || m_structure->m_bfs[i]->lookup(key, key_size))
+                && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
         }
+        return false;
+    }
+
+    bool delete_record(const char *key, const char *val) {
+        for (size_t i = 0; i < m_structure->m_cap;  ++i) {
+            if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -212,6 +225,7 @@ private:
     
     size_t m_run_cnt;
     size_t m_run_size_cap;
+    bool m_tagging;
     std::shared_ptr<InternalLevelStructure> m_structure;
 };
 
