@@ -60,11 +60,11 @@ class LSMTree {
 
 public:
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
-            double max_tombstone_prop, double max_rejection_prop, gsl_rng *rng) 
+            double max_tombstone_prop, double max_rejection_rate, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
           scale_factor(scale_factor), 
           max_tombstone_prop(max_tombstone_prop),
-          max_rejections_per_tombstone(max_rejection_prop),
+          max_rejection_rate(max_rejection_rate),
           root_directory(root_dir),
           last_level_idx(-1),
           memory_level_cnt(memory_levels),
@@ -229,7 +229,7 @@ public:
 
         delete memtable_alias;
 
-        this->enforce_rejection_ratio_maximum(rng);
+        this->enforce_rejection_rate(rng);
     }
 
     // Checks the tree and memtable for a tombstone corresponding to
@@ -378,7 +378,7 @@ private:
 
     size_t scale_factor;
     double max_tombstone_prop;
-    double max_rejections_per_tombstone;
+    double max_rejection_rate;
 
     std::vector<MemoryLevel *> memory_levels;
     size_t memory_level_cnt;
@@ -640,7 +640,7 @@ private:
         return;
     }
 
-    inline void enforce_rejection_ratio_maximum(gsl_rng *rng) {
+    inline void enforce_rejection_rate(gsl_rng *rng) {
         if (this->memory_levels.size() == 0) {
             return;
         }
@@ -654,8 +654,7 @@ private:
             }
 
             if (this->memory_levels[idx]) {
-                double ratio = this->memory_levels[idx]->get_rejections_per_tombstone();
-                if (ratio > this->max_rejections_per_tombstone) {
+                if (this->memory_levels[idx]->get_rejection_rate() > this->max_rejection_rate) {
                     this->merge_down(i, rng);
                 }
             }

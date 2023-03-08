@@ -12,9 +12,10 @@ namespace lsm {
 
 class DiskLevel;
 
-
 class MemoryLevel {
 friend class DiskLevel;
+
+static const size_t REJECTION_TRIGGER_THRESHOLD = 1024;
 
 private:
     struct InternalLevelStructure {
@@ -200,19 +201,23 @@ public:
         return rej_cnt;
     }
 
-    double get_rejections_per_tombstone() {
+    double get_rejection_rate() {
         size_t rej_cnt = 0;
-        size_t ts_cnt = 0;
+        size_t attempt_cnt = 0;
         for (size_t i=0; i<m_run_cnt; i++) {
             if (m_structure->m_runs[i]) {
-                ts_cnt += m_structure->m_runs[i]->get_tombstone_count();
+                attempt_cnt += m_structure->m_runs[i]->get_ts_check_count();
                 rej_cnt += m_structure->m_runs[i]->get_rejection_count();
             }
         }
 
-        if (ts_cnt == 0) return 0;
+        if (attempt_cnt == 0) return 0;
 
-        return (double) rej_cnt / (double) ts_cnt;
+        // the rejection rate is considered 0 until we exceed an
+        // absolute threshold of rejections.
+        if (rej_cnt <= REJECTION_TRIGGER_THRESHOLD) return 0;
+
+        return (double) rej_cnt / (double) attempt_cnt;
     }
 
 private:

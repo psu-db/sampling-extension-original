@@ -21,7 +21,7 @@ class WIRSRun {
 public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -77,7 +77,7 @@ public:
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_deleted_cnt(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
         std::vector<Cursor> cursors;
         std::vector<double> weights;
         cursors.reserve(len);
@@ -256,6 +256,8 @@ public:
     }
 
     bool check_tombstone(const char* key, const char* val) {
+        m_ts_check_cnt += 1;
+
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -287,6 +289,10 @@ public:
         return m_rejection_cnt;
     }
 
+    size_t get_ts_check_count() {
+        return m_ts_check_cnt;
+    }
+
     size_t get_deleted_count() {
         assert(m_tagging);
         return m_deleted_cnt;
@@ -299,11 +305,13 @@ private:
     size_t m_tombstone_cnt;
     size_t m_deleted_cnt;
     double m_total_weight;
-    bool m_tagging;
 
     // The number of rejections caused by tombstones
     // in this WIRSRun.
     size_t m_rejection_cnt;
+    size_t m_ts_check_cnt;
+
+    bool m_tagging;
 };
 
 }
