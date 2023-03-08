@@ -24,7 +24,7 @@ inline static void layout_record(char* buffer, const char* key, const char* valu
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= tombstone;
-    *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
+    *(weight_type*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
 inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, weight_type weight = 1.0) {
@@ -32,7 +32,7 @@ inline static void layout_memtable_record(char* buffer, const char* key, const c
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 2) | (tombstone ? 1 : 0));
-    *(double*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
+    *(weight_type*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
 /*
@@ -79,8 +79,8 @@ inline static bool get_delete_status(const char *buffer) {
     return *((rec_hdr *)get_hdr(buffer)) & 2;
 }
 
-inline static double get_weight(const char* buffer) {
-    return *(double*)(get_hdr(buffer) + header_size);
+inline static weight_type get_weight(const char* buffer) {
+    return *(weight_type*)(get_hdr(buffer) + header_size);
 }
 
 static int record_match(const char* rec, const char* key, const char* value, bool tombstone) {
