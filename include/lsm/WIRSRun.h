@@ -41,6 +41,8 @@ public:
                     memcpy(m_data + offset, base, record_size);
                     offset += record_size;
                     ++m_reccnt;
+                    m_total_weight += get_weight(base);
+                    weights.push_back((double) get_weight(base));
                 }
                 base += record_size;
             }
@@ -62,14 +64,14 @@ public:
                     ++m_reccnt;
                     base += record_size;
                     m_total_weight += get_weight(base);
-                    weights.push_back(get_weight(base));
+                    weights.push_back((double) get_weight(base));
                 }
             }
         }
 
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
-            weights[i] = weights[i] / m_total_weight;
+            weights[i] = weights[i] / (double) m_total_weight;
         }
 
         // build the alias structure
@@ -116,7 +118,7 @@ public:
                     offset += record_size;
                     ++m_reccnt;
                     m_total_weight += get_weight(cur.ptr);
-                    weights.push_back(get_weight(cur.ptr));
+                    weights.push_back((double) get_weight(cur.ptr));
                     if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
                 }
             }
@@ -142,7 +144,7 @@ public:
                     offset += record_size;
                     ++m_reccnt;
                     m_total_weight += get_weight(cursor.ptr);
-                    weights.push_back(get_weight(cursor.ptr));
+                    weights.push_back((double) get_weight(cursor.ptr));
                     pq.pop();
                     
                     if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
@@ -152,7 +154,7 @@ public:
         
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
-            weights[i] = weights[i] / m_total_weight;
+            weights[i] = weights[i] / (double) m_total_weight;
         }
 
         // build the alias structure
@@ -281,7 +283,7 @@ public:
     }
 
 
-    double get_total_weight() {
+    weight_type get_total_weight() {
         return m_total_weight;
     }
 
@@ -304,7 +306,7 @@ private:
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     size_t m_deleted_cnt;
-    double m_total_weight;
+    weight_type m_total_weight;
 
     // The number of rejections caused by tombstones
     // in this WIRSRun.
