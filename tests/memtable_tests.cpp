@@ -13,7 +13,7 @@ using namespace lsm;
 START_TEST(t_create)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, rng);
+    auto mtable = new MemTable(100, 50, rng);
 
     ck_assert_ptr_nonnull(mtable);
     ck_assert_int_eq(mtable->get_capacity(), 100);
@@ -31,7 +31,7 @@ END_TEST
 START_TEST(t_insert)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, rng);
+    auto mtable = new MemTable(100, 50, rng);
 
     key_type key = 0;
     value_type val = 5;
@@ -66,7 +66,7 @@ END_TEST
 START_TEST(t_insert_tombstones)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, rng);
+    auto mtable = new MemTable(100, 50, rng);
 
     key_type key = 0;
     value_type val = 5;
@@ -109,7 +109,7 @@ END_TEST
 START_TEST(t_truncate)
 {
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 100, rng);
+    auto mtable = new MemTable(100, 100, rng);
 
     key_type key = 0;
     value_type val = 5;
@@ -154,7 +154,7 @@ START_TEST(t_sorted_output)
     size_t cnt = 100;
 
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(cnt, true, cnt/2, rng);
+    auto mtable = new MemTable(cnt, cnt/2, rng);
 
 
     std::vector<key_type> keys(cnt);

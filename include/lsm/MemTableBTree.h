@@ -15,15 +15,6 @@
 
 namespace lsm {
 
-/*
-struct btrec {
-    key_type key;
-    value_type val;
-    weight_type weight;
-    rec_hdr flags;
-};
-*/
-
 struct btkey {
     key_type key;
     value_type val;
@@ -66,7 +57,7 @@ typedef tlx::BTree<btkey, btkey, btrec_key, btkey_cmp> MemtableMap;
 
 class MemTable {
 public:
-    MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
+    MemTable(size_t capacity, size_t max_tombstone_cap, const gsl_rng* rng)
     : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_reccnt(0)
     , m_tombstonecnt(0), m_weight(0), m_max_weight(0) {
         m_tombstone_filter = nullptr;
