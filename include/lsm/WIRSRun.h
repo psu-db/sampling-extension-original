@@ -5,11 +5,12 @@
 #include <queue>
 #include <memory>
 
-#include "lsm/MemTable.h"
+#include "lsm/MemTableBTree.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
 #include "util/timer.h"
 #include "ds/Alias.h"
+#include "util/record.h"
 
 namespace lsm {
 
@@ -32,44 +33,38 @@ public:
 
         size_t offset = 0;
         m_reccnt = 0;
-        auto base = mem_table->sorted_output();
-        auto stop = base + mem_table->get_record_count() * record_size;
+        auto base = mem_table->begin();
+        auto stop = mem_table->end();
+
+        char mtable_record[record_size];
 
         TIMER_INIT();
         TIMER_START();
-        if (m_tagging) {
-            while (base < stop) {
-                if (!get_delete_status(base)) {
-                    *((rec_hdr*)get_hdr(base)) &= 3;
-                    memcpy(m_data + offset, base, record_size);
-                    offset += record_size;
-                    ++m_reccnt;
-                    m_total_weight += get_weight(base);
-                    weights.push_back((double) get_weight(base));
-                }
-                base += record_size;
-            }
-        } else {
-            while (base < stop) {
-                if (!is_tombstone(base) && (base + record_size < stop)
-                    && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
-                    base += record_size * 2;
-                    m_wirsrun_cancelations++;
-                } else {
-                    //Masking off the ts.
-                    *((rec_hdr*)get_hdr(base)) &= 1;
-                    memcpy(m_data + offset, base, record_size);
-                    if (is_tombstone(base)) {
-                        ++m_tombstone_cnt;
-                        bf->insert(get_key(base), key_size);
+
+        while (base != stop) {
+            if (!m_tagging) {
+                if (!(base->flags & 0x1)) {
+                    auto next = std::next(base);
+                    if (next->key == base->key && next->val == base->val && next->flags & 0x1) {
+                        m_wirsrun_cancelations++;
+                        base++;
+                        base++;
+                        continue;
                     }
-                    offset += record_size;
-                    ++m_reccnt;
-                    base += record_size;
-                    m_total_weight += get_weight(base);
-                    weights.push_back((double) get_weight(base));
                 }
             }
+
+            layout_record(m_data + offset, (char*) &base->key, (char*) &base->val, base->flags & 0x1, base->weight);
+            offset += record_size;
+            m_reccnt++;
+            m_total_weight += base->weight;
+            weights.push_back(base->weight);
+            if (base->flags & 0x1) {
+                m_tombstone_cnt++;
+                bf->insert((char*) &base->key, key_size);
+            }
+            
+            base++;
         }
         TIMER_STOP();
 
@@ -288,6 +283,9 @@ public:
         }
 
         bool result = record_match(ptr, key, val, true);
+        if (result) {
+            m_rejection_cnt++;
+        }
         return result;
     }
 
