@@ -89,6 +89,16 @@ public:
         ++m_run_cnt;
     }
 
+    WIRSRun *get_merged_run() {
+        WIRSRun *runs[m_run_cnt];
+
+        for (size_t i=0; i<m_run_cnt; i++) {
+            runs[i] = (m_structure->m_runs[i]) ? m_structure->m_runs[i] : nullptr;
+        }
+
+        return new WIRSRun(runs, m_run_cnt, nullptr, m_tagging);
+    }
+
     // Append the sample range in-order.....
     void get_run_weights(std::vector<double>& weights, std::vector<std::pair<RunId, WIRSRun *>> &runs) {
         for (size_t i=0; i<m_run_cnt; i++) {

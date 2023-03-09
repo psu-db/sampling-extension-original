@@ -282,6 +282,37 @@ public:
         }
     }
 
+    WIRSRun *create_static_structure() {
+        std::vector<WIRSRun *> runs;
+
+        if (this->memory_levels.size() > 0) {
+            for (int i=this->memory_levels.size() - 1; i>= 0; i--) {
+                if (this->memory_levels[i]) {
+                    runs.emplace_back(this->memory_levels[i]->get_merged_run());
+                }
+            }
+        }
+
+        runs.emplace_back(new WIRSRun(this->memtable(), nullptr, DELETE_TAGGING));
+
+        WIRSRun *runs_array[runs.size()];
+
+        size_t j = 0;
+        for (size_t i=0; i<runs.size(); i++) {
+            if (runs[i]) {
+                runs_array[j++] = runs[i];
+            }
+        }
+
+        WIRSRun *flattened = new WIRSRun(runs_array, j, nullptr, DELETE_TAGGING);
+
+        for (auto run : runs) {
+            delete run;
+        }
+
+        return flattened;
+    }
+
 
     size_t get_record_cnt() {
         // FIXME: need to account for both memtables with concurrency
