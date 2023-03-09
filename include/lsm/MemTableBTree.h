@@ -180,14 +180,19 @@ public:
         return m_tombstone_filter->get_memory_utilization();
     }
 
-    // rejection sampling
-    size_t get_sample(size_t k, std::vector<btkey> &ans, gsl_rng *rng) {
+    size_t get_samples(char *sample_set, size_t k, gsl_rng *rng) {
         size_t reccnt = m_reccnt.load();
         if (reccnt == 0) {
             return 0;
         }
 
+        std::vector<btkey> ans;
         m_tree->range_sample(m_min_key, m_max_key, k, ans, rng, false);
+
+        for (size_t i=0; i<ans.size(); i++) {
+            layout_record(sample_set + i*record_size, (char*) &ans[i].key, (char*) &ans[i].val, false, ans[i].weight);
+        }
+
         return ans.size();
     }
 
