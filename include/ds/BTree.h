@@ -1604,7 +1604,7 @@ public:
         return range_count_recur(root_, lower, upper);
     }
 
-    void range_sample(const key_type& lower, const key_type& upper, size_t k, std::vector<key_type>& ans, gsl_rng *rng) {
+    void range_sample(const key_type& lower, const key_type& upper, size_t k, std::vector<key_type>& ans, gsl_rng *rng, bool retry_rejections=true) {
         const node* n = root_;
 
         //Finding the LCA....
@@ -1618,7 +1618,8 @@ public:
         const node* lca = n;
         uint64_t lca_weight_count = calculate_weight(lca);
         ans.clear();
-        while (ans.size() < k) {
+        size_t attempts = 0;
+        while (attempts < k) {
             const node* now = lca;
 
             bool flag = false;
@@ -1667,6 +1668,12 @@ public:
             if (key_lessequal(lower, sample) && key_lessequal(sample, upper)) {
                 assert(sample <= upper && sample >= lower);
                 ans.emplace_back(sample);
+            }
+
+            if (retry_rejections) {
+                attempts = ans.size();
+            } else {
+                attempts++;
             }
         }
     }
