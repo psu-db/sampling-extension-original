@@ -19,7 +19,7 @@ constexpr static size_t weight_size = sizeof(weight_type);
 // Adding one more thing -> weight.
 constexpr static size_t record_size = MAXALIGN(key_size) + value_size + header_size + weight_size;
 
-inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone, weight_type weight = 1.0) {
+inline static void layout_record(char* buffer, const char* key, const char* value, bool tombstone, weight_type weight = 1) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
@@ -27,7 +27,7 @@ inline static void layout_record(char* buffer, const char* key, const char* valu
     *(weight_type*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
 
-inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, weight_type weight = 1.0) {
+inline static void layout_memtable_record(char* buffer, const char* key, const char* value, bool tombstone, uint32_t ts, weight_type weight = 1) {
     memset(buffer, 0, record_size);
     memcpy(buffer, key, key_size);
     memcpy(buffer + MAXALIGN(key_size), value, value_size);
