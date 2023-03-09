@@ -1,9 +1,9 @@
-#include <check.h>
 
 #include "lsm/WIRSRun.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
 
+#include <check.h>
 using namespace lsm;
 
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
@@ -16,7 +16,7 @@ static MemTable *create_test_memtable(size_t cnt)
         key_type key = rand();
         value_type val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append((char*) &key, (char*) &val, 1);
     }
 
     return mtable;
@@ -31,14 +31,14 @@ static MemTable *create_double_seq_memtable(size_t cnt)
         key_type key = i;
         value_type val = i;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append((char*) &key, (char *) &val, 1);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
         value_type val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append((char*) &key, (char *) &val, 1);
     }
 
     return mtable;

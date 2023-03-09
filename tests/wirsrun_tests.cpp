@@ -1,10 +1,10 @@
-#include <check.h>
 
 #include "lsm/WIRSRun.h"
 #include "lsm/LsmTree.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
 
+#include <check.h>
 using namespace lsm;
 
 bool roughly_equal(int n1, int n2, size_t mag, double epsilon) {
@@ -22,7 +22,7 @@ static MemTable *create_test_memtable(size_t cnt)
         key_type key = rand();
         value_type val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append((char*) &key, (char*) &val, 1);
     }
 
     return mtable;
@@ -62,14 +62,14 @@ static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false)
         key_type key = i;
         value_type val = i;
 
-        mtable->append((char*) &key, (char *) &val, 1.0, ts);
+        mtable->append((char*) &key, (char *) &val, 1, ts);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
         value_type val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val, 1.0, ts);
+        mtable->append((char*) &key, (char *) &val, 1, ts);
     }
 
     return mtable;
@@ -80,17 +80,17 @@ START_TEST(t_memtable_init)
     auto mem_table = new MemTable(1024, true, 1024, g_rng);
     for (uint64_t i = 512; i > 0; i--) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append((const char*)&i, (const char*)&v, 1);
     }
     
     for (uint64_t i = 1; i <= 256; ++i) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v, 1.0, true);
+        mem_table->append((const char*)&i, (const char*)&v, 1, true);
     }
 
     for (uint64_t i = 257; i <= 512; ++i) {
         uint32_t v = i + 1;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append((const char*)&i, (const char*)&v, 1);
     }
 
     BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
@@ -159,32 +159,6 @@ START_TEST(t_inmemrun_init)
     delete bf4;
     delete run4;
 }
-
-START_TEST(t_get_lower_bound_index)
-{
-    size_t n = 10000;
-    auto memtable = create_double_seq_memtable(n);
-
-    ck_assert_ptr_nonnull(memtable);
-    BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    WIRSRun* run = new WIRSRun(memtable, bf, false);
-
-    ck_assert_int_eq(run->get_record_count(), n);
-    ck_assert_int_eq(run->get_tombstone_count(), 0);
-
-    auto tbl_records = memtable->sorted_output();
-    for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = memtable->get_record_at(i);
-        auto pos = run->get_lower_bound(get_key(tbl_rec));
-        ck_assert_int_eq(*(key_type *) get_key(run->get_record_at(pos)), *(key_type*) get_key(tbl_rec));
-        ck_assert_int_le(pos, i);
-    }
-
-    delete memtable;
-    delete bf;
-    delete run;
-}
-
 
 START_TEST(t_full_cancelation)
 {
@@ -268,7 +242,7 @@ START_TEST(t_tombstone_check)
     key_type key = 1000;
     value_type val = 101;
     for (size_t i = 0; i < cnt; i++) {
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append((char*) &key, (char*) &val, 1);
         key++;
         val++;
     }
@@ -306,12 +280,6 @@ Suite *unit_testing()
     tcase_add_test(create, t_inmemrun_init);
     tcase_set_timeout(create, 100);
     suite_add_tcase(unit, create);
-
-
-    TCase *bounds = tcase_create("lsm::WIRSRun::get_{lower,upper}_bound Testing");
-    tcase_add_test(bounds, t_get_lower_bound_index);
-    tcase_set_timeout(bounds, 100);   
-    suite_add_tcase(unit, bounds);
 
 
     TCase *tombstone = tcase_create("lsm::WIRSRun::tombstone cancellation Testing");

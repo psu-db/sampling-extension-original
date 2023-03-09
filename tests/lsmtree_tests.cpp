@@ -1,10 +1,10 @@
-#include <check.h>
 #include <set>
 #include <random>
 #include <algorithm>
 
 #include "lsm/LsmTree.h"
 
+#include <check.h>
 using namespace lsm;
 
 gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
