@@ -26,6 +26,8 @@
 
 #include <gsl/gsl_rng.h>
 
+#include "util/record.h"
+
 
 namespace tlx {
 
@@ -245,7 +247,7 @@ private:
         //! Pointers to children
         node* childid[inner_slotmax + 1]; // NOLINT
 
-        double weight[inner_slotmax + 1];
+        lsm::weight_type weight[inner_slotmax + 1];
 
         //! Set variables to initial values.
         void initialize(const unsigned short l) {
@@ -289,7 +291,7 @@ private:
         //! Array of (key, data) pairs
         value_type slotdata[leaf_slotmax]; // NOLINT
 
-        double weight[leaf_slotmax];
+        lsm::weight_type weight[leaf_slotmax];
 
         //! Set variables to initial values
         void initialize() {
@@ -325,8 +327,8 @@ private:
         }
     };
 
-    static double calculate_weight(const node* n) {
-        double res = 0.0;
+    static lsm::weight_type calculate_weight(const node* n) {
+        lsm::weight_type res = 0.0;
         if (!n) return 0;
         else if (n->is_leafnode()) {
             for (unsigned short s = 0; s < n->slotuse; ++s)
@@ -1626,10 +1628,10 @@ public:
             while (!now->is_leafnode()) {
                 const InnerNode* inner = static_cast<const InnerNode*>(now);
 
-                double sum = std::accumulate(inner->weight, inner->weight + inner->slotuse + 1, 0.0);
+                lsm::weight_type sum = std::accumulate(inner->weight, inner->weight + inner->slotuse + 1, 0.0);
                 double pos = gsl_rng_uniform(rng) * sum;
 
-                double prefix_sum = 0;
+                lsm::weight_type prefix_sum = 0;
                 unsigned short s = -1;
                 do {
                     ++s;
@@ -1650,13 +1652,13 @@ public:
             }
             assert(now->is_leafnode());
             const LeafNode* leaf = static_cast<const LeafNode*>(now);
-            double sum = std::accumulate(leaf->weight, leaf->weight + leaf->slotuse, 0.0);
+            lsm::weight_type sum = std::accumulate(leaf->weight, leaf->weight + leaf->slotuse, 0.0);
             double pos = gsl_rng_uniform(rng) * sum;
 
             if (sum <= 0) {
                 continue;
             }
-            double prefix_sum = 0.0;
+            lsm::weight_type prefix_sum = 0.0;
             unsigned short s = -1;
             do {
                 ++s;
@@ -1959,13 +1961,13 @@ public:
 
     //! Attempt to insert a key/data pair into the B+ tree. If the tree does not
     //! allow duplicate keys, then the insert may fail if it is already present.
-    std::pair<iterator, bool> insert(const value_type& x, const double& weight) {
+    std::pair<iterator, bool> insert(const value_type& x, const lsm::weight_type& weight) {
         return insert_start(key_of_value::get(x), x, weight);
     }
 
     //! Attempt to insert a key/data pair into the B+ tree. The iterator hint is
     //! currently ignored by the B+ tree insertion routine.
-    iterator insert(iterator /* hint */, const value_type& x, const double& weight) {
+    iterator insert(iterator /* hint */, const value_type& x, const lsm::weight_type& weight) {
         return insert_start(key_of_value::get(x), x, weight).first;
     }
 
@@ -1992,7 +1994,7 @@ private:
     //! Start the insertion descent at the current root and handle root splits.
     //! Returns true if the item was inserted
     std::pair<iterator, bool>
-    insert_start(const key_type& key, const value_type& value, const double& weight) {
+    insert_start(const key_type& key, const value_type& value, const lsm::weight_type& weight) {
 
         node* newchild = nullptr;
         key_type newkey = key_type();
@@ -2045,7 +2047,7 @@ private:
      * inserted into the parent. Unroll / this splitting up to the root.
     */
     std::pair<iterator, bool> insert_descend(
-        node* n, const key_type& key, const value_type& value, const double& weight,
+        node* n, const key_type& key, const value_type& value, const lsm::weight_type& weight,
         key_type* splitkey, node** splitnode) {
 
         if (!n->is_leafnode())
@@ -2519,7 +2521,7 @@ public:
 
         if (!root_) return false;
 
-        double carry_weight = 0.0;
+        lsm::weight_type carry_weight = 0.0;
         result_t result = erase_one_descend(
             key, root_, nullptr, nullptr, nullptr, nullptr, nullptr, 0, carry_weight);
 
@@ -2557,7 +2559,7 @@ public:
 
         if (!root_) return;
 
-        double weight = 0.0;
+        lsm::weight_type weight = 0.0;
         result_t result = erase_iter_descend(
             iter, root_, nullptr, nullptr, nullptr, nullptr, nullptr, 0, weight);
 
@@ -2598,7 +2600,7 @@ private:
                                node* curr,
                                node* left, node* right,
                                InnerNode* left_parent, InnerNode* right_parent,
-                               InnerNode* parent, unsigned int parentslot, double& carry_weight) {
+                               InnerNode* parent, unsigned int parentslot, lsm::weight_type& carry_weight) {
         if (curr->is_leafnode())
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
@@ -2948,7 +2950,7 @@ private:
                                 node* curr,
                                 node* left, node* right,
                                 InnerNode* left_parent, InnerNode* right_parent,
-                                InnerNode* parent, unsigned int parentslot, double& carry_weight) {
+                                InnerNode* parent, unsigned int parentslot, lsm::weight_type& carry_weight) {
         if (curr->is_leafnode())
         {
             LeafNode* leaf = static_cast<LeafNode*>(curr);
