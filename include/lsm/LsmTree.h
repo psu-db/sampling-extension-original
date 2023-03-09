@@ -3,7 +3,7 @@
 #include <atomic>
 #include <numeric>
 
-#include "lsm/MemTable.h"
+#include "lsm/MemTableBTree.h"
 #include "lsm/MemoryLevel.h"
 #include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
@@ -35,12 +35,9 @@ thread_local size_t disklevel_sample_time = 0;
  * LSM Tree configuration global variables
  */
 
-// True for memtable rejection sampling
-static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
-
 static constexpr bool DELETE_TAGGING = false;
 
 typedef ssize_t level_index;
@@ -68,8 +65,8 @@ public:
           root_directory(root_dir),
           last_level_idx(-1),
           memory_level_cnt(memory_levels),
-          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
-          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
+          memtable_1(new MemTable(memtable_cap, memtable_bf_sz, rng)), 
+          memtable_2(new MemTable(memtable_cap, memtable_bf_sz, rng)),
           memtable_1_merging(false), memtable_2_merging(false) {}
 
     ~LSMTree() {
@@ -177,38 +174,13 @@ public:
             rejections = 0;
 
             TIMER_START();
-            while (run_samples[0] > 0) {
-                if (!LSM_REJ_SAMPLE && !memtable_alias) {
-                    TIMER_START();
-                    mtable->get_sample_range(&memtable_alias, &mtable_cutoff);
-                    TIMER_STOP();
+            std::vector<btkey> ans;
+            size_t sampled = mtable->get_samples(sample_set + sample_idx*record_size, run_samples[0], rng);
+            assert(sampled <= run_samples[0]);
+            sample_idx += sampled;
+            rejections += run_samples[0] - sampled;
+            run_samples[0] = 0;
 
-                    memtable_alias_time += TIMER_RESULT();
-                }
-
-                const char *rec;
-                if (LSM_REJ_SAMPLE) {
-                    rec = mtable->get_sample(rng);
-                } else {
-                    rec = mtable->get_record_at(memtable_alias->get(rng));
-                }
-
-                if (DELETE_TAGGING) {
-                    if (rec && !get_delete_status(rec)) {
-                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
-                    } else {
-                        rejections++;
-                    }
-                } else {
-                    if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
-                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
-                    } else {
-                        rejections++;
-                    }
-                }
-
-                run_samples[0]--;
-            }
             TIMER_STOP();
             memtable_sample_time += TIMER_RESULT();
 

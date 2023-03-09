@@ -67,6 +67,8 @@ public:
         }
 
         m_tree = new MemtableMap(cmptor);
+        m_min_key = {0};
+        m_max_key = {0};
     }
 
     ~MemTable() {
@@ -84,8 +86,23 @@ public:
             return 0;
         }
 
+
         /* format the BTree record entries */
         btkey nrec = to_btkey(key, value, weight);
+
+        if (pos == 0){
+            m_min_key = to_btkey(key, value, weight);
+            m_max_key = to_btkey(key, value, weight);
+        } else {
+            if (cmptor(nrec, m_min_key)) {
+                m_min_key = nrec;
+            }
+
+            if (cmptor(m_max_key, nrec)) {
+                m_max_key = nrec;
+            }
+        }
+
         nrec.flags |= (pos << 2) | is_tombstone;
 
         m_tree->insert(nrec, weight);
@@ -173,7 +190,7 @@ public:
 
     size_t get_samples(char *sample_set, size_t k, gsl_rng *rng) {
         size_t reccnt = m_reccnt.load();
-        if (reccnt == 0) {
+        if (reccnt == 0 || k == 0) {
             return 0;
         }
 
