@@ -15,41 +15,54 @@
 
 namespace lsm {
 
-typedef struct btrec {
+/*
+struct btrec {
     key_type key;
     value_type val;
     weight_type weight;
     rec_hdr flags;
-} btrec;
+};
+*/
 
-typedef struct btkey {
+struct btkey {
     key_type key;
     value_type val;
     weight_type weight;
     rec_hdr flags;
-} btkey;
 
-struct btrec_key {
-    static const btkey get(const btrec &v) {
-        return {v.key, v.val, v.weight, v.flags};
+    friend bool operator<=(const btkey &a, const btkey &b) {
+        return a.key <= b.key;
+    }
+
+    friend bool operator >=(const btkey &a, const btkey &b) {
+        return a.key >= b.key;
     }
 };
 
-typedef struct btkey_cmp {
-    bool operator()(const btkey& first, const btkey& second) {
+struct btrec_key {
+    static const btkey &get(const btkey &v) {
+        return v;
+    }
+};
+
+struct btkey_cmp {
+    bool operator()(const btkey& first, const btkey& second) const {
         int cmp = key_cmp((char*) &first.key, (char*) &second.key);
 
         if (cmp == 0) {
             int cmp2 = val_cmp((char*) &first.val, (char*) &second.val);
             if (cmp2 == 0) {
-                if (first.flags < second.flags) return -1;
-            else return 1;
-            } else return cmp2;
-        } else return cmp;
+                if (first.flags < second.flags) return true;
+            else return false;
+            } else return (cmp2 == -1);
+        } else return (cmp == -1);
     }
-} btkey_cmp;
+};
 
-typedef tlx::BTree<btkey, btrec, btrec_key, btkey_cmp> MemtableMap;
+static btkey_cmp cmptor;
+
+
+typedef tlx::BTree<btkey, btkey, btrec_key, btkey_cmp> MemtableMap;
 
 class MemTable {
 public:
@@ -61,10 +74,13 @@ public:
             assert(rng != nullptr);
             m_tombstone_filter = new BloomFilter(BF_FPR, max_tombstone_cap, BF_HASH_FUNCS, rng);
         }
+
+        m_tree = new MemtableMap(cmptor);
     }
 
     ~MemTable() {
         if (m_tombstone_filter) delete m_tombstone_filter;
+        if (m_tree) delete m_tree;
     }
 
     int append(const char* key, const char* value, weight_type weight, bool is_tombstone = false) {
@@ -78,13 +94,10 @@ public:
         }
 
         /* format the BTree record entries */
-        btrec nrec = {0};
-        nrec.key = *(key_type*) key;
-        nrec.val = *(value_type*) value;
-        nrec.weight = weight;
+        btkey nrec = to_btkey(key, value, weight);
         nrec.flags |= (pos << 2) | is_tombstone;
 
-        m_tree.insert(nrec, weight);
+        m_tree->insert(nrec, weight);
 
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
@@ -92,18 +105,7 @@ public:
         }
 
         m_reccnt.fetch_add(1);
-
-        double old_val, new_val;
-        do {
-            old_val = m_weight.load();
-            new_val = old_val + weight;
-        } while (!m_weight.compare_exchange_strong(old_val, new_val));
-
-        double old = m_max_weight.load();
-        while (old < weight) {
-            m_max_weight.compare_exchange_strong(old, weight);
-            old = m_max_weight.load();
-        }
+        m_weight.fetch_add(weight);
 
         return 1;     
     }
@@ -114,13 +116,17 @@ public:
         m_weight.store(0);
         m_max_weight.store(0);
         if (m_tombstone_filter) m_tombstone_filter->clear();
-        m_tree.clear();
+        m_tree->clear();
 
         return true;
     }
 
-    MemtableMap::iterator sorted_output() {
-        return m_tree.begin();
+    MemtableMap::iterator begin() {
+        return m_tree->begin();
+    }
+
+    MemtableMap::iterator end() {
+        return m_tree->end(); 
     }
     
     size_t get_record_count() {
@@ -141,10 +147,10 @@ public:
 
     bool delete_record(const char *key, const char *val) {
         btkey bkey = to_btkey(key, val);
-        auto itr = m_tree.lower_bound(bkey);
+        auto itr = m_tree->lower_bound(bkey);
 
         if (itr->key == *(key_type*) key && itr->val == *(value_type*) val) {
-            m_tree.erase(itr);
+            m_tree->erase(itr);
             return true;
         }
 
@@ -155,11 +161,12 @@ public:
         if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
 
         btkey bkey = to_btkey(key, val);
-        auto itr = m_tree.lower_bound(bkey);
+        auto itr = m_tree->lower_bound(bkey);
         while (itr->key == *(key_type*) key && itr->val == *(value_type*) val) {
             if (itr->flags & 0x1) {
                 return true;
             }
+            itr++;
         }
 
         return false;
@@ -180,7 +187,7 @@ public:
             return 0;
         }
 
-        m_tree.range_sample(m_min_key, m_max_key, k, ans, rng, false);
+        m_tree->range_sample(m_min_key, m_max_key, k, ans, rng, false);
         return ans.size();
     }
 
@@ -188,7 +195,7 @@ public:
         return m_tombstone_cap;
     }
 
-    double get_total_weight() {
+    weight_type get_total_weight() {
         return m_weight.load();
     }
 
@@ -200,18 +207,18 @@ private:
     btkey m_min_key;
     btkey m_max_key;
     
-    MemtableMap m_tree;
+    MemtableMap *m_tree;
     BloomFilter* m_tombstone_filter;
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
     alignas(64) std::atomic<size_t> m_reccnt;
-    alignas(64) std::atomic<double> m_weight;
-    alignas(64) std::atomic<double> m_max_weight;
+    alignas(64) std::atomic<weight_type> m_weight;
+    alignas(64) std::atomic<weight_type> m_max_weight;
 
-    btkey to_btkey(const char *key, const char *value) {
+    btkey to_btkey(const char *key, const char *value, weight_type weight=0) {
         btkey bkey;
         bkey.flags = 0;
-        bkey.weight = 0;
+        bkey.weight = weight;
         bkey.key = *(key_type*) key;
         bkey.val = *(value_type*) value;
 

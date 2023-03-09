@@ -1,4 +1,3 @@
-#include <check.h>
 #include <string>
 #include <thread>
 #include <gsl/gsl_rng.h>
@@ -6,8 +5,9 @@
 #include <algorithm>
 
 #include "testing.h"
-#include "lsm/MemTable.h"
+#include "lsm/MemTableBTree.h"
 
+#include <check.h>
 using namespace lsm;
 
 START_TEST(t_create)
@@ -19,7 +19,6 @@ START_TEST(t_create)
     ck_assert_int_eq(mtable->get_capacity(), 100);
     ck_assert_int_eq(mtable->get_record_count(), 0);
     ck_assert_int_eq(mtable->is_full(), false);
-    ck_assert_ptr_nonnull(mtable->sorted_output());
     ck_assert_int_eq(mtable->get_tombstone_count(), 0);
     ck_assert_int_eq(mtable->get_tombstone_capacity(), 50);
 
@@ -93,8 +92,6 @@ START_TEST(t_insert_tombstones)
 
     // inserting one more tombstone should not be possible
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, true), 0);
-
-
     ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, 1.0, false), 1);
 
     key++;
@@ -179,13 +176,17 @@ START_TEST(t_sorted_output)
     mtable->append((char *) &keys[cnt-1], (char*) &val, 1.0, true);
 
 
-    char *sorted_records = mtable->sorted_output();
+    auto itr = mtable->begin();
     std::sort(keys.begin(), keys.end());
 
-    for (size_t i=0; i<cnt; i++) {
-        key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
-        ck_assert_int_eq(*table_key, keys[i]);
+    size_t i=0;
+    while (itr != mtable->end()) {
+        ck_assert_int_eq(itr->key, keys[i]);
+        itr++;
+        i++;
     }
+
+    ck_assert_int_eq(i, cnt);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -201,51 +202,6 @@ void insert_records(std::vector<std::pair<key_type, value_type>> *values, size_t
 
 }
 
-START_TEST(t_multithreaded_insert)
-{
-    size_t cnt = 10000;
-    auto rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(cnt, true, cnt/2, rng);
-
-    std::vector<std::pair<key_type, value_type>> records(cnt);
-    for (size_t i=0; i<cnt; i++) {
-        records[i] = {rand(), rand()};
-    }
-
-    // perform a t_multithreaded insertion
-    size_t thread_cnt = 8;
-    size_t per_thread = cnt / thread_cnt;
-    std::vector<std::thread> workers(thread_cnt);
-    size_t start = 0;
-    size_t stop = start + per_thread;
-    for (size_t i=0; i<thread_cnt; i++) {
-        workers[i] = std::thread(insert_records, &records, start, stop, mtable);
-        start = stop;
-        stop = std::min(start + per_thread, cnt);
-    }
-
-    for (size_t i=0; i<thread_cnt; i++) {
-        if (workers[i].joinable()) {
-            workers[i].join();
-        }
-    }
-
-    ck_assert_int_eq(mtable->is_full(), 1);
-    ck_assert_int_eq(mtable->get_record_count(), cnt);
-
-    std::sort(records.begin(), records.end());
-    char *sorted_records = mtable->sorted_output();
-    for (size_t i=0; i<cnt; i++) {
-        key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
-        ck_assert_int_eq(*table_key, records[i].first);
-    }
-
-    delete mtable;
-    gsl_rng_free(rng);
-}
-END_TEST
-
-
 Suite *unit_testing()
 {
     Suite *unit = suite_create("MemTable Unit Testing");
@@ -258,7 +214,6 @@ Suite *unit_testing()
     TCase *append = tcase_create("lsm::MemTable::append Testing");
     tcase_add_test(append, t_insert);
     tcase_add_test(append, t_insert_tombstones);
-    tcase_add_test(append, t_multithreaded_insert);
 
     suite_add_tcase(unit, append);
 
