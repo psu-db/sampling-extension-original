@@ -285,7 +285,6 @@ public:
                 }
             } else if (state) {
                 if (check_deleted(rec, state)) {
-                    m_rejection_cnt++;
                     continue;
                 }
             }
@@ -332,6 +331,10 @@ public:
         }
 
         bool result = record_match(ptr, key, val, true);
+
+        if (result) {
+            m_rejection_cnt++;
+        }
         return result;
     }
 
