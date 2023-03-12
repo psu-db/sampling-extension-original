@@ -32,19 +32,19 @@ static MemTable *create_weighted_memtable(size_t cnt)
 {
     auto mtable = new MemTable(cnt, cnt, g_rng);
     
-    // Put in half of the count with weight one.
+    // Put in half of the count with weight two.
     key_type key = 1;
     for (size_t i=0; i< cnt / 2; i++) {
         mtable->append((char *) &key, (char *) &i, 2);
     }
 
-    // put in a quarter of the count with weight two.
+    // put in a quarter of the count with weight four.
     key = 2;
     for (size_t i=0; i< cnt / 4; i++) {
         mtable->append((char *) &key, (char *) &i, 4);
     }
 
-    // the remaining quarter with weight four.
+    // the remaining quarter with weight eight.
     key = 3;
     for (size_t i=0; i< cnt / 4; i++) {
         mtable->append((char *) &key, (char *) &i, 8);
