@@ -83,7 +83,7 @@ public:
         auto alias_time = TIMER_RESULT();
 
         #ifdef INSTRUMENT_MERGING
-        fprintf(stderr, "run\t%ld\t%ld\n", merge_time, alias_time);
+        fprintf(stderr, "memtable\t%ld\t%ld\n", merge_time, alias_time);
         #endif
     }
 
