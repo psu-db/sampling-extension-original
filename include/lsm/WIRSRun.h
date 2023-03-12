@@ -22,7 +22,7 @@ class WIRSRun {
 public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_tagging(tagging) {
 
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
@@ -31,9 +31,9 @@ public:
         m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
 
         size_t offset = 0;
-        m_reccnt = 0;
         auto base = mem_table->sorted_output();
         auto stop = base + mem_table->get_record_count() * record_size;
+
 
         TIMER_INIT();
         TIMER_START();
@@ -78,7 +78,7 @@ public:
         TIMER_START();
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
-            weights[i] = weights[i] / (double) m_total_weight;
+            weights[i] = (double) weights[i] / (double) m_total_weight;
         }
 
         // build the alias structure
@@ -98,8 +98,6 @@ public:
         std::vector<double> weights;
         cursors.reserve(len);
 
-        PriorityQueue pq(len);
-
         size_t attemp_reccnt = 0;
         
         for (size_t i = 0; i < len; ++i) {
@@ -108,9 +106,8 @@ public:
                 auto base = runs[i]->sorted_output();
                 cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size, 0, runs[i]->get_record_count()});
                 attemp_reccnt += runs[i]->get_record_count();
-                pq.push(cursors[i].ptr, i);
             } else {
-                cursors.emplace_back(Cursor{nullptr, nullptr, 0, 0});
+                cursors.emplace_back(g_empty_cursor);
             }
         }
 
@@ -121,6 +118,52 @@ public:
 
         size_t offset = 0;
 
+        size_t reccnt = 0;
+        Cursor *next = get_next(cursors);
+        do {
+            Cursor *current = next;
+            next = get_next(cursors, current); //something;
+
+            // Handle tombstone cancellation case if record tagging is not
+            // enabled
+            if (!m_tagging && !is_tombstone(current->ptr) && current != next &&
+                next->ptr < next->end && !record_cmp(current->ptr, next->ptr) && 
+                is_tombstone(next->ptr)) {
+                
+                reccnt += 2;
+                advance_cursor(current);
+                advance_cursor(next);
+                next = get_next(cursors);
+                continue;
+            }
+
+            // If the record is tagged as deleted, we can drop it
+            if (get_delete_status(current->ptr)) {
+                advance_cursor(current);
+                reccnt += 1;
+                continue;
+            }
+
+            // If the current record is a tombstone and tagging isn't in
+            // use, add it to the Bloom filter and increment the tombstone
+            // counter.
+            if (!m_tagging && is_tombstone(current->ptr)) {
+                ++m_tombstone_cnt;
+                bf->insert(get_key(current->ptr), key_size);
+            }
+
+            // Copy the record into the new run and increment the associated counters
+            memcpy(m_data + offset, current->ptr, record_size);
+            offset += record_size;
+            ++m_reccnt;
+            m_total_weight += get_weight(current->ptr);
+            weights.push_back((double) get_weight(current->ptr));
+            advance_cursor(current);
+            reccnt += 1;
+        } while (reccnt < attemp_reccnt);
+
+
+        /*
         if (m_tagging) {
             while (pq.size()) {
                 auto now = pq.peek(); pq.pop();
@@ -165,6 +208,7 @@ public:
                 }
             }
         }
+    */
         
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
