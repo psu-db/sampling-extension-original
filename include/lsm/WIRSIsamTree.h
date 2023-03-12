@@ -15,9 +15,24 @@
 #include "util/Cursor.h"
 #include "lsm/WIRSRun.h"
 #include "util/internal_record.h"
-#include "lsm/IsamTree.h"
 
 namespace lsm { 
+
+struct ISAMTreeMetaHeader {
+    PageNum root_node;
+    PageNum first_data_page;
+    PageNum last_data_page;
+    size_t tombstone_count;
+    size_t record_count;
+};
+
+const PageNum BTREE_META_PNUM = 1;
+const PageNum BTREE_FIRST_LEAF_PNUM = 2;
+
+const size_t ISAM_INIT_BUFFER_SIZE = 64; // measured in pages
+const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
+
+thread_local size_t cancelations = 0;
 
 // Convert an index into the runs array to the
 // corresponding index into the cursor array
