@@ -61,7 +61,7 @@ static bool insert_benchmark(AvlSet *tree, std::fstream *file,
     progress_update(1.0, "inserting:");
     size_t throughput = (((double) (applied_inserts + applied_deletes) / (double) total_time) * 1e9);
 
-    fprintf(stderr, "%ld\n", throughput);
+    fprintf(stdout, "%ld\n", throughput);
 
     return continue_benchmark;
 }
