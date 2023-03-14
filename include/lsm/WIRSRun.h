@@ -28,13 +28,14 @@ public:
         TIMER_START();
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
-        size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
+        size_t len = mem_table->get_record_count() * sizeof(record_t);
+        size_t alloc_size = len + (CACHELINE_SIZE - len % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
 
         size_t offset = 0;
         auto base = mem_table->sorted_output();
-        auto stop = base + mem_table->get_record_count() * record_size;
+        auto stop = base + mem_table->get_record_count();
         TIMER_STOP();
 
         auto setup_time = TIMER_RESULT();
@@ -42,35 +43,35 @@ public:
         TIMER_START();
         if (m_tagging) {
             while (base < stop) {
-                if (!get_delete_status(base)) {
-                    *((rec_hdr*)get_hdr(base)) &= 3;
+                if (!base->get_delete_status()) {
+                    base->header &= 3;
                     memcpy(m_data + offset, base, record_size);
                     offset += record_size;
                     ++m_reccnt;
-                    m_total_weight += get_weight(base);
-                    weights.push_back((double) get_weight(base));
+                    m_total_weight += base->weight;
+                    weights.push_back((double)base->weight);
                 }
                 base += record_size;
             }
         } else {
             while (base < stop) {
-                if (!is_tombstone(base) && (base + record_size < stop)
-                    && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
+                if (!base->is_tombstone() && (base + 1 < stop)
+                    && base->match(base + 1) && (base + 1)->is_tombstone()) {
                     base += record_size * 2;
                     m_wirsrun_cancelations++;
                 } else {
                     //Masking off the ts.
-                    *((rec_hdr*)get_hdr(base)) &= 1;
+                    base->header &= 1;
                     memcpy(m_data + offset, base, record_size);
-                    if (is_tombstone(base)) {
+                    if (base->is_tombstone()) {
                         ++m_tombstone_cnt;
-                        bf->insert(get_key(base), key_size);
+                        bf->insert(base->key, sizeof(key_t));
                     }
                     offset += record_size;
                     ++m_reccnt;
                     base += record_size;
-                    m_total_weight += get_weight(base);
-                    weights.push_back((double) get_weight(base));
+                    m_total_weight += base->weight;
+                    weights.push_back((double) base->weight);
                 }
             }
         }
@@ -110,16 +111,17 @@ public:
             //assert(runs[i]);
             if (runs[i]) {
                 auto base = runs[i]->sorted_output();
-                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size, 0, runs[i]->get_record_count()});
+                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count(), 0, runs[i]->get_record_count()});
                 attemp_reccnt += runs[i]->get_record_count();
             } else {
                 cursors.emplace_back(g_empty_cursor);
             }
         }
 
-        size_t alloc_size = (attemp_reccnt * record_size) + (CACHELINE_SIZE - (attemp_reccnt * record_size) % CACHELINE_SIZE);
+        auto len = attemp_reccnt * sizeof(record_t);
+        size_t alloc_size = len + (CACHELINE_SIZE - len % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
         weights.reserve(attemp_reccnt);
 
         size_t offset = 0;
@@ -135,9 +137,9 @@ public:
 
             // Handle tombstone cancellation case if record tagging is not
             // enabled
-            if (!m_tagging && !is_tombstone(current->ptr) && current != next &&
-                next->ptr < next->end && !record_cmp(current->ptr, next->ptr) && 
-                is_tombstone(next->ptr)) {
+            if (!m_tagging && !current->ptr->is_tombstone() && current != next &&
+                next->ptr < next->end && !current->ptr->match(next->ptr) && 
+                next->ptr->is_tombstone()) {
                 
                 reccnt += 2;
                 advance_cursor(current);
@@ -147,7 +149,7 @@ public:
             }
 
             // If the record is tagged as deleted, we can drop it
-            if (get_delete_status(current->ptr)) {
+            if (current->ptr->get_delete_status()) {
                 advance_cursor(current);
                 reccnt += 1;
                 continue;
@@ -156,17 +158,17 @@ public:
             // If the current record is a tombstone and tagging isn't in
             // use, add it to the Bloom filter and increment the tombstone
             // counter.
-            if (!m_tagging && is_tombstone(current->ptr)) {
+            if (!m_tagging && current->ptr->is_tombstone()) {
                 ++m_tombstone_cnt;
-                bf->insert(get_key(current->ptr), key_size);
+                bf->insert(current->ptr->key, sizeof(key_t));
             }
 
             // Copy the record into the new run and increment the associated counters
             memcpy(m_data + offset, current->ptr, record_size);
             offset += record_size;
             ++m_reccnt;
-            m_total_weight += get_weight(current->ptr);
-            weights.push_back((double) get_weight(current->ptr));
+            m_total_weight += current->ptr->weight;
+            weights.push_back((double) current->ptr->weight);
             advance_cursor(current);
             reccnt += 1;
         } while (reccnt < attemp_reccnt);
@@ -247,7 +249,7 @@ public:
     }
 
 
-    bool delete_record(const char *key, const char *val) {
+    bool delete_record(const key_t& key, const value_t& val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
@@ -270,7 +272,7 @@ public:
         return false;
     }
 
-    char* sorted_output() const {
+    record_t* sorted_output() const {
         return m_data;
     }
     
@@ -317,16 +319,14 @@ public:
         return sampled_cnt;
     }
 
-    size_t get_lower_bound(const char *key) const {
+    size_t get_lower_bound(const key_t& key) const {
         size_t min = 0;
         size_t max = m_reccnt - 1;
 
-        const char * record_key;
         while (min < max) {
             size_t mid = (min + max) / 2;
-            record_key = get_key(m_data + (mid * record_size));
 
-            if (key_cmp(key, record_key) > 0) {
+            if (key > m_data[mid].key) {
                 min = mid + 1;
             } else {
                 max = mid;
@@ -384,12 +384,13 @@ public:
     }
     
 private:
-    char* m_data;
+    //char* m_data;
+    record_t* m_data;
     Alias *m_alias;
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     size_t m_deleted_cnt;
-    weight_type m_total_weight;
+    weight_t m_total_weight;
 
     // The number of rejections caused by tombstones
     // in this WIRSRun.

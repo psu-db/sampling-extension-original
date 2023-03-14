@@ -19,9 +19,9 @@ class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
     : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity * record_size), m_reccnt(0)
-    , m_tombstonecnt(0), m_current_tail(0), m_weight(0), m_max_weight(0) {
+    , m_tombstonecnt(0), m_weight(0), m_max_weight(0) {
         size_t aligned_buffersize = m_buffersize + (CACHELINE_SIZE - (m_buffersize % CACHELINE_SIZE));
-        m_data = (char*) std::aligned_alloc(CACHELINE_SIZE, aligned_buffersize);
+        m_data = (record_t*) std::aligned_alloc(CACHELINE_SIZE, aligned_buffersize);
         m_tombstone_filter = nullptr;
         if (max_tombstone_cap > 0) {
             assert(rng != nullptr);
@@ -34,14 +34,18 @@ public:
         if (m_tombstone_filter) delete m_tombstone_filter;
     }
 
-    int append(const char* key, const char* value, double weight=1.0, bool is_tombstone = false) {
+    int append(key_t key, value_t value, weight_t weight = 1, bool is_tombstone = false) {
         if (is_tombstone && m_tombstonecnt + 1 > m_tombstone_cap) return 0;
 
-        ssize_t pos = 0;
+        int32_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
 
+        m_data[pos].key = key;
+        m_data[pos].value = value;
+        m_data[pos].header |= ((pos << 2) | (is_tombstone ? 1 : 0));
+        m_data[pos].weight = weight;
 
-        layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size, weight);
+        //layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size, weight);
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
             if (m_tombstone_filter) m_tombstone_filter->insert(key, key_size);
@@ -65,7 +69,6 @@ public:
     }
 
     bool truncate() {
-        m_current_tail.store(0);
         m_tombstonecnt.store(0);
         m_reccnt.store(0);
         m_weight.store(0);
@@ -75,10 +78,11 @@ public:
         return true;
     }
 
-    char* sorted_output() {
+    record_t* sorted_output() {
         TIMER_INIT();
         TIMER_START();
-        qsort(m_data, m_reccnt.load(), record_size, memtable_record_cmp);
+        std::sort(m_data, m_data + m_reccnt.load(), memtable_record_cmp);
+        //qsort(m_data, m_reccnt.load(), record_size, memtable_record_cmp);
         TIMER_STOP();
 
         #ifdef INSTRUMENT_MERGING
@@ -103,26 +107,26 @@ public:
         return m_tombstonecnt.load();
     }
 
-    bool delete_record(const char *key, const char *val) {
+    bool delete_record(const key_t& key, const value_t& val) {
         auto offset = 0;
-        while (offset < m_current_tail) {
-            if (record_match(m_data + offset, key, val, false)) {
-                set_delete_status(m_data + offset);
+        while (offset < m_reccnt.load()) {
+            if (m_data[offset].match(key, val, false)) {
+                m_data[offset].set_delete_status();
                 return true;
             }
-            offset += record_size;
+            offset++;
         }
 
         return false;
     }
 
-    bool check_tombstone(const char* key, const char* value) {
+    bool check_tombstone(const key_t& key, const value_t& value) {
         if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
 
         auto offset = 0;
-        while (offset < m_current_tail) {
-            if (record_match(m_data + offset, key, value, true)) return true;
-            offset += record_size;
+        while (offset < m_reccnt.load()) {
+            if (m_data[offset].match(key, value, true)) return true;
+            offset++;;
         }
         return false;
     }
@@ -145,37 +149,36 @@ public:
       std::vector<double> weights;
 
       *cutoff = std::atomic_load(&m_reccnt) - 1;
+      double tot_weight = 0.0;
       for (size_t i = 0; i < (*cutoff) + 1; i++) {
-        char *rec = m_data + (i * record_size);
-
-        if (!is_tombstone(rec)) {
-          weights.push_back(get_weight(rec));
+        if (!m_data[i].is_tombstone()) {
+          tot_weight += m_data[i].weight;
+          weights.emplace_back(m_data[i].weight);
         }
       }
 
-      double total_weight = std::accumulate(weights.begin(), weights.end(), 0);
       for (size_t i = 0; i < weights.size(); i++) {
-        weights[i] = weights[i] / total_weight;
+        weights[i] = weights[i] / tot_weight;
       }
 
       *alias = new Alias(weights);
 
-      return total_weight;
+      return tot_weight;
     }
 
     // rejection sampling
-    const char *get_sample(gsl_rng *rng) {
+    record_t* get_sample(gsl_rng *rng) {
         size_t reccnt = m_reccnt.load();
         if (reccnt == 0) {
             return nullptr;
         }
 
         auto idx = (reccnt == 1) ? 0 : gsl_rng_uniform_int(rng, reccnt - 1);
-        auto rec = get_record_at(idx);
+        //auto rec = get_record_at(idx);
 
         auto test = gsl_rng_uniform(rng) * m_max_weight.load();
 
-        return (test <= get_weight(rec)) ? rec : nullptr;
+        return (test <= m_data[idx].weight) ? m_data + idx : nullptr;
     }
 
     size_t get_tombstone_capacity() {
@@ -187,8 +190,8 @@ public:
     }
 
 private:
-    ssize_t try_advance_tail() {
-        size_t new_tail = m_current_tail.fetch_add(record_size);
+    int32_t try_advance_tail() {
+        size_t new_tail = m_reccnt.fetch_add(1);
 
         if (new_tail < m_buffersize) return new_tail;
         else return -1;
@@ -198,12 +201,13 @@ private:
     size_t m_buffersize;
     size_t m_tombstone_cap;
     
-    char* m_data;
+    //char* m_data;
+    record_t* m_data;
     BloomFilter* m_tombstone_filter;
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
-    alignas(64) std::atomic<size_t> m_current_tail;
-    alignas(64) std::atomic<size_t> m_reccnt;
+    //alignas(64) std::atomic<uint32_t> m_current_tail;
+    alignas(64) std::atomic<uint32_t> m_reccnt;
     alignas(64) std::atomic<double> m_weight;
     alignas(64) std::atomic<double> m_max_weight;
 };

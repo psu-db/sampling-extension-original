@@ -5,11 +5,45 @@
 
 namespace lsm {
 
-typedef uint32_t rec_hdr;
-typedef uint64_t key_type;
-typedef uint32_t value_type;
-typedef uint64_t weight_type;
+typedef uint32_t hdr_t;
+typedef uint64_t key_t;
+typedef uint32_t value_t;
+typedef uint64_t weight_t;
 
+struct record_t {
+    key_t key;
+    value_t value;
+    hdr_t header;
+    weight_t weight;
+
+    inline bool match(key_t k, value_t v, bool is_tombstone) const {
+        return (key == k) && (value == v) && ((header & 1) == is_tombstone);
+    }
+
+    inline void set_delete_status() {
+        header |= 2;
+    }
+
+    inline bool get_delete_status() {
+        return header |= 2;
+    }
+
+    inline bool is_tombstone() {
+        return header & 1;
+    }
+
+    inline int match(const record_t* other) {
+        return key == other->key && value == other->value;
+    }
+
+    inline bool operator<(const record_t& other) const {
+        return key < other.key || (key == other.key && value < other.value);
+    }
+};
+
+static_assert(sizeof(record_t) == 24, "Record is not 24 bytes long.");
+
+/*
 constexpr static size_t key_size = sizeof(key_type);
 constexpr static size_t value_size = sizeof(value_type);
 constexpr static size_t header_size = sizeof(rec_hdr);
@@ -34,7 +68,7 @@ inline static void layout_memtable_record(char* buffer, const char* key, const c
     *(rec_hdr*)(buffer + MAXALIGN(key_size) + value_size) |= ((ts << 2) | (tombstone ? 1 : 0));
     *(weight_type*)(buffer + MAXALIGN(key_size) + value_size + header_size) = tombstone ? 0.0: weight;
 }
-
+*/
 /*
  * Returns a pointer to a cache-aligned copy of the record. The 
  * freeing of this pointer is the responsibility of the caller.
@@ -47,7 +81,7 @@ static inline char *copy_of(const char *record) {
     memcpy(copy, record, record_size);
     return copy;
 }
-
+/*
 inline static const char *get_key(const char *buffer) {
     return buffer;
 }
@@ -118,7 +152,7 @@ static int record_cmp(const void *a, const void *b) {
         return val_cmp(get_val((const char*)a), get_val((const char*)b));
     else return cmp;
 }
-
+*/
 // Fall back to the original record_cmp
 /*
 static int record_cmp(const void *a, const void *b) {
@@ -137,7 +171,7 @@ static int record_cmp(const void *a, const void *b) {
     return cmp;
 }
 */
-
+/*
 static int memtable_record_cmp(const void *a, const void *b) {
     int cmp = key_cmp(get_key((char*) a), get_key((char*) b));
 
@@ -148,6 +182,12 @@ static int memtable_record_cmp(const void *a, const void *b) {
             else return 1;
         } else return cmp2;
     } else return cmp;
+}
+*/
+
+static bool memtable_record_cmp(const record_t& a, const record_t& b) {
+    return (a.key < b.key) || (a.key == b.key && a.value < b.value)
+        || (a.key == b.key && a.value == b.value && a.header < b.header);
 }
 
 }

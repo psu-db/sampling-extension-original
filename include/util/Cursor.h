@@ -7,8 +7,8 @@
 
 namespace lsm {
 struct Cursor {
-    const char *ptr;
-    const char *end;
+    record_t *ptr;
+    const record_t *end;
     size_t cur_rec_idx;
     size_t rec_cnt;
 
@@ -37,7 +37,7 @@ inline static bool advance_cursor(Cursor *cur, PagedFileIterator *iter = nullptr
 
     if (cur->ptr >= cur->end) {
         if (iter && iter->next()) {
-            cur->ptr = iter->get_item();
+            cur->ptr = (record_t*)iter->get_item();
             cur->end = cur->ptr + PAGE_SIZE;
             return true;
         }
@@ -55,12 +55,12 @@ inline static bool advance_cursor(Cursor *cur, PagedFileIterator *iter = nullptr
  *   largest is processed.
  */
 inline static Cursor *get_next(std::vector<Cursor> &cursors, Cursor *current=&g_empty_cursor) {
-    const char *min_rec = nullptr;
+    const record_t *min_rec = nullptr;
     Cursor *result = &g_empty_cursor;
     for (size_t i=0; i< cursors.size(); i++) {
         if (cursors[i] == g_empty_cursor) continue;
 
-        const char *rec = (&cursors[i] == current) ? cursors[i].ptr + record_size : cursors[i].ptr;
+        const record_t *rec = (&cursors[i] == current) ? cursors[i].ptr + 1 : cursors[i].ptr;
         if (rec >= cursors[i].end) continue;
 
         if (min_rec == nullptr) {
@@ -69,7 +69,7 @@ inline static Cursor *get_next(std::vector<Cursor> &cursors, Cursor *current=&g_
             continue;
         }
 
-        if (record_cmp(rec, min_rec) == -1) {
+        if (*rec < *min_rec) {
             result = &cursors[i];
             min_rec = rec;
         }
