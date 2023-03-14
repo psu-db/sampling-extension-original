@@ -134,7 +134,6 @@ public:
 
             // Handle tombstone cancellation case if record tagging is not
             // enabled
-            //printf("%zu %zu\n", current->ptr->key, next->ptr->key);
             if (!m_tagging && !current->ptr->is_tombstone() && current != next &&
                 next->ptr < next->end && current->ptr->match(next->ptr) && 
                 next->ptr->is_tombstone()) {
@@ -176,8 +175,6 @@ public:
         for (size_t i=0; i<weights.size(); i++) {
             weights[i] = weights[i] / (double) m_total_weight;
         }
-
-        //printf("abcdefg...\n");
 
         // build the alias structure
         m_alias = new Alias(weights);
