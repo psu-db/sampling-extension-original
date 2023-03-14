@@ -19,10 +19,10 @@ static MemTable *create_test_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt; i++) {
-        key_type key = rand();
-        value_type val = rand();
+        lsm::key_t key = rand();
+        lsm::value_t val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -33,21 +33,21 @@ static MemTable *create_weighted_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, cnt, g_rng);
     
     // Put in half of the count with weight two.
-    key_type key = 1;
+    lsm::key_t key = 1;
     for (size_t i=0; i< cnt / 2; i++) {
-        mtable->append((char *) &key, (char *) &i, 2);
+        mtable->append(key, i, 2);
     }
 
     // put in a quarter of the count with weight four.
     key = 2;
     for (size_t i=0; i< cnt / 4; i++) {
-        mtable->append((char *) &key, (char *) &i, 4);
+        mtable->append(key, i, 4);
     }
 
     // the remaining quarter with weight eight.
     key = 3;
     for (size_t i=0; i< cnt / 4; i++) {
-        mtable->append((char *) &key, (char *) &i, 8);
+        mtable->append(key, i, 8);
     }
 
     return mtable;
@@ -59,17 +59,17 @@ static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false)
     auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i;
+        lsm::key_t key = i;
+        lsm::value_t val = i;
 
-        mtable->append((char*) &key, (char *) &val, 1.0, ts);
+        mtable->append(key, val, 1.0, ts);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i + 1;
+        lsm::key_t key = i;
+        lsm::value_t val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val, 1.0, ts);
+        mtable->append(key, val, 1.0, ts);
     }
 
     return mtable;
@@ -80,17 +80,17 @@ START_TEST(t_memtable_init)
     auto mem_table = new MemTable(1024, true, 1024, g_rng);
     for (uint64_t i = 512; i > 0; i--) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append(i, v);
     }
     
     for (uint64_t i = 1; i <= 256; ++i) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v, 1.0, true);
+        mem_table->append(i, v, 1.0, true);
     }
 
     for (uint64_t i = 257; i <= 512; ++i) {
         uint32_t v = i + 1;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append(i, v);
     }
 
     BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
@@ -135,11 +135,11 @@ START_TEST(t_inmemrun_init)
 
         auto cur_rec = run4->get_record_at(i);
 
-        if (run1_idx < n && record_cmp(cur_rec, rec1) == 0) {
+        if (run1_idx < n && cur_rec->match(rec1)) {
             ++run1_idx;
-        } else if (run2_idx < n && record_cmp(cur_rec, rec2) == 0) {
+        } else if (run2_idx < n && cur_rec->match(rec2)) {
             ++run2_idx;
-        } else if (run3_idx < n && record_cmp(cur_rec, rec3) == 0) {
+        } else if (run3_idx < n && cur_rec->match(rec3)) {
             ++run3_idx;
         } else {
            assert(false);
@@ -174,9 +174,9 @@ START_TEST(t_get_lower_bound_index)
 
     auto tbl_records = memtable->sorted_output();
     for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = memtable->get_record_at(i);
-        auto pos = run->get_lower_bound(get_key(tbl_rec));
-        ck_assert_int_eq(*(key_type *) get_key(run->get_record_at(pos)), *(key_type*) get_key(tbl_rec));
+        const record_t *tbl_rec = memtable->get_record_at(i);
+        auto pos = run->get_lower_bound(tbl_rec->key);
+        ck_assert_int_eq(run->get_record_at(pos)->key, tbl_rec->key);
         ck_assert_int_le(pos, i);
     }
 
@@ -230,18 +230,19 @@ START_TEST(t_weighted_sampling)
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     WIRSRun* run = new WIRSRun(mtable, bf, false);
 
-    key_type lower_key = 0;
-    key_type upper_key = 5;
+    lsm::key_t lower_key = 0;
+    lsm::key_t upper_key = 5;
 
     size_t k = 1000;
 
-    char * buffer = new char[k*lsm::record_size]();
+    //char * buffer = new char[k*lsm::record_size]();
+    record_t* buffer = new record_t[k]();
     size_t cnt[3] = {0};
     for (size_t i=0; i<1000; i++) {
         run->get_samples(buffer, k, nullptr, g_rng);
 
         for (size_t j=0; j<k; j++) {
-            cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
+            cnt[buffer[j].key - 1]++;
         }
     }
 
@@ -263,12 +264,12 @@ START_TEST(t_tombstone_check)
     size_t ts_cnt = 256;
     auto mtable = new MemTable(cnt + ts_cnt, true, ts_cnt, g_rng);
 
-    std::vector<std::pair<lsm::key_type, lsm::value_type>> tombstones;
+    std::vector<std::pair<lsm::key_t, lsm::value_t>> tombstones;
 
-    key_type key = 1000;
-    value_type val = 101;
+    lsm::key_t key = 1000;
+    lsm::value_t val = 101;
     for (size_t i = 0; i < cnt; i++) {
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append(key, val);
         key++;
         val++;
     }
@@ -280,14 +281,14 @@ START_TEST(t_tombstone_check)
     }
 
     for (size_t i=0; i<ts_cnt; i++) {
-        mtable->append((char*) &tombstones[i].first, (char*) &tombstones[i].second, 1.0, true);
+        mtable->append(tombstones[i].first, tombstones[i].second, 1.0, true);
     }
 
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     auto run = new WIRSRun(mtable, bf1, false);
 
     for (size_t i=0; i<tombstones.size(); i++) {
-        ck_assert(run->check_tombstone((char*) &tombstones[i].first, (char*) &tombstones[i].second));
+        ck_assert(run->check_tombstone(tombstones[i].first, tombstones[i].second));
         ck_assert_int_eq(run->get_rejection_count(), i+1);
     }
 

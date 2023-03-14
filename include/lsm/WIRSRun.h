@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "lsm/MemTable.h"
-#include "ds/PriorityQueue.h"
+//#include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
 #include "util/timer.h"
 #include "ds/Alias.h"
@@ -14,7 +14,7 @@
 namespace lsm {
 
 struct sample_state;
-bool check_deleted(const char *record, sample_state *state);
+bool check_deleted(const record_t *record, sample_state *state);
 
 thread_local size_t m_wirsrun_cancelations = 0;
 
@@ -23,7 +23,6 @@ public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
     : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_tagging(tagging) {
-
         TIMER_INIT();
         TIMER_START();
         std::vector<double> weights;
@@ -45,31 +44,27 @@ public:
             while (base < stop) {
                 if (!base->get_delete_status()) {
                     base->header &= 3;
-                    memcpy(m_data + offset, base, record_size);
-                    offset += record_size;
-                    ++m_reccnt;
+                    m_data[m_reccnt++] = *base;
                     m_total_weight += base->weight;
                     weights.push_back((double)base->weight);
                 }
-                base += record_size;
+                base++;
             }
         } else {
             while (base < stop) {
                 if (!base->is_tombstone() && (base + 1 < stop)
                     && base->match(base + 1) && (base + 1)->is_tombstone()) {
-                    base += record_size * 2;
+                    base += 2;
                     m_wirsrun_cancelations++;
                 } else {
                     //Masking off the ts.
                     base->header &= 1;
-                    memcpy(m_data + offset, base, record_size);
+                    m_data[m_reccnt++] = *base;
                     if (base->is_tombstone()) {
                         ++m_tombstone_cnt;
                         bf->insert(base->key, sizeof(key_t));
                     }
-                    offset += record_size;
-                    ++m_reccnt;
-                    base += record_size;
+                    base ++;
                     m_total_weight += base->weight;
                     weights.push_back((double) base->weight);
                 }
@@ -118,8 +113,8 @@ public:
             }
         }
 
-        auto len = attemp_reccnt * sizeof(record_t);
-        size_t alloc_size = len + (CACHELINE_SIZE - len % CACHELINE_SIZE);
+        auto attempt_len = attemp_reccnt * sizeof(record_t);
+        size_t alloc_size = attempt_len + (CACHELINE_SIZE - attempt_len % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
         weights.reserve(attemp_reccnt);
@@ -130,6 +125,8 @@ public:
 
         TIMER_START();
         size_t reccnt = 0;
+
+
         Cursor *next = get_next(cursors);
         do {
             Cursor *current = next;
@@ -137,8 +134,9 @@ public:
 
             // Handle tombstone cancellation case if record tagging is not
             // enabled
+            //printf("%zu %zu\n", current->ptr->key, next->ptr->key);
             if (!m_tagging && !current->ptr->is_tombstone() && current != next &&
-                next->ptr < next->end && !current->ptr->match(next->ptr) && 
+                next->ptr < next->end && current->ptr->match(next->ptr) && 
                 next->ptr->is_tombstone()) {
                 
                 reccnt += 2;
@@ -164,9 +162,7 @@ public:
             }
 
             // Copy the record into the new run and increment the associated counters
-            memcpy(m_data + offset, current->ptr, record_size);
-            offset += record_size;
-            ++m_reccnt;
+            m_data[m_reccnt++] = *(current->ptr);
             m_total_weight += current->ptr->weight;
             weights.push_back((double) current->ptr->weight);
             advance_cursor(current);
@@ -175,61 +171,13 @@ public:
         TIMER_STOP();
         auto merge_time = TIMER_RESULT();
 
-
-        /*
-        if (m_tagging) {
-            while (pq.size()) {
-                auto now = pq.peek(); pq.pop();
-                auto &cur = cursors[now.version];
-                if (get_delete_status(now.data)) {
-                    if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
-                } else {
-                    memcpy(m_data + offset, cur.ptr, record_size);
-                    offset += record_size;
-                    ++m_reccnt;
-                    m_total_weight += get_weight(cur.ptr);
-                    weights.push_back((double) get_weight(cur.ptr));
-                    if (advance_cursor(cur)) pq.push(cur.ptr, now.version);
-                }
-            }
-        } else {
-            while (pq.size()) {
-                auto now = pq.peek();
-                auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
-                if (!is_tombstone(now.data) && next.data != nullptr &&
-                    !record_cmp(now.data, next.data) && is_tombstone(next.data)) {
-                    
-                    pq.pop(); pq.pop();
-                    auto& cursor1 = cursors[now.version];
-                    auto& cursor2 = cursors[next.version];
-                    if (advance_cursor(cursor1)) pq.push(cursor1.ptr, now.version);
-                    if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
-                } else {
-                    auto& cursor = cursors[now.version];
-                    memcpy(m_data + offset, cursor.ptr, record_size);
-                    if (is_tombstone(cursor.ptr)) {
-                        ++m_tombstone_cnt;
-                        bf->insert(get_key(cursor.ptr), key_size);
-                    }
-                    offset += record_size;
-                    ++m_reccnt;
-                    m_total_weight += get_weight(cursor.ptr);
-                    weights.push_back((double) get_weight(cursor.ptr));
-                    pq.pop();
-                    
-                    if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
-                }
-            }
-        }
-    */
-        
-
-
         TIMER_START();
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
             weights[i] = weights[i] / (double) m_total_weight;
         }
+
+        //printf("abcdefg...\n");
 
         // build the alias structure
         m_alias = new Alias(weights);
@@ -255,16 +203,10 @@ public:
             return false;
         }
 
-        auto ptr = m_data + (get_lower_bound(key) * record_size);
+        while (idx < m_reccnt && m_data[idx].lt(key, val)) ++idx;
 
-        char buf[record_size];
-        layout_record(buf, key, val, false, 0.0);
-        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
-            ptr += record_size;
-        }
-
-        if (record_match(ptr, key, val, false)) {
-            set_delete_status(ptr);
+        if (m_data[idx].match(key, val, false)) {
+            m_data[idx].set_delete_status();
             m_deleted_cnt++;
             return true;
         }
@@ -284,16 +226,16 @@ public:
         return m_tombstone_cnt;
     }
 
-    const char* get_record_at(size_t idx) const {
+    const record_t* get_record_at(size_t idx) const {
         if (idx >= m_reccnt) return nullptr;
-        return m_data + idx * record_size;
+        return m_data + idx;
     }
 
     //
     // returns the number of records sampled
     // NOTE: This operation returns records strictly between the lower and upper bounds, not
     // including them.
-    size_t get_samples(char *sample_set, size_t sample_sz, sample_state *state, gsl_rng *rng) {
+    size_t get_samples(record_t *sample_set, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         if (sample_sz == 0) {
             return 0;
         }
@@ -301,19 +243,18 @@ public:
         size_t sampled_cnt=0;
         for (size_t i=0; i<sample_sz; i++) {
             size_t idx = m_alias->get(rng);
-            const char *rec = this->get_record_at(idx);
             if (m_tagging) {
-                if (get_delete_status(rec)) {
+                if (m_data[idx].get_delete_status()) {
                     m_rejection_cnt++;
                     continue;
                 }
             } else if (state) {
-                if (check_deleted(rec, state)) {
+                if (check_deleted(m_data + idx, state)) {
                     continue;
                 }
             }
 
-            memcpy (sample_set + record_size*sampled_cnt++, rec, record_size);
+            sample_set[sampled_cnt++] = m_data[idx];
         }
 
         return sampled_cnt;
@@ -336,7 +277,7 @@ public:
         return min;
     }
 
-    bool check_tombstone(const char* key, const char* val) {
+    bool check_tombstone(const key_t& key, const value_t& val) {
         m_ts_check_cnt += 1;
 
         size_t idx = get_lower_bound(key);
@@ -344,15 +285,9 @@ public:
             return false;
         }
 
-        auto ptr = m_data + (get_lower_bound(key) * record_size);
+        while (idx < m_reccnt && m_data[idx].lt(key, val)) ++idx;
 
-        char buf[record_size];
-        layout_record(buf, key, val, false, 0.0);
-        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
-            ptr += record_size;
-        }
-
-        bool result = record_match(ptr, key, val, true);
+        bool result = m_data[idx].match(key, val, true);
 
         if (result) {
             m_rejection_cnt++;
@@ -366,7 +301,7 @@ public:
     }
 
 
-    weight_type get_total_weight() {
+    weight_t get_total_weight() {
         return m_total_weight;
     }
 
@@ -384,7 +319,6 @@ public:
     }
     
 private:
-    //char* m_data;
     record_t* m_data;
     Alias *m_alias;
     size_t m_reccnt;

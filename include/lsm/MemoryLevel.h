@@ -109,24 +109,24 @@ public:
         }
     }
 
-    bool bf_rejection_check(size_t run_stop, const char* key) {
+    bool bf_rejection_check(size_t run_stop, const key_t& key) {
         for (size_t i = 0; i < run_stop; ++i) {
-            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key, key_size))
+            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key))
                 return true;
         }
         return false;
     }
 
-    bool check_tombstone(size_t run_stop, const char* key, const char* val) {
+    bool check_tombstone(size_t run_stop, const key_t& key, const value_t& val) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_structure->m_runs[i] && (m_tagging || m_structure->m_bfs[i]->lookup(key, key_size))
+            if (m_structure->m_runs[i] && (m_tagging || m_structure->m_bfs[i]->lookup(key))
                 && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
         }
         return false;
     }
 
-    bool delete_record(const char *key, const char *val) {
+    bool delete_record(const key_t& key, const value_t& val) {
         for (size_t i = 0; i < m_structure->m_cap;  ++i) {
             if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
                 return true;
@@ -136,7 +136,7 @@ public:
         return false;
     }
 
-    const char* get_record_at(size_t run_no, size_t idx) {
+    const record_t* get_record_at(size_t run_no, size_t idx) {
         return m_structure->m_runs[run_no]->get_record_at(idx);
     }
     

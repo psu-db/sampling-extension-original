@@ -4,7 +4,8 @@
 
 static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t trial_cnt, 
                       double write_prop, double del_prop) {
-    char sample_set[k*lsm::record_size];
+    //char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     unsigned long total_sample_time = 0;
     unsigned long total_insert_time = 0;
@@ -17,7 +18,8 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t operation_cnt = 10000;
 
     size_t reccnt = tree->get_record_cnt();
-    char *delbuf = new char[trial_cnt*lsm::record_size]();
+    //char *delbuf = new char[trial_cnt*lsm::record_size]();
+    lsm::record_t* delbuf = new lsm::record_t[trial_cnt]();
 
     size_t ops = 0;
     while (ops < operation_cnt) {
@@ -35,7 +37,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<insert_vec.size(); i++) {
-                tree->append(insert_vec[i].key.get(), insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+                tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -44,18 +46,18 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
         } else if (op < (write_prop + del_prop)) {
             operation = DELETE;
             tree->range_sample(delbuf, trial_cnt, g_rng);
-            std::set<lsm::key_type> deleted;
+            std::set<lsm::key_t> deleted;
             ops++;
 
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<trial_cnt; i++) {
-                auto key = lsm::get_key(delbuf + (i * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (i * lsm::record_size));
-                auto weight = lsm::get_weight(delbuf + (i * lsm::record_size));
+                auto key = delbuf[i].key;
+                auto val = delbuf[i].value;
+                auto weight = delbuf[i].weight;
 
-                if (deleted.find(*(lsm::key_type *) key) == deleted.end()) {
+                if (deleted.find(key) == deleted.end()) {
                     tree->append(key, val, weight, true, g_rng); 
-                    deleted.insert(*(lsm::key_type *) key);
+                    deleted.insert(key);
                     delete_cnt += 1;
                 }
             }

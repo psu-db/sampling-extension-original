@@ -5,9 +5,8 @@
 
 #include "lsm/MemTable.h"
 #include "lsm/MemoryLevel.h"
-#include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
-#include "lsm/WIRSIsamTree.h"
+//#include "lsm/WIRSIsamTree.h"
 
 #include "util/timer.h"
 
@@ -80,13 +79,15 @@ public:
             delete this->memory_levels[i];
         }
 
+        /*
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             delete this->disk_levels[i];
         }
+        */
 
     }
 
-    int append(const char *key, const char *val, double weight, bool tombstone, gsl_rng *rng) {
+    int append(const key_t& key, const value_t& val, double weight, bool tombstone, gsl_rng *rng) {
         // NOTE: single-threaded implementation only
         MemTable *mtable;
         while (!(mtable = this->memtable()))
@@ -100,7 +101,7 @@ public:
     }
 
 
-    int delete_record(const char *key, const char *val, gsl_rng *rng) {
+    int delete_record(const key_t& key, const value_t& val, gsl_rng *rng) {
         assert(DELETE_TAGGING);
 
         auto mtable = this->memtable();
@@ -118,7 +119,7 @@ public:
         return mtable->delete_record(key, val);
     }
 
-    void range_sample(char *sample_set, size_t sample_sz, gsl_rng *rng) {
+    void range_sample(record_t *sample_set, size_t sample_sz, gsl_rng *rng) {
         TIMER_INIT();
         // TODO: Only working for in-memory sampling, as WIRS_ISAMTree isn't implemented.
 
@@ -186,7 +187,7 @@ public:
                     memtable_alias_time += TIMER_RESULT();
                 }
 
-                const char *rec;
+                const record_t* rec;
                 if (LSM_REJ_SAMPLE) {
                     rec = mtable->get_sample(rng);
                 } else {
@@ -194,14 +195,16 @@ public:
                 }
 
                 if (DELETE_TAGGING) {
-                    if (rec && !get_delete_status(rec)) {
-                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                    if (rec && !rec->get_delete_status()) {
+                        sample_set[sample_idx++] = *rec;
+                        //memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                     } else {
                         rejections++;
                     }
                 } else {
-                    if (rec && !mtable->check_tombstone(get_key(rec), get_val(rec))) {
-                        memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
+                    if (rec && !mtable->check_tombstone(rec->key, rec->value)) {
+                        sample_set[sample_idx++] = *rec;
+                        //memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                     } else {
                         rejections++;
                     }
@@ -216,7 +219,7 @@ public:
             for (size_t i=1; i<run_samples.size(); i++) {
                 // sample from each WIRS level
                 state.rid = runs[i].first;
-                auto sampled = runs[i].second->get_samples(sample_set + sample_idx*record_size, run_samples[i], &state, rng) ;
+                auto sampled = runs[i].second->get_samples(sample_set + sample_idx, run_samples[i], &state, rng) ;
                 assert(sampled <= run_samples[i]);
                 sample_idx += sampled;
                 rejections += run_samples[i] - sampled;
@@ -237,18 +240,18 @@ public:
     // should correspond to the run containing the record in question
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
-    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+    bool is_deleted(const record_t *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
 
         // If tagging is enabled, we just need to check if the record has the delete
         // tag set
         if (DELETE_TAGGING) {
-            return get_delete_status(record);
+            return record->get_delete_status();
         }
 
         // Otherwise, we need to look for a tombstone.
 
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_tombstone(get_key(record), get_val(record))) {
+        if (memtable->check_tombstone(record->key, record->value)) {
             return true;
         }
 
@@ -259,26 +262,31 @@ public:
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
+                if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
                     return true;
                 }
             } else {
+                assert(false);
+                /*
                 size_t isam_lvl = lvl - memory_levels.size();
-                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), get_key(record), get_val(record), buffer)) {
+                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), record->key, record->value, buffer)) {
                     return true;
                 }
-
+                */
             }
         }
 
         // check the level containing the run
         if (rid.level_idx < memory_levels.size()) {
             size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->check_tombstone(run_idx, get_key(record), get_val(record));
+            return memory_levels[rid.level_idx]->check_tombstone(run_idx, record->key, record->value);
         } else {
+            assert(false);
+            /*
             size_t isam_lvl = rid.level_idx - memory_levels.size();
             size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
             return disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
+            */
         }
     }
 
@@ -322,9 +330,11 @@ public:
             if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_record_cnt();
         }
 
+        /*
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             if (this->disk_levels[i]) cnt += this->disk_levels[i]->get_record_cnt();
         }
+        */
 
         return cnt;
     }
@@ -338,15 +348,17 @@ public:
             if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_tombstone_count();
         }
 
+        /*
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             if (this->disk_levels[i]) cnt += this->disk_levels[i]->get_tombstone_count();
         }
+        */
 
         return cnt;
     }
 
     size_t get_height() {
-        return this->memory_levels.size() + this->disk_levels.size();
+        return this->memory_levels.size(); // + this->disk_levels.size();
     }
 
     size_t get_memory_utilization() {
@@ -366,9 +378,11 @@ public:
             if (this->memory_levels[i]) cnt += this->memory_levels[i]->get_aux_memory_utilization();
         }
 
+        /*
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             if (this->disk_levels[i]) cnt += this->disk_levels[i]->get_aux_memory_utilization();
         }
+        */
 
         return cnt;
     }
@@ -384,6 +398,7 @@ public:
             }
         }
 
+        /*
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             if (this->disk_levels[i]) {
                 ts_prop = (long double) this->disk_levels[i]->get_tombstone_count() / (long double) this->calc_level_record_capacity(this->memory_levels.size() + i);
@@ -392,6 +407,7 @@ public:
                 }
             }
         }
+        */
 
         return true;
     }
@@ -413,7 +429,7 @@ private:
 
     std::vector<MemoryLevel *> memory_levels;
     size_t memory_level_cnt;
-    std::vector<DiskLevel *> disk_levels;
+    //std::vector<DiskLevel *> disk_levels;
 
     level_index last_level_idx;
 
@@ -431,11 +447,11 @@ private:
         return (active_memtable) ? memtable_2 : memtable_1;
     }
 
-    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
-        if (is_tombstone(record)) {
+    inline bool rejection(const record_t *record, RunId rid, const key_t& lower_bound, const key_t& upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        if (record->is_tombstone()) {
             tombstone_rejections++;
             return true;
-        } else if (key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0) {
+        } else if (record->key < lower_bound|| record->key > upper_bound) {
             bounds_rejections++;
             return true;
         } else if (this->is_deleted(record, rid, buffer, memtable, memtable_cutoff)) {
@@ -450,7 +466,8 @@ private:
         return rid.level_idx - this->memory_levels.size();
     }
 
-    inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
+    /*
+    inline bool add_to_sample(const record_t *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
                               char *sample_buffer, size_t &sample_idx, MemTable *memtable, size_t memtable_cutoff) {
         TIMER_INIT();
         TIMER_START();
@@ -466,6 +483,7 @@ private:
         memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
         return true;
     }
+    */
 
     /*
      * Add a new level to the LSM Tree and return that level's index. Will
@@ -483,11 +501,14 @@ private:
             }
             this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, DELETE_TAGGING));
         } else {
+            assert(false);
+            /*
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
                 assert(this->disk_levels[this->disk_levels.size() - 1]->get_run(0)->get_tombstone_count() == 0);
             }
             this->disk_levels.emplace_back(new DiskLevel(new_idx, new_run_cnt, this->root_directory));
+            */
         } 
 
         this->last_level_idx++;
@@ -584,7 +605,9 @@ private:
         assert(!(!base_disk_level && incoming_disk_level));
 
         if (base_disk_level && incoming_disk_level) {
+            assert(false);
             // Merging two disk levels
+            /*
             if (LSM_LEVELING) {
                 auto tmp = this->disk_levels[base_idx];
                 this->disk_levels[base_idx] = DiskLevel::merge_levels(this->disk_levels[base_idx], this->disk_levels[incoming_idx], rng);
@@ -594,8 +617,10 @@ private:
             }
             this->mark_as_unused(this->disk_levels[incoming_idx]);
             this->disk_levels[incoming_idx] = new DiskLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
+            */
         } else if (base_disk_level) {
             // Merging the last memory level into the first disk level
+            /*
             assert(base_idx == 0);
             assert(incoming_idx == this->memory_level_cnt - 1);
             if (LSM_LEVELING) {
@@ -608,6 +633,7 @@ private:
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
             this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
+            */
         } else {
             // merging two memory levels
             if (LSM_LEVELING) {
@@ -646,9 +672,9 @@ private:
      * level may not be able to immediately be deleted, depending upon who
      * else is using it.
      */ 
-    inline void mark_as_unused(DiskLevel *level) {
-        delete level;
-    }
+    //inline void mark_as_unused(DiskLevel *level) {
+    //    delete level;
+    //}
 
     /*
      * Mark a given memory level as no-longer in use by the tree. For now this
@@ -669,8 +695,10 @@ private:
         bool disk_level;
         size_t level_idx = this->decode_level_index(idx, &disk_level);
 
-        long double ts_prop = (disk_level) ? (long double) this->disk_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx)
-                                           : (long double) this->memory_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
+        //long double ts_prop = (disk_level) ? (long double) this->disk_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx)
+        //                                   : (long double) this->memory_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
+
+        long double ts_prop = (long double) this->memory_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
 
         if (ts_prop > (long double) this->max_tombstone_prop) {
             this->merge_down(idx, rng);
@@ -722,9 +750,10 @@ private:
 
         bool disk_level;
         size_t vector_index = decode_level_index(idx, &disk_level);
-        if (disk_level) {
+        assert(!disk_level);
+        /*if (disk_level) {
             return (disk_levels[vector_index]) ? disk_levels[vector_index]->get_record_cnt() : 0;
-        } 
+        } */
 
         return (memory_levels[vector_index]) ? memory_levels[vector_index]->get_record_cnt() : 0;
     }
@@ -741,13 +770,15 @@ private:
         ssize_t vector_index = decode_level_index(idx, &disk_level);
         assert(vector_index >= 0);
 
+        assert(!disk_level);
+        /*
         if (disk_level) {
             if (LSM_LEVELING) {
                 return this->disk_levels[vector_index]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_record_capacity(idx);
             } else {
                 return this->disk_levels[vector_index]->get_run_count() < this->scale_factor;
             }
-        } 
+        }*/
 
         if (vector_index >= this->memory_levels.size() || !this->memory_levels[vector_index]) {
             return false;
@@ -778,6 +809,7 @@ private:
 
         if (idx < this->memory_level_cnt) return idx;
 
+        assert(false);
         *disk_level = true;
         return idx - this->memory_level_cnt;
     }
@@ -785,7 +817,7 @@ private:
 };
 
 
-bool check_deleted(const char *record, sample_state *state) {
+bool check_deleted(const record_t* record, sample_state *state) {
     return state->tree->is_deleted(record, state->rid, state->buff, state->memtable, state->mtable_cutoff);
 }
 

@@ -8,14 +8,14 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
     size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
     size_t delete_idx = delete_batch_size;
 
-    std::vector<lsm::key_type> delbuf;
+    std::vector<lsm::key_t> delbuf;
     tree->range_sample(g_min_key, g_max_key, delete_batch_size, delbuf, g_rng);
     size_t applied_deletes = 0;
 
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
 
     size_t applied_inserts = 0;
-    std::vector<std::pair<btree_record, lsm::weight_type>> insert_vec;
+    std::vector<std::pair<btree_record, lsm::weight_t>> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
 
@@ -79,7 +79,7 @@ static void sample_benchmark(TreeMap *tree, size_t k, size_t trial_cnt)
     size_t batches = trial_cnt / batch_size;
     size_t total_time = 0;
 
-    std::vector<lsm::key_type> sample_set;
+    std::vector<lsm::key_t> sample_set;
     sample_set.reserve(k);
 
     for (int i=0; i<batches; i++) {

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <numeric>
+#include <algorithm>
 
 #include "util/base.h"
 #include "util/bf_config.h"
@@ -18,9 +19,10 @@ namespace lsm {
 class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
-    : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity * record_size), m_reccnt(0)
+    : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_reccnt(0)
     , m_tombstonecnt(0), m_weight(0), m_max_weight(0) {
-        size_t aligned_buffersize = m_buffersize + (CACHELINE_SIZE - (m_buffersize % CACHELINE_SIZE));
+        auto len = capacity * sizeof(record_t);
+        size_t aligned_buffersize = len + (CACHELINE_SIZE - (len % CACHELINE_SIZE));
         m_data = (record_t*) std::aligned_alloc(CACHELINE_SIZE, aligned_buffersize);
         m_tombstone_filter = nullptr;
         if (max_tombstone_cap > 0) {
@@ -34,7 +36,7 @@ public:
         if (m_tombstone_filter) delete m_tombstone_filter;
     }
 
-    int append(key_t key, value_t value, weight_t weight = 1, bool is_tombstone = false) {
+    int append(const key_t& key, const value_t& value, weight_t weight = 1, bool is_tombstone = false) {
         if (is_tombstone && m_tombstonecnt + 1 > m_tombstone_cap) return 0;
 
         int32_t pos = 0;
@@ -48,9 +50,9 @@ public:
         //layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size, weight);
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
-            if (m_tombstone_filter) m_tombstone_filter->insert(key, key_size);
+            if (m_tombstone_filter) m_tombstone_filter->insert(key);
         }
-        m_reccnt.fetch_add(1);
+        //m_reccnt.fetch_add(1);
 
         double old_val, new_val;
         do {
@@ -121,7 +123,7 @@ public:
     }
 
     bool check_tombstone(const key_t& key, const value_t& value) {
-        if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
+        if (m_tombstone_filter && !m_tombstone_filter->lookup(key)) return false;
 
         auto offset = 0;
         while (offset < m_reccnt.load()) {
@@ -131,12 +133,12 @@ public:
         return false;
     }
 
-    const char *get_record_at(size_t idx) {
-        return m_data + (record_size * idx);
+    const record_t* get_record_at(size_t idx) {
+        return m_data + idx;
     }
 
     size_t get_memory_utilization() {
-        return m_buffersize;
+        return m_cap * sizeof(record_t);
     }
 
     size_t get_aux_memory_utilization() {
@@ -193,12 +195,12 @@ private:
     int32_t try_advance_tail() {
         size_t new_tail = m_reccnt.fetch_add(1);
 
-        if (new_tail < m_buffersize) return new_tail;
+        if (new_tail < m_cap) return new_tail;
         else return -1;
     }
 
     size_t m_cap;
-    size_t m_buffersize;
+    //size_t m_buffersize;
     size_t m_tombstone_cap;
     
     //char* m_data;

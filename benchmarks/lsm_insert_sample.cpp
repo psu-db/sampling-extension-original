@@ -12,9 +12,10 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     insert_times.reserve(insert_cnt / g_insert_batch_size);
 
     size_t deletes = insert_cnt * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
+    //char *delbuf = new char[deletes * lsm::record_size]();
+    lsm::record_t* delbuf = new lsm::record_t[deletes]();
     tree->range_sample(delbuf, deletes, g_rng);
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
     size_t applied_inserts = 0;
@@ -37,18 +38,18 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
         for (size_t i=0; i<insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
-                auto weight = lsm::get_weight(delbuf + (applied_deletes * lsm::record_size));
+                auto key = delbuf[applied_deletes].key;
+                auto val = delbuf[applied_deletes].value;
+                auto weight = delbuf[applied_deletes].weight;
 
-                if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
+                if (deleted.find(key) == deleted.end()) {
                     tree->append(key, val, weight, true, g_rng);
-                    deleted.insert(*(lsm::key_type *)key);
+                    deleted.insert(key);
                     local_deleted++;
                 }
             }
             // insert the record;
-            tree->append(insert_vec[i].key.get(), insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+            tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
             local_inserted++;
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
@@ -74,7 +75,7 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 {
     fprintf(stderr, "Running Sample Benchmark for %ld sample size\n", k);
 
-    char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     auto start = std::chrono::high_resolution_clock::now();
 

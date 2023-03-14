@@ -20,52 +20,44 @@
 #include <random>
 
 
-typedef std::pair<lsm::key_type, lsm::value_type> btree_record;
+typedef std::pair<lsm::key_t, lsm::value_t> btree_record;
 struct btree_key_extract {
-    static const lsm::key_type &get(const btree_record &v) {
+    static const lsm::key_t &get(const btree_record &v) {
         return v.first;
     }
 };
 
-typedef tlx::BTree<lsm::key_type, btree_record, btree_key_extract> TreeMap;
-typedef dsimpl::avl_weighted_multiset<lsm::key_type, lsm::weight_type> AvlSet;
+typedef tlx::BTree<lsm::key_t, btree_record, btree_key_extract> TreeMap;
+typedef dsimpl::avl_weighted_multiset<lsm::key_t, lsm::weight_t> AvlSet;
 
 typedef struct record {
-    char *key;
-    char *value;
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t value;
+    lsm::weight_t weight;
 
     friend bool operator<(const struct record &first, const struct record &other) {
-        if (*(lsm::key_type *) first.key == *(lsm::key_type *) other.key) {
-            return *(lsm::value_type*) first.value < *(lsm::value_type*) other.value;
-        }
-
-        return *(lsm::key_type *) first.key < *(lsm::key_type *)  other.key;
+        return (first.key < other.key) || (first.key == other.key && first.value < other.value);
     }
 } record;
 
 typedef struct shared_record {
-    std::shared_ptr<char[]> key;
-    std::shared_ptr<char[]> value;
-    lsm::weight_type weight;
+    std::shared_ptr<lsm::key_t> key;
+    std::shared_ptr<lsm::value_t> value;
+    lsm::weight_t weight;
 
     friend bool operator<(const struct shared_record &first, const struct shared_record &other) {
-        if (*(lsm::key_type *) first.key.get() == *(lsm::key_type *) other.key.get()) {
-            return *(lsm::value_type*) first.value.get() < *(lsm::value_type*) other.value.get();
-        }
-
-        return *(lsm::key_type *) first.key.get() < *(lsm::key_type *)  other.key.get();
+        return first.key.get() < other.key.get() || (first.key.get() == other.key.get() && first.value.get() < other.value.get());
     }
 } shared_record;
 
-typedef std::pair<lsm::key_type, lsm::key_type> key_range;
+typedef std::pair<lsm::key_t, lsm::key_t> key_range;
 
 static gsl_rng *g_rng;
 static std::set<shared_record> *g_to_delete;
 static bool g_osm_data;
 
-static lsm::key_type g_min_key = UINT64_MAX;
-static lsm::key_type g_max_key = 0;
+static lsm::key_t g_min_key = UINT64_MAX;
+static lsm::key_t g_max_key = 0;
 
 static size_t g_max_record_cnt = 0;
 static size_t g_reccnt = 0;
@@ -90,9 +82,9 @@ static unsigned int get_random_seed()
 }
 
 
-static lsm::key_type osm_to_key(const char *key_field) {
+static lsm::key_t osm_to_key(const char *key_field) {
     double tmp_key = (atof(key_field) + 180) * 10e6;
-    return (lsm::key_type) tmp_key;
+    return (lsm::key_t) tmp_key;
 }
 
 
@@ -120,7 +112,7 @@ static void delete_bench_env()
     delete g_to_delete;
 }
 
-
+/*
 static record create_record()
 {
     auto key_buf = new char[lsm::key_size];
@@ -139,15 +131,12 @@ static shared_record create_shared_record()
 
     return {key_ptr, val_ptr, 0};
 }
+*/
 
 
-static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_type *weight)
+static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, lsm::weight_t& weight)
 {
-    if (g_reccnt >= g_max_record_cnt) {
-        key = nullptr;
-        val = nullptr;
-        return false;
-    }
+    if (g_reccnt >= g_max_record_cnt) return false;
 
     std::string line;
     if (std::getline(*file, line, '\n')) {
@@ -160,25 +149,21 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
         std::getline(line_stream, key_field, '\t');
         std::getline(line_stream, weight_field, '\t');
 
-        *((lsm::key_type*) key) = (g_osm_data) ? osm_to_key(key_field.c_str()) : atol(key_field.c_str());
-        *((lsm::value_type*) val) = atol(value_field.c_str());
-        *(weight) = atof(weight_field.c_str());
+        *key = (g_osm_data) ? osm_to_key(key_field.c_str()) : atol(key_field.c_str());
+        *val = atol(value_field.c_str());
+        weight = atof(weight_field.c_str());
 
-        if (*(lsm::key_type*) key < g_min_key) {
-            g_min_key = *(lsm::key_type*) key;
-        }
+        if (*key < g_min_key) g_min_key = *key;
 
-        if (*(lsm::key_type*) key > g_max_key) {
-            g_max_key = *(lsm::key_type*) key;
-        }
+        if (*key > g_max_key) g_max_key = *key;
 
         g_reccnt++;
 
         return true;
     }
 
-    key = nullptr;
-    val = nullptr;
+    //key = nullptr;
+    //val = nullptr;
     return false;
 }
 
@@ -186,8 +171,8 @@ static bool next_record(std::fstream *file, char *key, char *val, lsm::weight_ty
 static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n) {
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        auto rec = create_shared_record();
-        if (!next_record(file, rec.key.get(), rec.value.get(), &rec.weight)) {
+        shared_record rec;
+        if (!next_record(file, rec.key.get(), rec.value.get(), rec.weight)) {
             if (i == 0) {
                 return false;
             }
@@ -202,15 +187,15 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
 }
 
 
-static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btree_record, lsm::weight_type>> &vec, size_t n)
+static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btree_record, lsm::weight_t>> &vec, size_t n)
 {
-    char key[lsm::key_size];
-    char val[lsm::value_size];
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        if (!next_record(file, key, val, &weight)) {
+        if (!next_record(file, &key, &val, weight)) {
             if (i == 0) {
                 return false;
             }
@@ -218,7 +203,7 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
             break;
         }
 
-        btree_record rec = {atol(key), atol(val)};
+        btree_record rec = {key, val};
         vec.push_back({rec, weight});
     }
 
@@ -226,15 +211,15 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
 
 }
 
-static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::key_type, lsm::weight_type>> &vec, size_t n)
+static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::key_t, lsm::weight_t>> &vec, size_t n)
 {
-    char key[lsm::key_size];
-    char val[lsm::value_size];
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        if (!next_record(file, key, val, &weight)) {
+        if (!next_record(file, &key, &val, weight)) {
             if (i == 0) {
                 return false;
             }
@@ -242,7 +227,7 @@ static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::
             break;
         }
 
-        vec.push_back({atol(key), weight});
+        vec.push_back({key, weight});
     }
 
     return true;
@@ -270,26 +255,26 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 {
     std::string line;
 
-    auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    auto val_buf = std::make_unique<char[]>(lsm::value_size);
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     size_t del_buf_size = 100;
     size_t del_buf_ptr = del_buf_size;
-    char delbuf[del_buf_size * lsm::record_size];
+    lsm::record_t delbuf[del_buf_size];
 
-    std::set<lsm::key_type> deleted_keys;
+    std::set<lsm::key_t> deleted_keys;
 
     size_t inserted = 0;
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, key_buf.get(), val_buf.get(), &weight)) {
+        if (!next_record(file, &key, &val, weight)) {
             return false;
         }
 
         inserted++;
-        lsmtree->append(key_buf.get(), val_buf.get(), weight, false, g_rng);
+        lsmtree->append(key, val, weight, false, g_rng);
 
         if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
             lsmtree->range_sample(delbuf, del_buf_size, g_rng);
@@ -297,17 +282,17 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
         }
 
         if (i > lsmtree->get_memtable_capacity() && gsl_rng_uniform(g_rng) < delete_prop) {
-            auto key = lsm::get_key(delbuf + (del_buf_ptr * lsm::record_size));
-            auto val = lsm::get_val(delbuf + (del_buf_ptr * lsm::record_size));
+            auto key = delbuf[del_buf_ptr].key;
+            auto val = delbuf[del_buf_ptr].value;
             del_buf_ptr++;
 
-            if (deleted_keys.find(*(lsm::key_type *) key) == deleted_keys.end()) {
+            if (deleted_keys.find(key) == deleted_keys.end()) {
                 if (lsm::DELETE_TAGGING) {
                     lsmtree->delete_record(key, val, g_rng);
                 } else {
                     lsmtree->append(key, val, 0, true, g_rng);
                 }
-                deleted_keys.insert(*(lsm::key_type*) key);
+                deleted_keys.insert(key);
             }
         }
 
@@ -325,7 +310,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 }
 
 
-static void avl_sample(AvlSet *tree, std::vector<lsm::key_type> &sampled_records, size_t k) {
+static void avl_sample(AvlSet *tree, std::vector<lsm::key_t> &sampled_records, size_t k) {
     auto lb_rank = tree->get_rank(g_min_key);
     auto ub_rank = tree->get_rank(g_max_key);
 
@@ -343,18 +328,18 @@ static bool warmup(std::fstream *file, AvlSet *tree, size_t count, double delete
 {
     std::string line;
 
-    lsm::key_type key;
-    lsm::value_type val;
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     size_t del_buf_size = 100;
     size_t del_buf_idx = del_buf_size;
-    std::vector<lsm::key_type> delbuf(del_buf_size);
+    std::vector<lsm::key_t> delbuf(del_buf_size);
 
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, (char*) &key, (char*) &val, &weight)) {
+        if (!next_record(file, &key, &val, weight)) {
             return false;
         }
 
@@ -385,18 +370,18 @@ static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delet
 {
     std::string line;
 
-    lsm::key_type key;
-    lsm::value_type val;
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     size_t del_buf_size = 100;
     size_t del_buf_idx = del_buf_size;
-    std::vector<lsm::key_type> delbuf(del_buf_size);
+    std::vector<lsm::key_t> delbuf(del_buf_size);
 
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, (char*) &key, (char*) &val, &weight)) {
+        if (!next_record(file, &key, &val, weight)) {
             return false;
         }
 
@@ -425,12 +410,12 @@ static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delet
 }
 
 
-static key_range get_key_range(lsm::key_type min, lsm::key_type max, double selectivity)
+static key_range get_key_range(lsm::key_t min, lsm::key_t max, double selectivity)
 {
     size_t range_length = (max - min) * selectivity;
 
-    lsm::key_type max_bottom = max - range_length;
-    lsm::key_type bottom;
+    lsm::key_t max_bottom = max - range_length;
+    lsm::key_t bottom;
 
     while ((bottom = gsl_rng_get(g_rng)) > range_length) 
         ;
@@ -458,34 +443,31 @@ static void reset_lsm_perf_metrics() {
 
 
 static void build_lsm_tree(lsm::LSMTree *tree, std::fstream *file) {
-    auto key_buf = new char[lsm::key_size]();
-    auto val_buf = new char[lsm::value_size]();
-    lsm::weight_type weight;
+
+    //auto key_buf = new char[lsm::key_size]();
+    lsm::key_t key;
+    lsm::value_t val;
+    //auto val_buf = new char[lsm::value_size]();
+    lsm::weight_t weight;
 
     size_t i=0;
-    while (next_record(file, key_buf, val_buf, &weight)) {
-        auto res = tree->append(key_buf, val_buf, weight, false, g_rng);
+    while (next_record(file, &key, &val, weight)) {
+        auto res = tree->append(key, val, weight, false, g_rng);
         assert(res);
     }
-    delete[] key_buf;
-    delete[] val_buf;
 }
 
 static void build_btree(TreeMap *tree, std::fstream *file) {
     // for looking at the insert time distribution
-    auto key_buf = new char[lsm::key_size]();
-    auto val_buf = new char[lsm::value_size]();
-    lsm::weight_type weight;
+    lsm::key_t key;
+    lsm::value_t val;
+    lsm::weight_t weight;
 
     size_t i=0;
-    while (next_record(file, key_buf, val_buf, &weight)) {
-        lsm::key_type key = *(lsm::key_type*) key_buf;
-        lsm::value_type val = *(lsm::value_type*) val_buf;
+    while (next_record(file, &key, &val, weight)) {
         auto res = tree->insert({key, val}, weight);
         assert(res.second);
     }
-    delete[] key_buf;
-    delete[] val_buf;
 }
 
 #endif // H_BENCH

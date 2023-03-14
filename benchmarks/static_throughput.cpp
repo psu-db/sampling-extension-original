@@ -11,7 +11,7 @@ static void sample_benchmark(lsm::WIRSRun *run, size_t k, size_t trial_cnt)
     size_t batches = trial_cnt / batch_size;
     size_t total_time = 0;
 
-    char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     for (int i=0; i<batches; i++) {
         progress_update((double) (i * batch_size) / (double) trial_cnt, progbuf);

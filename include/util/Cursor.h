@@ -30,7 +30,7 @@ static Cursor g_empty_cursor = {0};
  * not be closed.
  */
 inline static bool advance_cursor(Cursor *cur, PagedFileIterator *iter = nullptr) {
-    cur->ptr += record_size;
+    cur->ptr++;
     cur->cur_rec_idx++;
 
     if (cur->cur_rec_idx >= cur->rec_cnt) return false;

@@ -4,7 +4,8 @@
 
 static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt)
 {
-    char sample_set[k*lsm::record_size];
+    //char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     auto start = std::chrono::high_resolution_clock::now();
 

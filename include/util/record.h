@@ -24,20 +24,24 @@ struct record_t {
         header |= 2;
     }
 
-    inline bool get_delete_status() {
-        return header |= 2;
+    inline bool get_delete_status() const {
+        return header & 2;
     }
 
-    inline bool is_tombstone() {
+    inline bool is_tombstone() const {
         return header & 1;
     }
 
-    inline int match(const record_t* other) {
+    inline int match(const record_t* other) const {
         return key == other->key && value == other->value;
     }
 
     inline bool operator<(const record_t& other) const {
         return key < other.key || (key == other.key && value < other.value);
+    }
+
+    inline bool lt(const key_t& k, const value_t& v) const {
+        return key < k || (key == k && value < v);
     }
 };
 
@@ -76,11 +80,11 @@ inline static void layout_memtable_record(char* buffer, const char* key, const c
  * Record must point to the beginning of a valid record, or the
  * returned pointer is undefined.
  */
-static inline char *copy_of(const char *record) {
-    char *copy = (char *) aligned_alloc(CACHELINE_SIZE, record_size);
-    memcpy(copy, record, record_size);
-    return copy;
-}
+//static inline char *copy_of(const char *record) {
+//    char *copy = (char *) aligned_alloc(CACHELINE_SIZE, record_size);
+//    memcpy(copy, record, record_size);
+//    return copy;
+//}
 /*
 inline static const char *get_key(const char *buffer) {
     return buffer;

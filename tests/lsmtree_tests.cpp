@@ -35,12 +35,10 @@ START_TEST(t_append)
 {
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
-    key_type key = 0;
-    value_type val = 0;
+    lsm::key_t key = 0;
+    lsm::value_t val = 0;
     for (size_t i=0; i<100; i++) {
-        const char *key_ptr = (char *) &key;
-        const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key, val, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -57,12 +55,10 @@ START_TEST(t_append_with_mem_merges)
 {
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
-    key_type key = 0;
-    value_type val = 0;
+    lsm::key_t key = 0;
+    lsm::value_t val = 0;
     for (size_t i=0; i<300; i++) {
-        const char *key_ptr = (char *) &key;
-        const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key, val, 1, false, g_rng), 1);
         key++;
         val++;
     }
@@ -79,30 +75,25 @@ START_TEST(t_range_sample_memtable)
 {
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
-    key_type key = 0;
-    value_type val = 0;
+    lsm::key_t key = 0;
+    lsm::value_t val = 0;
     for (size_t i=0; i<100; i++) {
-        const char *key_ptr = (char *) &key;
-        const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key, val, 1, false, g_rng), 1);
         key++;
         val++;
     }
 
-    key_type lower_bound = 0;
-    key_type upper_bound = 100;
+    lsm::key_t lower_bound = 0;
+    lsm::key_t upper_bound = 100;
 
-    char sample_set[100*record_size];
+    //char sample_set[100*record_size];
+    record_t sample_set[100];
 
     lsm->range_sample(sample_set, 100, g_rng);
 
     for(size_t i=0; i<100; i++) {
-        auto rec = sample_set + (record_size * i);
-        auto s_key = *(key_type*) get_key(rec);
-        auto s_val = *(value_type*) get_val(rec);
-
-        ck_assert_int_le(s_key, upper_bound);
-        ck_assert_int_ge(s_key, lower_bound);
+        ck_assert_int_le(sample_set[i].key, upper_bound);
+        ck_assert_int_ge(sample_set[i].key, lower_bound);
     }
 
     delete lsm;
@@ -114,29 +105,23 @@ START_TEST(t_range_sample_memlevels)
 {
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
 
-    key_type key = 0;
-    value_type val = 0;
+    lsm::key_t key = 0;
+    lsm::value_t val = 0;
     for (size_t i=0; i<300; i++) {
-        const char *key_ptr = (char *) &key;
-        const char *val_ptr = (char *) &val;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
+        ck_assert_int_eq(lsm->append(key, val, 1, false, g_rng), 1);
         key++;
         val++;
     }
 
-    key_type lower_bound = 0;
-    key_type upper_bound = 300;
+    lsm::key_t lower_bound = 0;
+    lsm::key_t upper_bound = 300;
 
-    char sample_set[100*record_size];
+    record_t sample_set[100];
     lsm->range_sample(sample_set, 100, g_rng);
 
     for(size_t i=0; i<100; i++) {
-        auto rec = sample_set + (record_size * i);
-        auto s_key = *(key_type*) get_key(rec);
-        auto s_val = *(value_type*) get_val(rec);
-
-        ck_assert_int_le(s_key, upper_bound);
-        ck_assert_int_ge(s_key, lower_bound);
+        ck_assert_int_le(sample_set[i].key, upper_bound);
+        ck_assert_int_ge(sample_set[i].key, lower_bound);
     }
 
     delete lsm;
@@ -148,9 +133,9 @@ START_TEST(t_range_sample_weighted)
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, 1, 100, g_rng);
     size_t n = 10000;
 
-    std::vector<key_type> keys;
+    std::vector<lsm::key_t> keys;
 
-    key_type key = 1;
+    lsm::key_t key = 1;
     for (size_t i=0; i< n / 2; i++) {
         keys.push_back(key);
     }
@@ -181,20 +166,21 @@ START_TEST(t_range_sample_weighted)
             weight = 8.0;
         }
 
-        lsm->append((char*) &keys[i], (char*) &i, weight, false, g_rng);
+        lsm->append(keys[i], i, weight, false, g_rng);
     }
     size_t k = 1000;
-    key_type lower_key = 0;
-    key_type upper_key = 5;
+    lsm::key_t lower_key = 0;
+    lsm::key_t upper_key = 5;
 
-    char *buffer = new char[k*lsm::record_size]();
+    //char *buffer = new char[k*lsm::record_size]();
+    record_t* buffer = new record_t[k]();
 
     size_t cnt[3] = {0};
     for (size_t i=0; i<1000; i++) {
         lsm->range_sample(buffer, k, g_rng);
 
         for (size_t j=0; j<k; j++) {
-            cnt[(*(size_t *) get_key(buffer + j*lsm::record_size) ) - 1]++;
+            cnt[buffer[j].key - 1]++;
         }
     }
 
@@ -213,13 +199,13 @@ START_TEST(t_tombstone_merging_01)
     size_t reccnt = 100000;
     auto lsm = new LSMTree(dir, 100, 100, 2, 100, .01, 100, g_rng);
 
-    std::set<std::pair<key_type, value_type>> records; 
-    std::set<std::pair<key_type, value_type>> to_delete;
-    std::set<std::pair<key_type, value_type>> deleted;
+    std::set<std::pair<lsm::key_t, lsm::value_t>> records; 
+    std::set<std::pair<lsm::key_t, lsm::value_t>> to_delete;
+    std::set<std::pair<lsm::key_t, lsm::value_t>> deleted;
 
     while (records.size() < reccnt) {
-        key_type key = rand();
-        value_type val = rand();
+        lsm::key_t key = rand();
+        lsm::value_t val = rand();
 
         if (records.find({key, val}) != records.end()) continue;
 
@@ -229,21 +215,21 @@ START_TEST(t_tombstone_merging_01)
     size_t deletes = 0;
     size_t cnt=0;
     for (auto rec : records) {
-        const char *key_ptr = (char *) &rec.first;
-        const char *val_ptr = (char *) &rec.second;
-        ck_assert_int_eq(lsm->append(key_ptr, val_ptr, 1, false, g_rng), 1);
+        //const char *key_ptr = (char *) &rec.first;
+        //const char *val_ptr = (char *) &rec.second;
+        ck_assert_int_eq(lsm->append(rec.first, rec.second, 1, false, g_rng), 1);
 
          if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
-            std::vector<std::pair<key_type, value_type>> del_vec;
+            std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
             std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
 
             for (size_t i=0; i<del_vec.size(); i++) {
-                const char *d_key_ptr = (char *) &del_vec[i].first;
-                const char *d_val_ptr = (char *) &del_vec[i].second;
+                //const char *d_key_ptr = (char *) &del_vec[i].first;
+                //const char *d_val_ptr = (char *) &del_vec[i].second;
                 if (lsm::DELETE_TAGGING) {
-                    lsm->delete_record(d_key_ptr, d_val_ptr, g_rng);
+                    lsm->delete_record(del_vec[i].first, del_vec[i].second, g_rng);
                 } else {
-                    lsm->append(d_key_ptr, d_val_ptr, 1, true, g_rng);
+                    lsm->append(del_vec[i].first, del_vec[i].second, 1, true, g_rng);
                 }
                 deletes++;
                 to_delete.erase(del_vec[i]);

@@ -15,9 +15,9 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
     // this benchmark phase won't be deleted. So it's a bit of a
     // "worst case" situation in terms of tombstone proportions.
     size_t deletes = inserts * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
+    lsm::record_t* delbuf = new lsm::record_t[deletes]();
     tree->range_sample(delbuf, deletes, g_rng);
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
     std::vector<shared_record> insert_vec;
@@ -42,19 +42,19 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
         for (size_t i = 0; i < insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
-                auto weight = lsm::get_weight(delbuf + (applied_deletes * lsm::record_size));
-
-                if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
+                auto key = delbuf[applied_deletes].key;
+                auto val = delbuf[applied_deletes].value;
+                auto weight = delbuf[applied_deletes].weight;
+                
+                if (deleted.find(key) == deleted.end()) {
                     tree->append(key, val, weight, true, g_rng);
-                    deleted.insert(*(lsm::key_type *)key);
+                    deleted.insert(key);
                     applied_deletes++;
                 }
             }
 
             // insert the record;
-            tree->append(insert_vec[i].key.get(), insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+            tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
         }
 
         auto insert_stop = std::chrono::high_resolution_clock::now();
@@ -68,7 +68,8 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
 
     // Sample benchmarking
     {
-        char sample_set[sample_size * lsm::record_size];
+        //char sample_set[sample_size * lsm::record_size];
+        lsm::record_t sample_set[sample_size];
 
         auto sample_start = std::chrono::high_resolution_clock::now();
         for (size_t i = 0; i < samples; i++) {

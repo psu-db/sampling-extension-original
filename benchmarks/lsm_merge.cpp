@@ -12,9 +12,9 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
     size_t delete_idx = delete_batch_size;
 
-    char *delbuf = new char[delete_batch_size * lsm::record_size]();
+    lsm::record_t* delbuf = new lsm::record_t[delete_batch_size]();
 
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
 
     size_t applied_deletes = 0;
     size_t applied_inserts = 0;
@@ -46,23 +46,23 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
         for (size_t i=0; i<insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < delete_cnt && delete_idx < delete_batch_size && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (delete_idx * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (delete_idx * lsm::record_size));
-                auto weight = lsm::get_weight(delbuf + (delete_idx * lsm::record_size));
+                auto key = delbuf[delete_idx].key;
+                auto val = delbuf[delete_idx].value;
+                auto weight = delbuf[delete_idx].weight;
                 delete_idx++;
 
-                if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
+                if (deleted.find(key) == deleted.end()) {
                     if (lsm::DELETE_TAGGING) {
                         tree->delete_record(key, val, g_rng);
                     } else {
                         tree->append(key, val, weight, true, g_rng);
                     }
-                    deleted.insert(*(lsm::key_type *)key);
+                    deleted.insert(key);
                     local_deleted++;
                 }
             }
             // insert the record;
-            tree->append(insert_vec[i].key.get(), insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+            tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
             local_inserted++;
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();

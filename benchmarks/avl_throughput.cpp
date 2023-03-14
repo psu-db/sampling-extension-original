@@ -7,12 +7,12 @@ static bool insert_benchmark(AvlSet *tree, std::fstream *file,
     size_t deletes = insert_cnt * delete_prop;
     size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
     size_t delete_idx = delete_batch_size;
-    std::set<lsm::key_type> deleted;
-    std::vector<lsm::key_type> delbuf(deletes);
+    std::set<lsm::key_t> deleted;
+    std::vector<lsm::key_t> delbuf(deletes);
     size_t applied_deletes = 0;
 
     size_t applied_inserts = 0;
-    std::vector<std::pair<lsm::key_type, lsm::weight_type>> insert_vec;
+    std::vector<std::pair<lsm::key_t, lsm::weight_t>> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
 
@@ -76,7 +76,7 @@ static void sample_benchmark(AvlSet *tree, size_t k, size_t trial_cnt)
     size_t batches = trial_cnt / batch_size;
     size_t total_time = 0;
 
-    std::vector<lsm::key_type> sample_set;
+    std::vector<lsm::key_t> sample_set;
     sample_set.reserve(k);
 
     for (int i=0; i<batches; i++) {
