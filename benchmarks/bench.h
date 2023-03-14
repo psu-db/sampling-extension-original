@@ -218,7 +218,7 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
             break;
         }
 
-        btree_record rec = {atol(key), atol(val)};
+        btree_record rec = {*(lsm::key_type *)key, *(lsm::value_type *) val};
         vec.push_back({rec, weight});
     }
 
@@ -242,7 +242,7 @@ static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::
             break;
         }
 
-        vec.push_back({atol(key), weight});
+        vec.push_back({*(lsm::key_type*)key, weight});
     }
 
     return true;
