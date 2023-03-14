@@ -40,6 +40,7 @@ typedef struct record {
     }
 } record;
 
+/*
 typedef struct shared_record {
     std::shared_ptr<lsm::key_t> key;
     std::shared_ptr<lsm::value_t> value;
@@ -49,11 +50,12 @@ typedef struct shared_record {
         return first.key.get() < other.key.get() || (first.key.get() == other.key.get() && first.value.get() < other.value.get());
     }
 } shared_record;
+*/
 
 typedef std::pair<lsm::key_t, lsm::key_t> key_range;
 
 static gsl_rng *g_rng;
-static std::set<shared_record> *g_to_delete;
+static std::set<record> *g_to_delete;
 static bool g_osm_data;
 
 static lsm::key_t g_min_key = UINT64_MAX;
@@ -99,7 +101,7 @@ static void init_bench_env(size_t max_reccnt, bool random_seed, bool osm_correct
 {
     unsigned int seed = (random_seed) ? get_random_seed() : DEFAULT_SEED;
     init_bench_rng(seed, gsl_rng_mt19937);
-    g_to_delete = new std::set<shared_record>();
+    g_to_delete = new std::set<record>();
     g_osm_data = osm_correction;
     g_max_record_cnt = max_reccnt;
     g_reccnt = 0;
@@ -134,7 +136,7 @@ static shared_record create_shared_record()
 */
 
 
-static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, lsm::weight_t& weight)
+static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, lsm::weight_t *weight)
 {
     if (g_reccnt >= g_max_record_cnt) return false;
 
@@ -151,7 +153,7 @@ static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, 
 
         *key = (g_osm_data) ? osm_to_key(key_field.c_str()) : atol(key_field.c_str());
         *val = atol(value_field.c_str());
-        weight = atof(weight_field.c_str());
+        *weight = atof(weight_field.c_str());
 
         if (*key < g_min_key) g_min_key = *key;
 
@@ -168,11 +170,11 @@ static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, 
 }
 
 
-static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec, size_t n) {
+static bool build_insert_vec(std::fstream *file, std::vector<record> &vec, size_t n) {
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        shared_record rec;
-        if (!next_record(file, rec.key.get(), rec.value.get(), rec.weight)) {
+        record rec;
+        if (!next_record(file, &rec.key, &rec.value, &rec.weight)) {
             if (i == 0) {
                 return false;
             }
@@ -180,7 +182,7 @@ static bool build_insert_vec(std::fstream *file, std::vector<shared_record> &vec
             break;
         }
 
-        vec.push_back({rec.key, rec.value, rec.weight});
+        vec.emplace_back((record){rec.key, rec.value, rec.weight});
     }
 
     return true;
@@ -195,7 +197,7 @@ static bool build_btree_insert_vec(std::fstream *file, std::vector<std::pair<btr
 
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        if (!next_record(file, &key, &val, weight)) {
+        if (!next_record(file, &key, &val, &weight)) {
             if (i == 0) {
                 return false;
             }
@@ -219,7 +221,7 @@ static bool build_avl_insert_vec(std::fstream *file, std::vector<std::pair<lsm::
 
     vec.clear();
     for (size_t i=0; i<n; i++) {
-        if (!next_record(file, &key, &val, weight)) {
+        if (!next_record(file, &key, &val, &weight)) {
             if (i == 0) {
                 return false;
             }
@@ -269,7 +271,7 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, &key, &val, weight)) {
+        if (!next_record(file, &key, &val, &weight)) {
             return false;
         }
 
@@ -339,7 +341,7 @@ static bool warmup(std::fstream *file, AvlSet *tree, size_t count, double delete
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, &key, &val, weight)) {
+        if (!next_record(file, &key, &val, &weight)) {
             return false;
         }
 
@@ -381,7 +383,7 @@ static bool warmup(std::fstream *file, TreeMap *tree, size_t count, double delet
     
     double last_percent = 0;
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, &key, &val, weight)) {
+        if (!next_record(file, &key, &val, &weight)) {
             return false;
         }
 
@@ -451,7 +453,7 @@ static void build_lsm_tree(lsm::LSMTree *tree, std::fstream *file) {
     lsm::weight_t weight;
 
     size_t i=0;
-    while (next_record(file, &key, &val, weight)) {
+    while (next_record(file, &key, &val, &weight)) {
         auto res = tree->append(key, val, weight, false, g_rng);
         assert(res);
     }
@@ -464,7 +466,7 @@ static void build_btree(TreeMap *tree, std::fstream *file) {
     lsm::weight_t weight;
 
     size_t i=0;
-    while (next_record(file, &key, &val, weight)) {
+    while (next_record(file, &key, &val, &weight)) {
         auto res = tree->insert({key, val}, weight);
         assert(res.second);
     }

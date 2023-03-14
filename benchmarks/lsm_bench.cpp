@@ -20,7 +20,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
     std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
-    std::vector<shared_record> insert_vec;
+    std::vector<record> insert_vec;
     bool continue_benchmark = build_insert_vec(file, insert_vec, inserts);
 
     /* 
@@ -54,7 +54,7 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
             }
 
             // insert the record;
-            tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+            tree->append(insert_vec[i].key, insert_vec[i].value, insert_vec[i].weight, false, g_rng);
         }
 
         auto insert_stop = std::chrono::high_resolution_clock::now();

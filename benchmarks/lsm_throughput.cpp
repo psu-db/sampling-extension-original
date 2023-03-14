@@ -17,7 +17,7 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t applied_deletes = 0;
     size_t applied_inserts = 0;
 
-    std::vector<shared_record> insert_vec;
+    std::vector<record> insert_vec;
     insert_vec.reserve(g_insert_batch_size);
     bool continue_benchmark = true;
 
@@ -61,7 +61,7 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
                 }
             }
             // insert the record;
-            tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+            tree->append(insert_vec[i].key, insert_vec[i].value, insert_vec[i].weight, false, g_rng);
             local_inserted++;
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();

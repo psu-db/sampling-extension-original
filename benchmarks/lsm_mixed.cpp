@@ -29,7 +29,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
         if (op < write_prop) {
             operation = WRITE;
             // write records
-            std::vector<shared_record> insert_vec;
+            std::vector<record> insert_vec;
             if (!build_insert_vec(file, insert_vec, trial_cnt))  {
                 continue;
             }
@@ -37,7 +37,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<insert_vec.size(); i++) {
-                tree->append(*insert_vec[i].key.get(), *insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+                tree->append(insert_vec[i].key, insert_vec[i].value, insert_vec[i].weight, false, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
