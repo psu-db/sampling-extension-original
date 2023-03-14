@@ -41,7 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
 
-static constexpr bool DELETE_TAGGING = false;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 

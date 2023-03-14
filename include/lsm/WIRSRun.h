@@ -24,6 +24,8 @@ public:
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
     : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_tagging(tagging) {
 
+        TIMER_INIT();
+        TIMER_START();
         std::vector<double> weights;
         weights.reserve(mem_table->get_record_count());
         size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
@@ -33,9 +35,10 @@ public:
         size_t offset = 0;
         auto base = mem_table->sorted_output();
         auto stop = base + mem_table->get_record_count() * record_size;
+        TIMER_STOP();
 
+        auto setup_time = TIMER_RESULT();
 
-        TIMER_INIT();
         TIMER_START();
         if (m_tagging) {
             while (base < stop) {
@@ -88,12 +91,15 @@ public:
         auto alias_time = TIMER_RESULT();
 
         #ifdef INSTRUMENT_MERGING
-        fprintf(stderr, "run\t%ld\t%ld\n", merge_time, alias_time);
+        fprintf(stderr, "memtable merge\t%ld\t%ld\t%ld\n", setup_time, merge_time, alias_time);
         #endif
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
     : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
+
+        TIMER_INIT();
+        TIMER_START();
         std::vector<Cursor> cursors;
         std::vector<double> weights;
         cursors.reserve(len);
@@ -117,7 +123,10 @@ public:
         weights.reserve(attemp_reccnt);
 
         size_t offset = 0;
+        TIMER_STOP();
+        auto setup_time = TIMER_RESULT();
 
+        TIMER_START();
         size_t reccnt = 0;
         Cursor *next = get_next(cursors);
         do {
@@ -161,6 +170,8 @@ public:
             advance_cursor(current);
             reccnt += 1;
         } while (reccnt < attemp_reccnt);
+        TIMER_STOP();
+        auto merge_time = TIMER_RESULT();
 
 
         /*
@@ -210,6 +221,9 @@ public:
         }
     */
         
+
+
+        TIMER_START();
         // normalize the weights array
         for (size_t i=0; i<weights.size(); i++) {
             weights[i] = weights[i] / (double) m_total_weight;
@@ -217,6 +231,14 @@ public:
 
         // build the alias structure
         m_alias = new Alias(weights);
+        TIMER_STOP();
+
+        auto alias_time = TIMER_RESULT();
+
+
+        #ifdef INSTRUMENT_MERGING
+        fprintf(stderr, "run merge\t%ld\t%ld\t%ld\n", setup_time, merge_time, alias_time);
+        #endif
    }
 
     ~WIRSRun() {

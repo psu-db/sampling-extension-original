@@ -92,6 +92,11 @@ if (bench)
     target_compile_options(lsm_bloom PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_bloom")
 
+    add_executable(lsm_merge ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_merge.cpp)
+    target_link_libraries(lsm_merge PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_merge PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_merge")
+
 
     add_executable(btree_insert_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_insert_sample.cpp)
     target_link_libraries(btree_insert_sample PUBLIC ${PROJECT_NAME} pthread)
