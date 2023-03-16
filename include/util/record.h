@@ -30,7 +30,7 @@ struct record_t {
         return header & 1;
     }
 
-    inline int match(const record_t* other) const {
+    inline bool match(const record_t* other) const {
         return key == other->key && value == other->value;
     }
 

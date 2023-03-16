@@ -66,8 +66,8 @@ public:
 
         size_t offset = 0;
         m_reccnt = 0;
-        auto base = mem_table->sorted_output();
-        auto stop = base + mem_table->get_record_count();
+        record_t* base = mem_table->sorted_output();
+        record_t* stop = base + mem_table->get_record_count();
         while (base < stop) {
             if (!base->is_tombstone() && (base + 1 < stop)
                 && base->match(base + 1) && (base + 1)->is_tombstone()) {

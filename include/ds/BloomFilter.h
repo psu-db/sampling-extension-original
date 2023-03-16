@@ -6,6 +6,7 @@
 #include "util/BitArray.h"
 #include "util/hash.h"
 #include "util/base.h"
+#include "util/record.h"
 
 namespace lsm {
 
@@ -27,7 +28,7 @@ public:
         if (salt) free(salt);
     }
 
-    int insert(const key_t& key, size_t sz = sizeof(key_t)) {
+    int insert(const lsm::key_t& key, size_t sz = sizeof(lsm::key_t)) {
         if (m_bitarray.size() == 0) return 0;
 
         for (size_t i = 0; i < m_n_salts; ++i) {
@@ -37,7 +38,7 @@ public:
         return 1;
     }
 
-    bool lookup(const key_t& key, size_t sz = sizeof(key_t)) {
+    bool lookup(const lsm::key_t& key, size_t sz = sizeof(lsm::key_t)) {
         if (m_bitarray.size() == 0) return false;
         for (size_t i = 0; i < m_n_salts; ++i) {
             if (!m_bitarray.is_set(hash_bytes_with_salt((const char*)&key, sz, salt[i]) % m_n_bits))

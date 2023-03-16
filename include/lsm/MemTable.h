@@ -47,7 +47,7 @@ public:
             m_tombstonecnt.fetch_add(1);
             if (m_tombstone_filter) m_tombstone_filter->insert(key);
         }
-        m_reccnt.fetch_add(1);
+        //m_reccnt.fetch_add(1);
 
         return 1;     
     }
