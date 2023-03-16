@@ -30,7 +30,7 @@ const PageNum BTREE_META_PNUM = 1;
 const PageNum BTREE_FIRST_LEAF_PNUM = 2;
 
 const size_t ISAM_INIT_BUFFER_SIZE = 64; // measured in pages
-const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / record_size;
+const size_t ISAM_RECORDS_PER_LEAF = PAGE_SIZE / sizeof(record_t);
 
 thread_local size_t cancelations = 0;
 
@@ -60,14 +60,14 @@ public:
         auto iter = this->start_scan();
         size_t records_processed = 0;
         while (iter->next()) {
-            auto pg = iter->get_item();
-            for (size_t i=0; i < PAGE_SIZE/record_size; i++) {
+            auto pg = (record_t*)iter->get_item();
+            for (size_t i=0; i < PAGE_SIZE/sizeof(record_t); i++) {
                 if (++records_processed > this->rec_cnt) {
                     break;
                 }
 
-                auto key = get_key(iter->get_item() + (i * record_size));
-                tomb_filter->insert(key, key_size);
+                auto key = pg[i].key;
+                tomb_filter->insert(key);
             }
         }
 
@@ -89,8 +89,8 @@ public:
             assert(trees[i]);
             isam_iters[i] = trees[i]->start_scan();
             assert(isam_iters[i]->next());
-            const char *start = isam_iters[i]->get_item();
-            const char *end = start + ISAM_RECORDS_PER_LEAF * record_size;
+            const record_t *start = (record_t*)isam_iters[i]->get_item();
+            const record_t *end = start + ISAM_RECORDS_PER_LEAF;
             cursors[TCUR(i)] = Cursor{start, end, 0, trees[i]->get_record_count()};
             pq.push(cursors[TCUR(i)].ptr, TCUR(i));
 
@@ -101,8 +101,8 @@ public:
         // load up the memory levels;
         for (size_t i=0; i<run_cnt; i++) {
             assert(runs[i]);
-            const char *start = runs[i]->sorted_output();
-            const char *end = start + runs[i]->get_record_count() * record_size;
+            const record_t *start = runs[i]->sorted_output();
+            const record_t *end = start + runs[i]->get_record_count();
             cursors[RCUR(i)] = Cursor{start, end, 0, runs[i]->get_record_count()};
             pq.push(cursors[RCUR(i)].ptr, RCUR(i));
 
@@ -130,8 +130,8 @@ public:
             // If this record is not a tombstone, and there is another
             // record next in the stream with the same key and value, then
             // the record and tombstone should cancel each other out.
-            if (!is_tombstone(cur.data) && next.data != nullptr &&
-                !record_cmp(cur.data, next.data) && is_tombstone(next.data)) {
+            if (!cur.data->is_tombstone() && next.data != nullptr &&
+                cur.data->match(next.data) && next.data->is_tombstone()) {
                 
                 // pop the next two records from the queue and discard them
                 pq.pop(); pq.pop();
@@ -151,10 +151,11 @@ public:
                 continue;
             }
 
-            memcpy((void *) get_record(buffer, output_idx++), cur.data, record_size);
+            memcpy(buffer +  sizeof(record_t) * output_idx, cur.data, sizeof(record_t));
+            output_idx++;
             this->rec_cnt += 1;
-            if (is_tombstone(cur.data) && tomb_filter) {
-                tomb_filter->insert((char*) get_key(cur.data), key_size);
+            if (cur.data->is_tombstone() && tomb_filter) {
+                tomb_filter->insert(cur.data->key);
                 this->tombstone_cnt += 1;
             }
             
@@ -209,7 +210,7 @@ public:
      * will vary over the function call and are not defined. Any data within it
      * will be clobbered by this function.
      */
-    PageNum get_lower_bound(const char *key, char *buffer) {
+    PageNum get_lower_bound(const key_t& key, char *buffer) {
         PageNum current_page = this->root_page;
         // The leaf pages are all allocated contiguously at the start of the file,
         // so we'll know when we have a pointer to one when the pnum is no larger
@@ -221,7 +222,7 @@ public:
         return current_page;
     }
 
-    std::pair<PageNum, size_t> get_lower_bound_index(const char *key, char *buffer) {
+    std::pair<PageNum, size_t> get_lower_bound_index(const key_t& key, char *buffer) {
         auto pnum = this->get_lower_bound(key, buffer);
 
         if (pnum == INVALID_PNUM) {
@@ -235,7 +236,7 @@ public:
     }
 
 
-    std::pair<PageNum, size_t> get_upper_bound_index(const char *key, char *buffer) {
+    std::pair<PageNum, size_t> get_upper_bound_index(const key_t& key, char *buffer) {
         auto pnum = this->get_upper_bound(key, buffer);
 
         if (pnum == INVALID_PNUM) {
@@ -248,7 +249,7 @@ public:
         // FIXME: This could be replaced by a modified version of
         // search_leaf_page, but this avoids a lot of code duplication for what
         // will almost certainly be a very short loop over in-cache data.
-        while (idx <= this->max_leaf_record_idx(pnum) && key_cmp(key, get_key(buffer + idx*record_size)) >= 0) {
+        while (idx <= this->max_leaf_record_idx(pnum) && key >= ((record_t*)(buffer) + idx)->key) {
             idx++;
         }
 
@@ -267,7 +268,7 @@ public:
      * will vary over the function call and are not defined. Any data within it
      * will be clobbered by this function.
      */
-    PageNum get_upper_bound(const char *key, char *buffer) {
+    PageNum get_upper_bound(const key_t& key, char *buffer) {
         PageNum current_page = this->root_page;
         // The leaf pages are all allocated contiguously at the start of the file,
         // so we'll know when we have a pointer to one when the pnum is no larger
@@ -298,11 +299,11 @@ public:
      * reused. Otherwise, an IO will be performed, and the pg_in_buffer will be
      * updated to match the page currently in the buffer.
      */
-    const char *sample_record(PageNum start_page, size_t record_idx, char *buffer, PageNum &pg_in_buffer) {
+    const record_t *sample_record(PageNum start_page, size_t record_idx, char *buffer, PageNum &pg_in_buffer) {
         // TODO: Verify that this is the appropriate interface to use 
         assert(start_page >= this->first_data_page && start_page <= this->last_data_page);
 
-        constexpr size_t records_per_page = PAGE_SIZE / record_size;
+        constexpr size_t records_per_page = PAGE_SIZE / sizeof(record_t);
 
         PageNum page_offset = record_idx / records_per_page;
         assert(start_page + page_offset <= this->last_data_page);
@@ -314,7 +315,7 @@ public:
             pg_in_buffer = start_page + page_offset;
         }
 
-        return buffer + idx * record_size;
+        return (record_t*)(buffer + idx * sizeof(record_t));
     }
 
     /*
@@ -328,7 +329,7 @@ public:
      * will vary over the function call and are not defined. Any data within it
      * will be clobbered by this function.
      */
-    bool check_tombstone(const char *key, const char *val, char *buffer) {
+    bool check_tombstone(const key_t& key, const value_t& val, char *buffer) {
         auto lb = this->get_lower_bound_index(key, buffer);
         PageNum pnum = lb.first;
         size_t idx = lb.second;
@@ -337,16 +338,13 @@ public:
             return false;
         }
 
-        char test_rec[record_size];
-        layout_record(test_rec, key, val, false);
-
         do {
             assert(this->pfile->read_page(pnum, buffer));
             for (size_t i=idx; i<this->max_leaf_record_idx(pnum); i++) {
-                auto rec = buffer + (idx * record_size);
+                auto rec = (record_t*)(buffer + (idx * sizeof(record_t)));
 
-                if (record_cmp(rec, test_rec) >= 0) {
-                    return record_match(rec, key, val, true);
+                if (!rec->lt(key, val)) {
+                    return rec->match(key, val, true);
                 }
             }
 
@@ -440,7 +438,7 @@ private:
     bool retain_file;
 
 
-    PageNum search_internal_node_lower(PageNum pnum, const char *key, char *buffer) {
+    PageNum search_internal_node_lower(PageNum pnum, const key_t& key, char *buffer) {
         assert(this->pfile->read_page(pnum, buffer));
 
         size_t min = 0;
@@ -449,15 +447,15 @@ private:
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
         // bound. So we need to check this case manually and return INVALID_PNUM.
-        auto node_key = get_internal_key(get_internal_record(buffer, max));
-        if (key_cmp(key, node_key) > 0) {
+        auto node_key = *(key_t*)get_internal_record_key(buffer, max);
+        if (key > node_key) {
             return INVALID_PNUM;
         }
 
         while (min < max) {
             size_t mid = (min + max) / 2;
-            node_key = get_internal_key(get_internal_record(buffer, mid));
-            if (key_cmp(key, node_key) > 0) {
+            node_key = get_internal_record_key(buffer, mid);
+            if (key > node_key) {
                 min = mid + 1;
             } else {
                 max = mid;
@@ -467,7 +465,7 @@ private:
         return get_internal_value(get_internal_record(buffer, min));
     }
 
-    PageNum search_internal_node_upper(PageNum pnum, const char *key, char *buffer) {
+    PageNum search_internal_node_upper(PageNum pnum, const key_t& key, char *buffer) {
         assert(this->pfile->read_page(pnum, buffer));
 
         size_t min = 0;
@@ -476,15 +474,15 @@ private:
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
         // bound. So we need to check this case manually and return INVALID_PNUM.
-        auto node_key = get_internal_key(get_internal_record(buffer, max));
-        if (key_cmp(key, node_key) > 0) {
+        auto node_key = get_internal_record_key(buffer, max);
+        if (key > node_key) {
             return INVALID_PNUM;
         }
 
         while (min < max) {
             size_t mid = (min + max) / 2;
-            node_key = get_internal_key(get_internal_record(buffer, mid));
-            if (key_cmp(key, node_key) >= 0) {
+            node_key = get_internal_record_key(buffer, mid);
+            if (key >= node_key) {
                 min = mid + 1;
             } else {
                 max = mid;
@@ -494,25 +492,26 @@ private:
         return get_internal_value(get_internal_record(buffer, min));
     }
 
-    char *search_leaf_page(PageNum pnum, const char *key, char *buffer, size_t *idx=nullptr) {
+    char *search_leaf_page(PageNum pnum, const key_t& key, char *buffer, size_t *idx=nullptr) {
         size_t min = 0;
         size_t max = this->max_leaf_record_idx(pnum);
 
         assert(this->pfile->read_page(pnum, buffer));
-        const char * record_key;
+        //const char * record_key;
 
         while (min < max) {
             size_t mid = (min + max) / 2;
-            record_key = get_key(buffer + (mid * record_size));
+            //record_key = get_key(buffer + (mid * sizeof(record_t)));
+            auto record_key = (((record_t*)buffer) + mid)->key;
 
-            if (key_cmp(key, record_key) > 0) {
+            if (key > record_key) {
                 min = mid + 1;
             } else {
                 max = mid;
             }
         }
 
-        char *record = buffer + (min * record_size);
+        char *record = buffer + (min * sizeof(record_t));
 
         // Update idx if required, regardless of if the found
         // record is an exact match (lower-bound behavior).
@@ -522,7 +521,7 @@ private:
 
         // Check if the thing that we found matches the target. If so, we've found
         // it. If not, the target doesn't exist on the page.
-        if (key_cmp(key, get_key(record)) == 0) {
+        if (key == ((record_t*)record)->key) {
             return record;
         }
 
@@ -576,7 +575,7 @@ private:
 
         size_t int_recs_per_pg = (PAGE_SIZE - ISAMTreeInternalNodeHeaderSize) / internal_record_size;
 
-        size_t pl_recs_per_pg = (first_level) ? PAGE_SIZE / record_size : int_recs_per_pg;
+        size_t pl_recs_per_pg = (first_level) ? PAGE_SIZE / sizeof(record_t) : int_recs_per_pg;
 
         PageNum in_pnum = *pl_first_pg;
         PageNum pl_last_pg = pfile->get_page_count();
@@ -612,8 +611,8 @@ private:
                 // Get the key of the last record in this leaf page
                 size_t last_record = (in_pnum < pl_last_pg || *pl_final_pg_rec_cnt == 0) ? pl_recs_per_pg - 1 : (*pl_final_pg_rec_cnt) - 1;
 
-                const char *key = (first_level) ? get_key(get_record(get_page(in_buffer, in_pg_idx), last_record))
-                                                : get_internal_key(get_internal_record(get_page(in_buffer, in_pg_idx), last_record));
+                key_t key = (first_level) ? ((record_t*)(get_page(in_buffer, in_pg_idx) + last_record * sizeof(record_t)))->key
+                                                : get_internal_record_key(get_page(in_buffer, in_pg_idx), last_record);
 
                 // Increment the total number of children of this internal page
                 get_header(out_buffer, out_pg_idx)->leaf_rec_cnt += (first_level) ? pl_recs_per_pg : get_header(in_buffer, in_pg_idx)->leaf_rec_cnt;
@@ -715,8 +714,8 @@ private:
     }
 
     static PageNum write_final_buffer(size_t output_idx, PageNum cur_pnum, size_t *last_leaf_rec_cnt, PagedFile *pfile, char *buffer) {
-        size_t full_leaf_pages = (output_idx) / (PAGE_SIZE / record_size);
-        *last_leaf_rec_cnt = (output_idx) % (PAGE_SIZE / record_size);
+        size_t full_leaf_pages = (output_idx) / (PAGE_SIZE / sizeof(record_t));
+        *last_leaf_rec_cnt = (output_idx) % (PAGE_SIZE / sizeof(record_t));
 
         if (full_leaf_pages == 0 && *last_leaf_rec_cnt == 0) {
             return cur_pnum - 1;
@@ -749,14 +748,14 @@ private:
 
     inline size_t max_leaf_record_idx(PageNum pnum) {
         if (pnum == this->last_data_page) {
-            size_t excess_records = rec_cnt % (PAGE_SIZE / record_size);
+            size_t excess_records = rec_cnt % (PAGE_SIZE / sizeof(record_t));
 
             if (excess_records > 0) {
                 return excess_records - 1;
             }
         }
 
-        return (PAGE_SIZE/record_size) - 1;
+        return (PAGE_SIZE/sizeof(record_t)) - 1;
     }
 };
 

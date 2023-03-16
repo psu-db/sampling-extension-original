@@ -109,10 +109,10 @@ static MemTable *create_test_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i=0; i<cnt; i++) {
-        key_type key = rand();
-        value_type val = rand();
+        lsm::key_t key = rand();
+        lsm::value_t val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -124,17 +124,17 @@ static MemTable *create_test_memtable_dupes(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i;
+        lsm::key_t key = i;
+        lsm::value_t val = i;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append(key, val);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i + 1;
+        lsm::key_t key = i;
+        lsm::value_t val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -146,10 +146,10 @@ static MemTable *create_sequential_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i=0; i<cnt; i++) {
-        key_type key = i;
-        value_type val = i;
+        lsm::key_t key = i;
+        lsm::value_t val = i;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -158,7 +158,7 @@ static MemTable *create_sequential_memtable(size_t cnt)
 
 static size_t required_leaf_pages(size_t cnt)
 {
-    size_t records_per_page = PAGE_SIZE / record_size;
+    size_t records_per_page = PAGE_SIZE / sizeof(record_t);
     size_t excess_records = cnt % records_per_page;
 
     return cnt / records_per_page + (excess_records != 0);
@@ -181,14 +181,14 @@ START_TEST(t_create_test_isam)
 
     size_t total_cnt = 0;
     while (iter->next()) {
-        for (size_t i=0; i< PAGE_SIZE / record_size; i++) {
+        for (size_t i=0; i< PAGE_SIZE / sizeof(record_t); i++) {
             if (++total_cnt > n) {
                 break;
             }
 
-            const char *tbl_rec = tbl->get_record_at(total_cnt - 1);
-            const char *tree_rec = iter->get_item() + (i * record_size);
-            ck_assert(record_cmp(tree_rec, tbl_rec) == 0);
+            const record_t *tbl_rec = tbl->get_record_at(total_cnt - 1);
+            const record_t *tree_rec = (record_t*)(iter->get_item() + (i * sizeof(record_t)));
+            ck_assert(tree_rec->match(tbl_rec));
         }
     }
 
@@ -212,13 +212,13 @@ START_TEST(t_get_lower_bound_index)
 
     tbl->sorted_output();
     for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = tbl->get_record_at(i);
-        auto tree_loc = tree->get_lower_bound_index(get_key(tbl_rec), buf);
+        const record_t *tbl_rec = tbl->get_record_at(i);
+        auto tree_loc = tree->get_lower_bound_index(tbl_rec->key, buf);
         ck_assert_int_ne(tree_loc.first, INVALID_PNUM);
         size_t idx = tree_loc.second;
 
-        const char *tree_key = get_key(buf + (idx * record_size));
-        ck_assert_int_eq(*(key_type *) tree_key, *(key_type*) tbl_rec);
+        lsm::key_t tree_key = ((record_t*)(buf + (idx * sizeof(record_t))))->key;
+        ck_assert_int_eq(tree_key, tbl_rec->key);
     }
 
     free_isam(tree, filter, tbl);
@@ -239,13 +239,13 @@ START_TEST(t_get_upper_bound_index)
 
     tbl->sorted_output();
     for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = tbl->get_record_at(i);
-        auto tree_loc = tree->get_upper_bound_index(get_key(tbl_rec), buf);
+        const record_t *tbl_rec = tbl->get_record_at(i);
+        auto tree_loc = tree->get_upper_bound_index(tbl_rec->key, buf);
         ck_assert_int_ne(tree_loc.first, INVALID_PNUM);
         size_t idx = tree_loc.second;
 
-        const char *tree_key = get_key(buf + (idx * record_size));
-        ck_assert_int_eq(*(key_type *) tree_key, *(key_type*) tbl_rec);
+        lsm::key_t tree_key = ((record_t*)(buf + (idx * sizeof(record_t))))->key;
+        ck_assert_int_eq(tree_key, tbl_rec->key);
     }
 
     free_isam(tree, filter, tbl);
@@ -288,22 +288,22 @@ START_TEST(t_create_from_isams)
     size_t tbl3_idx = 0;
 
     while (iter->next()) {
-        for (size_t i=0; i< PAGE_SIZE / record_size; i++) {
+        for (size_t i=0; i< PAGE_SIZE / sizeof(record_t); i++) {
             if (++total_cnt > 3*n) {
                 break;
             }
 
-            const char *tbl1_rec = tbl1->get_record_at(tbl1_idx);
-            const char *tbl2_rec = tbl2->get_record_at(tbl2_idx);
-            const char *tbl3_rec = tbl3->get_record_at(tbl3_idx);
+            const record_t *tbl1_rec = tbl1->get_record_at(tbl1_idx);
+            const record_t *tbl2_rec = tbl2->get_record_at(tbl2_idx);
+            const record_t *tbl3_rec = tbl3->get_record_at(tbl3_idx);
 
-            const char *tree_rec = iter->get_item() + (i * record_size);
+            const record_t *tree_rec = (const record_t*)(iter->get_item() + (i * sizeof(record_t)));
 
-            if (tbl1_idx < n && record_cmp(tree_rec, tbl1_rec) == 0) {
+            if (tbl1_idx < n && tree_rec->match(tbl1_rec)) {
                 tbl1_idx++;
-            } else if (tbl2_idx < n && record_cmp(tree_rec, tbl2_rec) == 0) {
+            } else if (tbl2_idx < n && tree_rec->match(tbl2_rec)) {
                 tbl2_idx++;
-            } else if (tbl3_idx < n && record_cmp(tree_rec, tbl3_rec) == 0) {
+            } else if (tbl3_idx < n && tree_rec->match(tbl3_rec)) {
                 tbl3_idx++;
             } else {
                 assert(false);
@@ -326,7 +326,7 @@ START_TEST(t_verify_page_structure)
 {
     size_t cnt = 1000000;
     size_t page_cnt = required_leaf_pages(cnt);
-    size_t records_per_leaf = PAGE_SIZE / record_size;
+    size_t records_per_leaf = PAGE_SIZE / sizeof(record_t);
 
     auto mtable = create_sequential_memtable(cnt);
     BloomFilter *filter;
@@ -343,7 +343,7 @@ START_TEST(t_verify_page_structure)
         for (size_t i=0; i<records_per_leaf; i++) {
             if (total_records >= cnt) break;
 
-            key_type key = *(key_type*)get_key(leaf_page + i*record_size);
+            lsm::key_t key = ((record_t*)(leaf_page + i*sizeof(record_t)))->key;
             ck_assert_int_eq(key, total_records);
             total_records++;
         }
@@ -413,17 +413,17 @@ START_TEST(t_get_lower_bound_index_dupes)
 
     auto tbl_records = tbl->sorted_output();
     for (size_t i=0; i<n; i++) {
-        auto tbl_key_ptr = get_key(tbl->get_record_at(i));
-        auto tbl_key = *(key_type *) tbl_key_ptr;
+        auto tbl_key_ptr = tbl->get_record_at(i);
+        auto tbl_key = tbl_key_ptr->key;
 
-        auto pos = tree->get_lower_bound_index(tbl_key_ptr, buf);
+        auto pos = tree->get_lower_bound_index(tbl_key, buf);
         ck_assert_int_ne(pos.first, INVALID_PNUM);
 
-        auto tree_key = *(key_type*) get_key(buf + (pos.second * record_size));
-        auto tree_val = *(value_type*) get_val(buf + (pos.second * record_size));
+        auto tree_key = ((record_t*)(buf + (pos.second * sizeof(record_t))))->key;
+        auto tree_val = ((record_t*)(buf + (pos.second * sizeof(record_t))))->value;
         ck_assert_int_eq(tree_key, tbl_key);
         ck_assert(tbl_key == tree_val || tbl_key - 1 == tree_val);
-        size_t overall_offset = (pos.first - BTREE_FIRST_LEAF_PNUM) * PAGE_SIZE / record_size + pos.second;
+        size_t overall_offset = (pos.first - BTREE_FIRST_LEAF_PNUM) * PAGE_SIZE / sizeof(record_t) + pos.second;
         ck_assert_int_le(overall_offset, i);
     }
 
@@ -444,17 +444,17 @@ START_TEST(t_get_upper_bound_index_dupes)
 
     auto tbl_records = tbl->sorted_output();
     for (size_t i=0; i<n; i++) {
-        auto tbl_key_ptr = get_key(tbl->get_record_at(i));
-        auto tbl_key = *(key_type *) tbl_key_ptr;
+        auto tbl_key_ptr = tbl->get_record_at(i);
+        auto tbl_key = tbl_key_ptr->key;
 
-        auto pos = tree->get_upper_bound_index(tbl_key_ptr, buf);
+        auto pos = tree->get_upper_bound_index(tbl_key, buf);
         ck_assert_int_ne(pos.first, INVALID_PNUM);
 
-        auto tree_key = *(key_type*) get_key(buf + (pos.second * record_size));
-        auto tree_val = *(value_type*) get_val(buf + (pos.second * record_size));
+        auto tree_key = ((record_t*)(buf + (pos.second * sizeof(record_t))))->key;
+        auto tree_val = ((record_t*)(buf + (pos.second * sizeof(record_t))))->value;
         ck_assert_int_eq(tree_key, tbl_key);
         ck_assert(tbl_key == tree_val || tbl_key + 1 == tree_val);
-        size_t overall_offset = (pos.first - BTREE_FIRST_LEAF_PNUM) * PAGE_SIZE / record_size + pos.second;
+        size_t overall_offset = (pos.first - BTREE_FIRST_LEAF_PNUM) * PAGE_SIZE / sizeof(record_t) + pos.second;
         ck_assert_int_ge(overall_offset, i);
     }
 

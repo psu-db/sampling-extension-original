@@ -6,9 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(namespace "lsm")
 project("lsm_sampling" VERSION 0.1.0)
 
-set(debug false)
+set(debug True)
 set(tests True)
-set(bench True)
+set(bench false)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")

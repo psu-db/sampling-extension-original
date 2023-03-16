@@ -17,6 +17,8 @@ public:
         size_t n = weights.size();
         auto overfull = std::vector<size_t>();
         auto underfull = std::vector<size_t>();
+        overfull.reserve(n);
+        underfull.reserve(n);
 
         // initialize the probability_table with n*p(i) as well as the overfull and
         // underfull lists.

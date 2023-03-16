@@ -176,7 +176,7 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high, char *buffer) {
+    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const key_t& low, const key_t& high, char *buffer) {
         for (ssize_t i = 0; i < m_run_cnt; ++i) {
             auto low_pos = m_runs[i]->get_lower_bound(low, buffer);
 
@@ -197,27 +197,27 @@ public:
             }
             assert(high_pos >= low_pos);
             dst.emplace_back(SampleRange{RunId{m_level_no, i}, low_pos, high_pos});
-            rec_cnts.emplace_back((high_pos - low_pos + 1) * (PAGE_SIZE/record_size));
+            rec_cnts.emplace_back((high_pos - low_pos + 1) * (PAGE_SIZE/sizeof(record_t)));
         }
     }
 
-    bool bf_rejection_check(size_t run_stop, const char* key) {
+    bool bf_rejection_check(size_t run_stop, const key_t& key) {
         for (size_t i = 0; i < run_stop; ++i) {
-            if (m_bfs[i] && m_bfs[i]->lookup(key, key_size))
+            if (m_bfs[i] && m_bfs[i]->lookup(key))
                 return true;
         }
         return false;
     }
 
-    bool tombstone_check(size_t run_stop, const char* key, const char* val, char *buffer) {
+    bool tombstone_check(size_t run_stop, const key_t& key, const value_t& val, char *buffer) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_runs[i] && m_bfs[i]->lookup(key, key_size) && m_runs[i]->check_tombstone(key, val, buffer))
+            if (m_runs[i] && m_bfs[i]->lookup(key) && m_runs[i]->check_tombstone(key, val, buffer))
                 return true;
         }
         return false;
     }
 
-    const char* get_record_at(size_t run_no, PageNum initial_pnum, size_t idx, char *buffer, PageNum &pg_in_buffer) {
+    const record_t* get_record_at(size_t run_no, PageNum initial_pnum, size_t idx, char *buffer, PageNum &pg_in_buffer) {
         return m_runs[run_no]->sample_record(initial_pnum, idx, buffer, pg_in_buffer);
     }
     

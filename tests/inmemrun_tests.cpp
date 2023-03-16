@@ -13,10 +13,10 @@ static MemTable *create_test_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i = 0; i < cnt; i++) {
-        key_type key = rand();
-        value_type val = rand();
+        lsm::key_t key = rand();
+        lsm::value_t val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -28,17 +28,17 @@ static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i;
+        lsm::key_t key = i;
+        lsm::value_t val = i;
 
-        mtable->append((char*) &key, (char *) &val, ts);
+        mtable->append(key, val, ts);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i + 1;
+        lsm::key_t key = i;
+        lsm::value_t val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val, ts);
+        mtable->append(key, val, ts);
     }
 
     return mtable;
@@ -49,17 +49,17 @@ START_TEST(t_memtable_init)
     auto mem_table = new MemTable(1024, true, 50, g_rng);
     for (uint64_t i = 512; i > 0; i--) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append(i, v);
     }
     
     for (uint64_t i = 1; i <= 256; ++i) {
         uint32_t v = i;
-        mem_table->append((const char*)&i, (const char*)&v, true);
+        mem_table->append(i, v, true);
     }
 
     for (uint64_t i = 257; i <= 512; ++i) {
         uint32_t v = i + 1;
-        mem_table->append((const char*)&i, (const char*)&v);
+        mem_table->append(i, v);
     }
 
     BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
@@ -104,11 +104,11 @@ START_TEST(t_inmemrun_init)
 
         auto cur_rec = run4->get_record_at(i);
 
-        if (run1_idx < n && record_cmp(cur_rec, rec1) == 0) {
+        if (run1_idx < n && cur_rec->match(rec1)) {
             ++run1_idx;
-        } else if (run2_idx < n && record_cmp(cur_rec, rec2) == 0) {
+        } else if (run2_idx < n && cur_rec->match(rec2)) {
             ++run2_idx;
-        } else if (run3_idx < n && record_cmp(cur_rec, rec3) == 0) {
+        } else if (run3_idx < n && cur_rec->match(rec3)) {
             ++run3_idx;
         } else {
            assert(false);
@@ -143,10 +143,9 @@ START_TEST(t_get_lower_bound_index)
 
     auto tbl_records = memtable->sorted_output();
     for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = memtable->get_record_at(i);
-        tbl_records + (i * record_size);
-        auto pos = run->get_lower_bound(get_key(tbl_rec));
-        ck_assert_int_eq(*(key_type *) get_key(run->get_record_at(pos)), *(key_type*) get_key(tbl_rec));
+        const record_t *tbl_rec = memtable->get_record_at(i);
+        auto pos = run->get_lower_bound(tbl_rec->key);
+        ck_assert_int_eq(run->get_record_at(pos)->key, tbl_rec->key);
         ck_assert_int_le(pos, i);
     }
 
@@ -169,11 +168,10 @@ START_TEST(t_get_upper_bound_index)
 
     auto tbl_records = memtable->sorted_output();
     for (size_t i=0; i<n; i++) {
-        const char *tbl_rec = memtable->get_record_at(i);
-        tbl_records + (i * record_size);
-        auto pos = run->get_upper_bound(get_key(tbl_rec));
+        const record_t *tbl_rec = memtable->get_record_at(i);
+        auto pos = run->get_upper_bound(tbl_rec->key);
         ck_assert(pos == run->get_record_count() ||
-                  *(key_type *) get_key(run->get_record_at(pos)) > *(key_type*) get_key(tbl_rec));
+                  run->get_record_at(pos)->key > tbl_rec->key);
         ck_assert_int_ge(pos, i);
     }
 
@@ -238,13 +236,13 @@ START_TEST(t_persistence)
     for (size_t i=0; i<reccnt; i++) {
         auto rec1 = run->get_record_at(i);
         auto rec2 = run2->get_record_at(i);
-        ck_assert_mem_eq(rec1, rec2, lsm::record_size);
+        ck_assert_mem_eq((const char*)rec1, (const char*)rec2, sizeof(record_t));
 
-        auto lbound1 = run->get_lower_bound(get_key(rec1));
-        auto ubound1 = run->get_upper_bound(get_key(rec1));
+        auto lbound1 = run->get_lower_bound(rec1->key);
+        auto ubound1 = run->get_upper_bound(rec1->key);
 
-        auto lbound2 = run2->get_lower_bound(get_key(rec2));
-        auto ubound2 = run2->get_upper_bound(get_key(rec2));
+        auto lbound2 = run2->get_lower_bound(rec2->key);
+        auto ubound2 = run2->get_upper_bound(rec2->key);
 
         ck_assert_int_eq(lbound1, lbound2);
         ck_assert_int_eq(ubound1, ubound2);

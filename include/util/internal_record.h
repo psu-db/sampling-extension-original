@@ -25,7 +25,7 @@ static constexpr PageOffset ISAMTreeInternalNodeHeaderSize = MAXALIGN(sizeof(ISA
 /*
  * The number of bytes occupied by an ISAM tree internal record, including alignment bytes.
  */
-static constexpr size_t internal_record_size = key_size + MAXALIGN(sizeof(PageNum));
+static constexpr size_t internal_record_size = sizeof(key_t) + MAXALIGN(sizeof(PageNum));
 
 /*
  * The maximum number of internal records that can be stored in an internal
@@ -38,9 +38,9 @@ static constexpr size_t internal_records_per_page = (PAGE_SIZE - ISAMTreeInterna
  * specified key and target page number. If either buffer or key refer to
  * memory regions of insufficient size, the results are undefined.
  */
-static inline void build_internal_record(char *buffer, const char *key, PageNum target_page) {
-    memcpy(buffer, key, key_size);
-    memcpy(buffer + key_size, &target_page, sizeof(PageNum));
+static inline void build_internal_record(char *buffer, const key_t& key, PageNum target_page) {
+    memcpy(buffer, &key, sizeof(key_t));
+    memcpy(buffer + sizeof(key_t), &target_page, sizeof(PageNum));
 }
 
 /*
@@ -63,13 +63,17 @@ static inline const char *get_internal_key(const char *buffer) {
     return buffer;
 }
 
+static inline key_t get_internal_record_key(char* internal_page_buffer, size_t idx) {
+    return *(key_t*)(internal_page_buffer + ISAMTreeInternalNodeHeaderSize + internal_record_size * idx);
+}
+
 /*
  * Return the Page Number (value) of an internal record, pointed to by buffer.
  * Buffer must point to the beginning of a valid internal record, or the result
  * of this function is undefined.
  */
 static inline PageNum get_internal_value(const char *buffer) {
-    return *((PageNum *) (buffer + key_size));
+    return *((PageNum *) (buffer + sizeof(key_t)));
 }
 
 /*

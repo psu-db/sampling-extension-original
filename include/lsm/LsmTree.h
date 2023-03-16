@@ -105,7 +105,7 @@ public:
         }
     }
 
-    int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
+    int append(const key_t& key, const value_t& val, bool tombstone, gsl_rng *rng) {
         // NOTE: single-threaded implementation only
         MemTable *mtable;
         while (!(mtable = this->memtable()))
@@ -118,7 +118,7 @@ public:
         return mtable->append(key, val, tombstone);
     }
 
-    void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    void range_sample(record_t *sample_set, const key_t& lower_key, const key_t& upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
         TIMER_INIT();
 
         // Allocate buffer into which to write the samples
@@ -138,7 +138,7 @@ public:
         TIMER_START();
 
         size_t memtable_cutoff;
-        std::vector<const char*> memtable_records;
+        std::vector<const record_t*> memtable_records;
         if (LSM_REJ_SAMPLE) {
             memtable_cutoff = memtable->get_record_count() - 1;
             record_counts.push_back(memtable_cutoff + 1);
@@ -211,7 +211,7 @@ public:
             // reset rejection counter to begin tracking for next
             // sampling pass
             rejections = 0;
-            const char *sample_record;
+            const record_t *sample_record;
 
             // We will draw the records from the runs in order
 
@@ -265,7 +265,7 @@ public:
             // need to roll the pages, and then the record index within each
             // page
             run_offset = 1 + memory_ranges.size(); // Skip the memtable and the memory levels
-            size_t records_per_page = PAGE_SIZE / record_size;
+            size_t records_per_page = PAGE_SIZE / sizeof(record_t);
             PageNum buffered_page = INVALID_PNUM;
             for (size_t i=0; i<disk_ranges.size(); i++) {
                 size_t range_length = (disk_ranges[i].high - disk_ranges[i].low + 1) * records_per_page;
@@ -293,9 +293,9 @@ public:
     // should correspond to the run containing the record in question
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
-    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+    bool is_deleted(const record_t* record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_tombstone(get_key(record), get_val(record))) {
+        if (memtable->check_tombstone(record->key, record->value)) {
             return true;
         }
 
@@ -306,12 +306,12 @@ public:
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
+                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
                     return true;
                 }
             } else {
                 size_t isam_lvl = lvl - memory_levels.size();
-                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), get_key(record), get_val(record), buffer)) {
+                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), record->key, record->value, buffer)) {
                     return true;
                 }
 
@@ -321,11 +321,11 @@ public:
         // check the level containing the run
         if (rid.level_idx < memory_levels.size()) {
             size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->tombstone_check(run_idx, get_key(record), get_val(record));
+            return memory_levels[rid.level_idx]->tombstone_check(run_idx, record->key, record->value);
         } else {
             size_t isam_lvl = rid.level_idx - memory_levels.size();
             size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
-            return disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
+            return disk_levels[isam_lvl]->tombstone_check(run_idx, record->key, record->value, buffer);
         }
     }
 
@@ -410,13 +410,13 @@ public:
      * one of those. But as it stands, this seems the most straightforward way
      * to get a static in-memory structure.
      */
-    char *get_sorted_array(size_t *len, gsl_rng *rng)
+    record_t *get_sorted_array(size_t *len, gsl_rng *rng)
     {
         // flatten into an ISAM Tree to get a contiguous run of all
         // the records, and cancel out all tombstones.
         auto tree = this->get_flat_isam_tree(rng);
-        size_t alloc_sz = tree->get_record_count() * record_size + (CACHELINE_SIZE - tree->get_record_count() * record_size % CACHELINE_SIZE);
-        char *array = (char *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
+        size_t alloc_sz = tree->get_record_count() * sizeof(record_t) + (CACHELINE_SIZE - tree->get_record_count() * sizeof(record_t) % CACHELINE_SIZE);
+        record_t *array = (record_t *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
 
         assert(tree->get_tombstone_count() == 0);
 
@@ -425,9 +425,10 @@ public:
         auto iter = tree->start_scan();
         size_t offset = 0;
         while (iter->next() && offset < tree->get_record_count()) {
-            auto pg = iter->get_item();
-            for (size_t i=0; i<PAGE_SIZE/record_size; i++) {
-                memcpy(array + offset*record_size, pg + i*record_size, record_size);
+            auto pg = (record_t*)iter->get_item();
+            for (size_t i=0; i<PAGE_SIZE/sizeof(record_t); i++) {
+                array[offset] = pg[i];
+                //memcpy(array + offset*sizeof(record_t), pg + i*sizeof(record_t), sizeof(record_t));
                 offset++;
 
                 if (offset >= tree->get_record_count()) break;
@@ -565,11 +566,11 @@ private:
         return (active_memtable) ? memtable_2 : memtable_1;
     }
 
-    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
-        if (is_tombstone(record)) {
+    inline bool rejection(const record_t *record, RunId rid, const key_t& lower_bound, const key_t& upper_bound, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        if (record->is_tombstone()) {
             tombstone_rejections++;
             return true;
-        } else if (key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0) {
+        } else if (record->key < lower_bound || record->key > upper_bound) {
             bounds_rejections++;
             return true;
         } else if (this->is_deleted(record, rid, buffer, memtable, memtable_cutoff)) {
@@ -584,8 +585,8 @@ private:
         return rid.level_idx - this->memory_levels.size();
     }
 
-    inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
-                              char *sample_buffer, size_t &sample_idx, MemTable *memtable, size_t memtable_cutoff) {
+    inline bool add_to_sample(const record_t *record, RunId rid, const key_t& upper_key, const key_t& lower_key, char *io_buffer,
+                              record_t *sample_buffer, size_t &sample_idx, MemTable *memtable, size_t memtable_cutoff) {
         TIMER_INIT();
         TIMER_START();
         sampling_attempts++;
@@ -596,8 +597,7 @@ private:
         TIMER_STOP();
         rejection_check_time += TIMER_RESULT();
 
-
-        memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
+        sample_buffer[sample_idx] = *record;
         return true;
     }
 
