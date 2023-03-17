@@ -447,7 +447,7 @@ private:
         // If the entire range of numbers falls below the target key, the algorithm
         // will return max as its bound, even though there actually isn't a valid
         // bound. So we need to check this case manually and return INVALID_PNUM.
-        auto node_key = *(key_t*)get_internal_record_key(buffer, max);
+        auto node_key = get_internal_record_key(buffer, max);
         if (key > node_key) {
             return INVALID_PNUM;
         }

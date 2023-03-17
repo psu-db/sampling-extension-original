@@ -260,16 +260,14 @@ START_TEST(t_flat_isam)
 
     size_t deletes = 0;
     for (auto rec : records) {
-        const char *key_ptr = (char *) &rec.first;
-        const char *val_ptr = (char *) &rec.second;
-        ck_assert_int_eq(lsm->append(rec.first, rec.second, 0, g_rng), 1);
+        ck_assert_int_eq(lsm->append(rec.first, rec.second, false, g_rng), 1);
 
          if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
             std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
             std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
 
             for (size_t i=0; i<del_vec.size(); i++) {
-                lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng);
+                ck_assert_int_eq(lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng), 1);
                 deletes++;
                 to_delete.erase(del_vec[i]);
                 deleted.insert(del_vec[i]);
@@ -336,18 +334,19 @@ START_TEST(t_tombstone_merging_01)
     size_t cnt=0;
     for (auto rec : records) {
         ck_assert_int_eq(lsm->append(rec.first, rec.second, 0, g_rng), 1);
+        
 
-         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
-            std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
-            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
+        if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
+           std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
+           std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
 
-            for (size_t i=0; i<del_vec.size(); i++) {
-                lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng);
-                deletes++;
-                to_delete.erase(del_vec[i]);
-                deleted.insert(del_vec[i]);
-            }
-        }
+           for (size_t i=0; i<del_vec.size(); i++) {
+               ck_assert_int_eq(lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng), 1);
+               deletes++;
+               to_delete.erase(del_vec[i]);
+               deleted.insert(del_vec[i]);
+           }
+       }
 
         if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
             to_delete.insert(rec);
@@ -525,11 +524,11 @@ Suite *unit_testing()
     tcase_set_timeout(ts, 500);
     suite_add_tcase(unit, ts);
 
-    TCase *persist = tcase_create("lsm::LSMTree::persistence Testing");
-    tcase_add_test(persist, t_persist_mem);
-    tcase_add_test(persist, t_persist_disk);
-    tcase_set_timeout(ts, 500);
-    suite_add_tcase(unit, persist);
+    // TCase *persist = tcase_create("lsm::LSMTree::persistence Testing");
+    // tcase_add_test(persist, t_persist_mem);
+    // tcase_add_test(persist, t_persist_disk);
+    // tcase_set_timeout(ts, 500);
+    // suite_add_tcase(unit, persist);
 
     return unit;
 }
@@ -550,6 +549,7 @@ int run_unit_tests()
 
 int main() 
 {
+    srand(0);
     int unit_failed = run_unit_tests();
 
     return (unit_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;

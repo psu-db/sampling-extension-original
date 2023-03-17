@@ -597,7 +597,7 @@ private:
         TIMER_STOP();
         rejection_check_time += TIMER_RESULT();
 
-        sample_buffer[sample_idx] = *record;
+        sample_buffer[sample_idx++] = *record;
         return true;
     }
 

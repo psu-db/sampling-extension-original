@@ -41,7 +41,7 @@ public:
 
         m_data[pos].key = key;
         m_data[pos].value = value;
-        m_data[pos].header |= ((pos << 2) | (is_tombstone ? 1 : 0));
+        m_data[pos].header = ((pos << 2) | (is_tombstone ? 1 : 0));
         
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
