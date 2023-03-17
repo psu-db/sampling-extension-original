@@ -44,7 +44,7 @@ public:
 
         m_data[pos].key = key;
         m_data[pos].value = value;
-        m_data[pos].header |= ((pos << 2) | (is_tombstone ? 1 : 0));
+        m_data[pos].header = ((pos << 2) | (is_tombstone ? 1 : 0));
         m_data[pos].weight = weight;
 
         //layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size, weight);
