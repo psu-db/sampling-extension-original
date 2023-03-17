@@ -4,7 +4,7 @@
 
 static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts, size_t min, size_t max, double selectivity)
 {
-    std::vector<lsm::key_type> sample;
+    std::vector<lsm::key_t> sample;
     sample.reserve(k);
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -25,7 +25,7 @@ static void benchmark(TreeMap *tree, size_t n, size_t k, size_t sample_attempts,
 
 static void benchmark(TreeMap *tree, size_t n, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
 {
-    std::vector<lsm::key_type> sample;
+    std::vector<lsm::key_t> sample;
     sample.reserve(k);
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -75,8 +75,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_tree = TreeMap();
 

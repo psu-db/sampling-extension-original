@@ -7,7 +7,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
                       double del_prop) {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     unsigned long total_sample_time = 0;
     unsigned long total_insert_time = 0;
@@ -20,7 +20,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
     size_t operation_cnt = 10000;
 
     size_t reccnt = tree->get_record_cnt();
-    char *delbuf = new char[trial_cnt*lsm::record_size]();
+    lsm::record_t delbuf[trial_cnt];
 
     size_t ops = 0;
     while (ops < operation_cnt) {
@@ -30,7 +30,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
         if (op < write_prop) {
             operation = WRITE;
             // write records
-            std::vector<shared_record> insert_vec;
+            std::vector<record> insert_vec;
             if (!build_insert_vec(file, insert_vec, trial_cnt))  {
                 continue;
             }
@@ -38,7 +38,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<insert_vec.size(); i++) {
-                tree->append(insert_vec[i].first.get(), insert_vec[i].second.get(), false, g_rng);
+                tree->append(insert_vec[i].first, insert_vec[i].second, false, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -46,18 +46,18 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             total_insert_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else if (op < (write_prop + del_prop)) {
             operation = DELETE;
-            tree->range_sample(delbuf, (char*) &min_key, (char*) &max_key, trial_cnt, buffer1, buffer2, g_rng);
-            std::set<lsm::key_type> deleted;
+            tree->range_sample(delbuf, min_key, max_key, trial_cnt, buffer1, buffer2, g_rng);
+            std::set<lsm::key_t> deleted;
             ops++;
 
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<trial_cnt; i++) {
-                auto key = lsm::get_key(delbuf + (i * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (i * lsm::record_size));
+                auto key = delbuf[i].key;
+                auto val = delbuf[i].value;
 
-                if (deleted.find(*(lsm::key_type *) key) == deleted.end()) {
+                if (deleted.find(*(lsm::key_t *) key) == deleted.end()) {
                     tree->append(key, val, true, g_rng); 
-                    deleted.insert(*(lsm::key_type *) key);
+                    deleted.insert(*(lsm::key_t *) key);
                     delete_cnt += 1;
                 }
             }
@@ -71,7 +71,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<trial_cnt/10; i++) {
                 auto range = get_key_range(min, max, selectivity);
-                tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
+                tree->range_sample(sample_set, range.first, range.second, k, buffer1, buffer2, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -92,7 +92,6 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
 
     free(buffer1);
     free(buffer2);
-    delete[] delbuf;
 }
 
 
@@ -115,8 +114,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     std::fstream datafile;
     datafile.open(filename, std::ios::in);

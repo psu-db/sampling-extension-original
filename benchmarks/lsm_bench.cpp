@@ -18,13 +18,14 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
     // this benchmark phase won't be deleted. So it's a bit of a
     // "worst case" situation in terms of tombstone proportions.
     size_t deletes = inserts * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
-    tree->range_sample(delbuf, (char *)&min_key, (char *)&max_key, deletes,
+    //char *delbuf = new char[deletes * lsm::record_size]();
+    lsm::record_t delbuf[deletes];
+    tree->range_sample(delbuf, min_key, max_key, deletes,
                      buffer1, buffer2, g_rng);
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
-    std::vector<shared_record> insert_vec;
+    std::vector<record> insert_vec;
     bool continue_benchmark = build_insert_vec(file, insert_vec, inserts);
 
     /* 
@@ -46,18 +47,18 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
         for (size_t i = 0; i < insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
+                auto key = delbuf[applied_deletes].key;
+                auto val = delbuf[applied_deletes].value;
 
-                if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
+                if (deleted.find(*(lsm::key_t *)key) == deleted.end()) {
                     tree->append(key, val, true, g_rng);
-                    deleted.insert(*(lsm::key_type *)key);
+                    deleted.insert(*(lsm::key_t *)key);
                     applied_deletes++;
                 }
             }
 
             // insert the record;
-            tree->append(insert_vec[i].first.get(), insert_vec[i].second.get(), false, g_rng);
+            tree->append(insert_vec[i].first, insert_vec[i].second, false, g_rng);
         }
 
         auto insert_stop = std::chrono::high_resolution_clock::now();
@@ -71,12 +72,12 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
 
     // Sample benchmarking
     {
-        char sample_set[sample_size * lsm::record_size];
+        lsm::record_t sample_set[sample_size];
 
         auto sample_start = std::chrono::high_resolution_clock::now();
         for (size_t i = 0; i < samples; i++) {
             auto range = get_key_range(min_key, max_key, selectivity);
-            tree->range_sample(sample_set, (char *)&range.first, (char *)&range.second,
+            tree->range_sample(sample_set, range.first, range.second,
                                sample_size, buffer1, buffer2, g_rng);
         }
 
@@ -106,7 +107,6 @@ end:
 
     free(buffer1);
     free(buffer2);
-    delete[] delbuf;
 
     return continue_benchmark;
 }
@@ -128,13 +128,14 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
     // this benchmark phase won't be deleted. So it's a bit of a
     // "worst case" situation in terms of tombstone proportions.
     size_t deletes = inserts * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
-    tree->range_sample(delbuf, (char *)&min_key, (char *)&max_key, deletes,
+    //char *delbuf = new char[deletes * lsm::record_size]();
+    lsm::record_t delbuf[deletes];
+    tree->range_sample(delbuf, min_key, max_key, deletes,
                      buffer1, buffer2, g_rng);
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
-    std::vector<shared_record> insert_vec;
+    std::vector<record> insert_vec;
     bool continue_benchmark = build_insert_vec(file, insert_vec, inserts);
 
     /* 
@@ -156,18 +157,18 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
         for (size_t i = 0; i < insert_vec.size(); i++) {
             // process a delete if necessary
             if (applied_deletes < deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
+                auto key = delbuf[applied_deletes].key;
+                auto val = delbuf[applied_deletes].value;
 
-                if (deleted.find(*(lsm::key_type *)key) == deleted.end()) {
+                if (deleted.find(*(lsm::key_t *)key) == deleted.end()) {
                     tree->append(key, val, true, g_rng);
-                    deleted.insert(*(lsm::key_type *)key);
+                    deleted.insert(*(lsm::key_t *)key);
                     applied_deletes++;
                 }
             }
 
             // insert the record;
-            tree->append(insert_vec[i].first.get(), insert_vec[i].second.get(), false, g_rng);
+            tree->append(insert_vec[i].first, insert_vec[i].second, false, g_rng);
         }
 
         auto insert_stop = std::chrono::high_resolution_clock::now();
@@ -181,12 +182,13 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file, size_t inserts,
 
     // Sample benchmarking
     {
-        char sample_set[sample_size * lsm::record_size];
+        //char sample_set[sample_size * lsm::record_size];
+        lsm::record_t sample_set[sample_size];
 
         auto sample_start = std::chrono::high_resolution_clock::now();
         for (size_t i = 0; i < samples; i++) {
             //auto range = get_key_range(min_key, max_key, selectivity);
-            tree->range_sample(sample_set, (char *)&queries[i].first, (char *)&queries[i].second,
+            tree->range_sample(sample_set, queries[i].first, queries[i].second,
                                sample_size, buffer1, buffer2, g_rng);
         }
 
@@ -216,7 +218,6 @@ end:
 
     free(buffer1);
     free(buffer2);
-    delete[] delbuf;
 
     return continue_benchmark;
 }

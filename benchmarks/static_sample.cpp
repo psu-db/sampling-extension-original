@@ -2,9 +2,9 @@
 
 #include "bench.h"
 
-static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
+static lsm::record_t *sample(const lsm::key_t& lower, const lsm::value_t& upper, size_t n, size_t k, lsm::record_t *data)
 {
-    char *result = (char*)malloc(k * lsm::record_size);
+    lsm::record_t *result = (lsm::record_t*)malloc(k * sizeof(lsm::key_t));
 
     size_t start = 0, end = 0;
 
@@ -14,9 +14,7 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
         size_t mid = (low + high) / 2;
 		//printf("low = %zu high = %zu mid = %zu\n", low, high, mid);
 
-        const char *key = lsm::get_key(data + mid * lsm::record_size);
-
-        if (lsm::key_cmp(key, lower) < 0)
+        if (data[mid].key < lower)
             low = mid + 1;
         else
             high = mid;
@@ -31,9 +29,7 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
 		//printf("low = %zu high = %zu mid = %zu\n", low, high, mid);
 		//printf("mid = %zu\n", mid);
 
-        const char *key = lsm::get_key(data + mid * lsm::record_size);
-
-        if (lsm::key_cmp(key, upper) <= 0)
+        if (data[mid].key <= upper)
 			low = mid + 1;
         else
             high = mid;
@@ -47,21 +43,21 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, char *data)
     for (size_t i = 0; i < k; i++) {
         size_t idx = gsl_rng_uniform_int(g_rng, end - start) + start;
 		//printf("idx = %zu\n", idx);
-        memcpy(result + i * lsm::record_size, data + idx * lsm::record_size, lsm::record_size);
+        result[i] = data[idx];
     }
 
     return result;
 }
 
 
-static void benchmark(char *data, size_t n, size_t k, size_t sample_attempts, size_t min, size_t max, double selectivity)
+static void benchmark(lsm::record_t *data, size_t n, size_t k, size_t sample_attempts, size_t min, size_t max, double selectivity)
 {
 	//printf("n = %zu\n", n);
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < sample_attempts; i++) {
         auto range = get_key_range(min, max, selectivity);
-        char *result = sample((char*) &range.first, (char *) &range.second, n, k, data);
+        lsm::record_t *result = sample(range.first, range.second, n, k, data);
         free(result);
     }
 
@@ -74,12 +70,12 @@ static void benchmark(char *data, size_t n, size_t k, size_t sample_attempts, si
     printf("%zu %.0lf\n", k, avg_latency);
 }
 
-static void benchmark(char *data, size_t n, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
+static void benchmark(lsm::record_t *data, size_t n, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
 {
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
-        char *result = sample((char*) &queries[i].first, (char *) &queries[i].second, n, k, data);
+        lsm::record_t *result = sample(queries[i].first, queries[i].second, n, k, data);
         free(result);
     }
 
@@ -131,8 +127,8 @@ int main(int argc, char **argv)
     std::string root_dir = "benchmarks/data/static_bench";
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_lsm = lsm::LSMTree(root_dir, 1000000, 50000, 10, 100, 1, g_rng);
 

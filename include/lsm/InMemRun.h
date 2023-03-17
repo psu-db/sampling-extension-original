@@ -18,7 +18,6 @@ constexpr size_t inmem_isam_leaf_fanout = inmem_isam_node_size / sizeof(record_t
 constexpr size_t inmem_isam_node_keyskip = sizeof(key_t) * inmem_isam_fanout;
 
 struct InMemISAMNode {
-    //size_t len;
     key_t keys[inmem_isam_fanout];
     char* child[inmem_isam_fanout];
 };

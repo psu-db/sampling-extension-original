@@ -6,13 +6,14 @@ static void benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, size_t min
 {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    //char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < trial_cnt; i++) {
         auto range = get_key_range(min, max, selectivity);
-        tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
+        tree->range_sample(sample_set, range.first, range.second, k, buffer1, buffer2, g_rng);
     }
 
     auto stop = std::chrono::high_resolution_clock::now();
@@ -31,11 +32,11 @@ static void benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const st
 {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
-        tree->range_sample(sample_set, (char*) &queries[i].first, (char *) &queries[i].second, k, buffer1, buffer2, g_rng);
+        tree->range_sample(sample_set, queries[i].first, queries[i].second, k, buffer1, buffer2, g_rng);
     }
 
     auto stop = std::chrono::high_resolution_clock::now();
@@ -82,8 +83,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_tree = lsm::LSMTree(root_dir, 15000, 750, 10, 1000, 1, g_rng);
 

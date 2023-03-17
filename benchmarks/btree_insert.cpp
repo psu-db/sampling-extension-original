@@ -13,20 +13,22 @@ static bool benchmark(TreeMap *tree, std::fstream *file,
     bool out_of_data = false;
 
     size_t inserted_records = 0;
-    std::vector<shared_record> to_insert(g_insert_batch_size);
+    std::vector<record> to_insert(g_insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
-    std::vector<lsm::key_type> delbuf;
+    std::vector<lsm::key_t> delbuf;
     delbuf.reserve(deletes);
     tree->range_sample(min_key, max_key, deletes, delbuf, g_rng);
-    std::set<lsm::key_type> deleted;
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<g_insert_batch_size; i++) {
-            auto rec = create_shared_record();
-            if (!next_record(file, rec.first.get(), rec.second.get())) {
+            //auto rec = create_shared_record();
+            record rec;
+            
+            if (!next_record(file, rec.first, rec.second)) {
                     // If no new records were loaded, there's no reason to duplicate
                     // the last round of sampling.
                     if (i == 0) {
@@ -50,9 +52,7 @@ static bool benchmark(TreeMap *tree, std::fstream *file,
                     applied_deletes++;
             } 
 
-            lsm::key_type key = *(lsm::key_type *) to_insert[i].first.get();
-            lsm::value_type val = *(lsm::value_type *) to_insert[i].second.get();
-            auto res = tree->insert({key, val});
+            auto res = tree->insert({to_insert[i].first, to_insert[i].second});
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
 

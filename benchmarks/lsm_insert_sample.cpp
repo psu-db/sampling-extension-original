@@ -18,12 +18,13 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
 
     size_t inserted_records = 0;
-    std::vector<shared_record> to_insert(g_insert_batch_size);
+    std::vector<record> to_insert(g_insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
-    char *delbuf = new char[deletes * lsm::record_size]();
-    tree->range_sample(delbuf, (char*) &min_key, (char*) &max_key, deletes, buf1, buf2, g_rng);
-    std::set<lsm::key_type> deleted;
+    //char *delbuf = new char[deletes * lsm::record_size]();
+    lsm::record_t delbuf[deletes];
+    tree->range_sample(delbuf, min_key, max_key, deletes, buf1, buf2, g_rng);
+    std::set<lsm::key_t> deleted;
     size_t applied_deletes = 0;
 
 
@@ -31,14 +32,13 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
         progress_update((double) inserted_records / (double) inserts, "Insert Phase " + std::to_string(g_insert_phase));
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<g_insert_batch_size; i++) {
-            auto rec = create_shared_record();
-            if (!next_record(file, rec.first.get(), rec.second.get())) {
+            record rec;
+            if (!next_record(file, rec.first, rec.second)) {
                     // If no new records were loaded, there's no reason to duplicate
                     // the last round of sampling.
                     if (i == 0) {
                         free(buf1);
                         free(buf2);
-                        delete[] delbuf;
                         return false;
                     }
 
@@ -56,18 +56,18 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
         for (size_t i=0; i<inserted_from_batch; i++) {
             size_t batch_deletes = 0;
             if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
-                auto key = lsm::get_key(delbuf + (applied_deletes * lsm::record_size));
-                auto val = lsm::get_val(delbuf + (applied_deletes * lsm::record_size));
+                auto key = delbuf[applied_deletes].key;
+                auto val = delbuf[applied_deletes].value;
 
-                if (deleted.find(*(lsm::key_type*) key) == deleted.end()) {
+                if (deleted.find(*(lsm::key_t*) key) == deleted.end()) {
                     tree->append(key, val, true, g_rng); 
-                    deleted.insert(*(lsm::key_type*) key);
+                    deleted.insert(*(lsm::key_t*) key);
                     applied_deletes++;
                     batch_deletes++;
                 }
             } 
 
-            tree->append(to_insert[i].first.get(), to_insert[i].second.get(), false, g_rng);
+            tree->append(to_insert[i].first, to_insert[i].second, false, g_rng);
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
 
@@ -85,7 +85,6 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
     free(buf1);
     free(buf2);
-    delete[] delbuf;
     return !out_of_data;
 }
 
@@ -94,13 +93,13 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, dou
 {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < trial_cnt; i++) {
         auto range = get_key_range(min_key, max_key, selectivity);
-        tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
+        tree->range_sample(sample_set, range.first, range.second, k, buffer1, buffer2, g_rng);
     }
 
     auto stop = std::chrono::high_resolution_clock::now();
@@ -119,11 +118,12 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, double selectivity, c
 {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    //char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
-        tree->range_sample(sample_set, (char*) &queries[i].first, (char *) &queries[i].second, k, buffer1, buffer2, g_rng);
+        tree->range_sample(sample_set, queries[i].first, queries[i].second, k, buffer1, buffer2, g_rng);
     }
 
     auto stop = std::chrono::high_resolution_clock::now();
@@ -159,8 +159,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*0.05, scale_factor, memory_levels, max_delete_prop, g_rng);
 
