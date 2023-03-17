@@ -530,6 +530,8 @@ public:
             } else {
                 memory_levels[level_idx]->persist_level(level_meta);
             }
+
+            fprintf(meta_f, "%s\n", level_meta.c_str());
         }
 
         fclose(meta_f);

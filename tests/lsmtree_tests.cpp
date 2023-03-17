@@ -468,7 +468,7 @@ START_TEST(t_persist_mem)
     auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
 
     size_t len2;
-    auto sorted2 = lsm->get_sorted_array(&len2, g_rng);
+    auto sorted2 = lsm2->get_sorted_array(&len2, g_rng);
 
     ck_assert_int_eq(len1, len2);
 
@@ -513,7 +513,7 @@ START_TEST(t_persist_disk)
     auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
 
     size_t len2;
-    auto sorted2 = lsm->get_sorted_array(&len2, g_rng);
+    auto sorted2 = lsm2->get_sorted_array(&len2, g_rng);
 
     ck_assert_int_eq(len1, len2);
 
