@@ -10,7 +10,7 @@ gsl_rng *g_rng = gsl_rng_alloc(gsl_rng_mt19937);
 
 static MemTable *create_test_memtable(size_t cnt)
 {
-    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt; i++) {
         key_type key = rand();
@@ -25,7 +25,7 @@ static MemTable *create_test_memtable(size_t cnt)
 
 static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false) 
 {
-    auto mtable = new MemTable(cnt, true, 0, g_rng);
+    auto mtable = new MemTable(cnt, true, cnt, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
         key_type key = i;
@@ -46,7 +46,7 @@ static MemTable *create_double_seq_memtable(size_t cnt, bool ts=false)
 
 START_TEST(t_memtable_init)
 {
-    auto mem_table = new MemTable(1024, true, 50, g_rng);
+    auto mem_table = new MemTable(1024, true, 1024, g_rng);
     for (uint64_t i = 512; i > 0; i--) {
         uint32_t v = i;
         mem_table->append((const char*)&i, (const char*)&v);

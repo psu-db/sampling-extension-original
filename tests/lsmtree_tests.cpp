@@ -474,7 +474,7 @@ START_TEST(t_persist_mem)
 
     for (size_t i=0; i<len1; i++) {
         char *rec1 = sorted1 + i * lsm::record_size;
-        char *rec2 = sorted1 + i * lsm::record_size;
+        char *rec2 = sorted2 + i * lsm::record_size;
 
         ck_assert_mem_eq(rec1, rec2, lsm::record_size);
     }
@@ -519,7 +519,7 @@ START_TEST(t_persist_disk)
 
     for (size_t i=0; i<len1; i++) {
         char *rec1 = sorted1 + i * lsm::record_size;
-        char *rec2 = sorted1 + i * lsm::record_size;
+        char *rec2 = sorted2 + i * lsm::record_size;
 
         ck_assert_mem_eq(rec1, rec2, lsm::record_size);
     }
