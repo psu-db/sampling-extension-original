@@ -43,7 +43,7 @@ public:
 
         m_data[pos].key = key;
         m_data[pos].value = value;
-        m_data[pos].header = (pos << 2) & is_tombstone;
+        m_data[pos].header = (pos << 2) | (is_tombstone ? 1 : 0);
         m_data[pos].weight = weight;
 
         if (is_tombstone) {
