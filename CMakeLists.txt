@@ -86,6 +86,11 @@ if (bench)
     target_compile_options(lsm_mixed PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
 
+    add_executable(lsm_bloom ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_bloom.cpp)
+    target_link_libraries(lsm_bloom PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_bloom PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_bloom")
+
     add_executable(lsm_sample_selectivity ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_sample_selectivity.cpp)
     target_link_libraries(lsm_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_sample_selectivity PUBLIC -llib)

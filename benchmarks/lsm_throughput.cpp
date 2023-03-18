@@ -84,8 +84,6 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
 static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, double selectivity)
 {
-    char progbuf[25];
-    sprintf(progbuf, "sampling (%ld):", k);
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
 
