@@ -13,13 +13,13 @@
 namespace lsm {
 
 struct sample_state;
-bool check_deleted(char *record, sample_state *state);
+bool check_deleted(record_t* record, sample_state *state);
 extern thread_local size_t bounds_rejections;
 extern thread_local size_t tombstone_rejections;
 
 struct wirs_node {
     struct wirs_node *left, *right;
-    key_type low, high;
+    lsm::key_t low, high;
     double weight;
     Alias* alias;
 };
@@ -42,13 +42,13 @@ public:
     : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt), m_rejection_cnt(0) {
 
         // read the stored data file the file
-        size_t alloc_size = (record_cnt * record_size) + (CACHELINE_SIZE - (record_cnt * record_size) % CACHELINE_SIZE);
+        size_t alloc_size = (record_cnt * sizeof(record_t)) + (CACHELINE_SIZE - (record_cnt * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
 
         FILE *file = fopen(data_fname.c_str(), "rb");
         assert(file);
-        auto res = fread(m_data, record_size, m_reccnt, file);
+        auto res = fread(m_data, sizeof(record_t), m_reccnt, file);
         assert (res == m_reccnt);
         fclose(file);
 
@@ -60,9 +60,9 @@ public:
         // rebuild the bloom filter
         if (bf) {
             for (size_t i=0; i<m_reccnt; i++) {
-                auto rec = this->get_record_at(i);
-                if (is_tombstone(rec)) {
-                    bf->insert(get_key(rec), key_size);
+                const record_t* rec = get_record_at(i);
+                if (rec->is_tombstone()) {
+                    bf->insert(rec->key);
                 }
             }
         }
@@ -72,30 +72,28 @@ public:
     WIRSRun(MemTable* mem_table, BloomFilter* bf)
     :m_reccnt(0), m_tombstone_cnt(0), m_group_size(0), m_root(nullptr), m_rejection_cnt(0) {
 
-        size_t alloc_size = (mem_table->get_record_count() * record_size) + (CACHELINE_SIZE - (mem_table->get_record_count() * record_size) % CACHELINE_SIZE);
+        size_t alloc_size = (mem_table->get_record_count() * sizeof(record_t)) + (CACHELINE_SIZE - (mem_table->get_record_count() * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
+        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
 
         size_t offset = 0;
         m_reccnt = 0;
         auto base = mem_table->sorted_output();
-        auto stop = base + mem_table->get_record_count() * record_size;
+        auto stop = base + mem_table->get_record_count();
         while (base < stop) {
-            if (!is_tombstone(base) && (base + record_size < stop)
-                && !record_cmp(base + record_size, base) && is_tombstone(base + record_size)) {
-                base += record_size * 2;
+            if (!base->is_tombstone() && (base + 1 < stop)
+                && base->match(base + 1) && (base + 1)->is_tombstone()) {
+                base += 2;
                 m_wirsrun_cancelations++;
             } else {
                 //Masking off the ts.
-                *((rec_hdr*)get_hdr(base)) &= 1;
-                memcpy(m_data + offset, base, record_size);
-                if (is_tombstone(base)) {
+                base->header &= 1;
+                m_data[m_reccnt++] = *base;
+                if (base->is_tombstone()) {
                     ++m_tombstone_cnt;
-                    if (bf) bf->insert(get_key(base), key_size);
+                    if (bf) bf->insert(base->key);
                 }
-                offset += record_size;
-                ++m_reccnt;
-                base += record_size;
+                base ++;
             }
         }
 
@@ -117,7 +115,7 @@ public:
             //assert(runs[i]);
             if (runs[i]) {
                 auto base = runs[i]->sorted_output();
-                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count() * record_size, 0, runs[i]->get_record_count()});
+                cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count(), 0, runs[i]->get_record_count()});
                 attemp_reccnt += runs[i]->get_record_count();
                 pq.push(cursors[i].ptr, i);
             } else {
@@ -125,17 +123,15 @@ public:
             }
         }
 
-        size_t alloc_size = (attemp_reccnt * record_size) + (CACHELINE_SIZE - (attemp_reccnt * record_size) % CACHELINE_SIZE);
+        size_t alloc_size = (attemp_reccnt * sizeof(record_t)) + (CACHELINE_SIZE - (attemp_reccnt * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
-        m_data = (char*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
-
-        size_t offset = 0;
+        m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
         
         while (pq.size()) {
             auto now = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
-            if (!is_tombstone(now.data) && next.data != nullptr &&
-                !record_cmp(now.data, next.data) && is_tombstone(next.data)) {
+            if (!now.data->is_tombstone() && next.data != nullptr &&
+                now.data->match(next.data) && next.data->is_tombstone()) {
                 
                 pq.pop(); pq.pop();
                 auto& cursor1 = cursors[now.version];
@@ -144,13 +140,11 @@ public:
                 if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
             } else {
                 auto& cursor = cursors[now.version];
-                memcpy(m_data + offset, cursor.ptr, record_size);
-                if (is_tombstone(cursor.ptr)) {
+                m_data[m_reccnt++] = *cursor.ptr;
+                if (cursor.ptr->is_tombstone()) {
                     ++m_tombstone_cnt;
-                    if (bf) bf->insert(get_key(cursor.ptr), key_size);
+                    if (bf) bf->insert(cursor.ptr->key);
                 }
-                offset += record_size;
-                ++m_reccnt;
                 pq.pop();
                 
                 if (advance_cursor(cursor)) pq.push(cursor.ptr, now.version);
@@ -180,7 +174,7 @@ public:
         }
     }
 
-    char* sorted_output() const {
+    record_t* sorted_output() const {
         return m_data;
     }
     
@@ -192,14 +186,14 @@ public:
         return m_tombstone_cnt;
     }
 
-    const char* get_record_at(size_t idx) const {
+    const record_t* get_record_at(size_t idx) const {
         if (idx >= m_reccnt) return nullptr;
-        return m_data + idx * record_size;
+        return m_data + idx;
     }
 
     // low - high -> decompose to a set of nodes.
     // Build Alias across the decomposed nodes.
-    WIRSRunState* get_sample_run_state(const char* lower_key, const char* upper_key) {
+    WIRSRunState* get_sample_run_state(const key_t& lower_key, const key_t& upper_key) {
         WIRSRunState* res = new WIRSRunState();
         //std::vector<struct wirs_node*> nodes;
         //double tot_weight = decompose_node(m_root, lower_key, upper_key, res->nodes);
@@ -235,7 +229,7 @@ public:
     // returns the number of records sampled
     // NOTE: This operation returns records strictly between the lower and upper bounds, not
     // including them.
-    size_t get_samples(WIRSRunState* run_state, char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
+    size_t get_samples(WIRSRunState* run_state, record_t *sample_set, const key_t& lower_key, const key_t& upper_key, size_t sample_sz, sample_state *state, gsl_rng *rng) {
         if (sample_sz == 0) {
             return 0;
         }
@@ -251,35 +245,34 @@ public:
             auto fat_point = node->low + node->alias->get(rng);
             // third level...
             size_t rec_offset = fat_point * m_group_size + m_alias[fat_point]->get(rng);
-            auto record = m_data + rec_offset * record_size;
+            auto record = m_data + rec_offset;
 
-            if (key_cmp(lower_key, get_key(record)) > 0 || key_cmp(upper_key, get_key(record)) < 0) {
+            if (lower_key > record->key || upper_key < record->key) {
                 // bounds rejection
                 bounds_rejections++;
                 continue;
-            } else if (is_tombstone(record) || (state && check_deleted(record, state))) {
+            } else if (record->is_tombstone() || (state && check_deleted(record, state))) {
                 // tombstone/delete rejection
                 tombstone_rejections++;
                 continue;
             }
 
-            memcpy(sample_set + cnt * record_size, record, record_size);
-            ++cnt;
+            sample_set[cnt++] = *record;
+            
         } while (attempts < sample_sz);
 
         return cnt;
     }
 
-    size_t get_lower_bound(const char *key) const {
+    size_t get_lower_bound(const key_t& key) const {
         size_t min = 0;
         size_t max = m_reccnt - 1;
 
         const char * record_key;
         while (min < max) {
             size_t mid = (min + max) / 2;
-            record_key = get_key(m_data + (mid * record_size));
 
-            if (key_cmp(key, record_key) > 0) {
+            if (key > m_data[mid].key) {
                 min = mid + 1;
             } else {
                 max = mid;
@@ -289,21 +282,19 @@ public:
         return min;
     }
 
-    bool check_tombstone(const char* key, const char* val) {
+    bool check_tombstone(const key_t& key, const value_t& val) {
         size_t idx = get_lower_bound(key);
         if (idx >= m_reccnt) {
             return false;
         }
 
-        auto ptr = m_data + (get_lower_bound(key) * record_size);
+        auto ptr = m_data + get_lower_bound(key);
 
-        char buf[record_size];
-        layout_record(buf, key, val, false, 0.0);
-        while (ptr < m_data + m_reccnt * record_size && record_cmp(ptr, buf) == -1) {
-            ptr += record_size;
+        while (ptr < m_data + m_reccnt && ptr->lt(key, val)) {
+            ptr ++;
         }
 
-        bool result = record_match(ptr, key, val, true);
+        bool result = ptr->match(key, val, true);
         m_rejection_cnt += result;
 
         return result;
@@ -318,7 +309,7 @@ public:
         FILE *file = fopen(fname.c_str(), "w");
         assert(file);
 
-        fwrite(m_data, record_size, m_reccnt, file);
+        fwrite(m_data, sizeof(record_t), m_reccnt, file);
 
         fclose(file);
     }
@@ -328,18 +319,16 @@ public:
     }
     
 private:
-    bool covered_by(struct wirs_node* node, const char* lower_key, const char* upper_key) {
+    bool covered_by(struct wirs_node* node, const key_t& lower_key, const key_t& upper_key) {
         auto low_index = node->low * m_group_size;
         auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
-        return key_cmp(lower_key, get_key(m_data + low_index * record_size)) == -1 &&
-               key_cmp(get_key(m_data + high_index * record_size), upper_key) == -1;
+        return lower_key < m_data[low_index].key && m_data[high_index].key < upper_key;
     }
 
-    bool intersects(struct wirs_node* node, const char* lower_key, const char* upper_key) {
+    bool intersects(struct wirs_node* node, const key_t& lower_key, const key_t& upper_key) {
         auto low_index = node->low * m_group_size;
         auto high_index = std::min((node->high + 1) * m_group_size - 1, m_reccnt - 1);
-        return key_cmp(lower_key, get_key(m_data + high_index * record_size)) == -1 &&
-               key_cmp(get_key(m_data + low_index * record_size), upper_key) == -1;
+        return lower_key < m_data[high_index].key && m_data[low_index].key < upper_key;
     }
     
     /*
@@ -394,7 +383,7 @@ private:
             double group_weight = 0.0;
             group_norm_weight.clear();
             for (size_t k = 0; k < m_group_size && i < m_reccnt; ++k, ++i) {
-                auto w = get_weight(m_data + record_size * i);
+                auto w = m_data[i].weight;
                 group_norm_weight.emplace_back(w);
                 group_weight += w;
                 sum_weight += w;
@@ -414,7 +403,7 @@ private:
         m_root = construct_wirs_node(weights, 0, n_groups-1);
     }
 
-    char* m_data;
+    record_t* m_data;
     std::vector<Alias *> m_alias;
     wirs_node* m_root;
     size_t m_reccnt;

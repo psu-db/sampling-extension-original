@@ -111,7 +111,7 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_run_weights(std::vector<double>& weights, std::vector<std::pair<RunId, WIRSRun *>> &runs, std::vector<WIRSRunState*>& run_states, const char* low, const char* high) {
+    void get_run_weights(std::vector<double>& weights, std::vector<std::pair<RunId, WIRSRun *>> &runs, std::vector<WIRSRunState*>& run_states, const key_t& low, const key_t& high) {
         for (size_t i=0; i<m_run_cnt; i++) {
             if (m_structure->m_runs[i]) {
                 auto run_state = m_structure->m_runs[i]->get_sample_run_state(low, high);
@@ -126,23 +126,23 @@ public:
         }
     }
 
-    bool bf_rejection_check(size_t run_stop, const char* key) {
+    bool bf_rejection_check(size_t run_stop, const key_t& key) {
         for (size_t i = 0; i < run_stop; ++i) {
-            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key, key_size))
+            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key))
                 return true;
         }
         return false;
     }
 
-    bool tombstone_check(size_t run_stop, const char* key, const char* val) {
+    bool tombstone_check(size_t run_stop, const key_t& key, const value_t& val) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_structure->m_runs[i] && m_structure->m_bfs[i]->lookup(key, key_size) && m_structure->m_runs[i]->check_tombstone(key, val))
+            if (m_structure->m_runs[i] && m_structure->m_bfs[i]->lookup(key) && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
         }
         return false;
     }
 
-    const char* get_record_at(size_t run_no, size_t idx) {
+    const record_t* get_record_at(size_t run_no, size_t idx) {
         return m_structure->m_runs[run_no]->get_record_at(idx);
     }
     
