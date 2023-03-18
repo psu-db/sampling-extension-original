@@ -4,10 +4,10 @@
 
 size_t rejections = 0;
 
-static char *sample(char *lower, char *upper, size_t n, size_t k, lsm::WIRSRun *data)
+static lsm::record_t *sample(lsm::key_t lower, lsm::key_t upper, size_t n, size_t k, lsm::WIRSRun *data)
 {
     auto state = data->get_sample_run_state(lower, upper);
-    char *result = nullptr;
+    lsm::record_t *result = nullptr;
     size_t sampled = 0;
     rejections = 0;
 
@@ -15,7 +15,7 @@ static char *sample(char *lower, char *upper, size_t n, size_t k, lsm::WIRSRun *
         goto end;
     }
 
-    result = (char*)malloc(k * lsm::record_size);
+    result = (lsm::record_t*)malloc(k * sizeof(lsm::record_t));
 
     while (sampled < k) {
         size_t s = data->get_samples(state, result + sampled, lower, upper, k-sampled, nullptr, g_rng);
@@ -36,7 +36,7 @@ static void benchmark(lsm::WIRSRun *data, size_t n, size_t k, size_t sample_atte
 
     for (int i = 0; i < sample_attempts; i++) {
         auto range = get_key_range(min, max, selectivity);
-        char *result = sample((char*) &range.first, (char *) &range.second, n, k, data);
+        lsm::record_t *result = sample(range.first, range.second, n, k, data);
         free(result);
     }
 
@@ -55,7 +55,7 @@ static void benchmark(lsm::WIRSRun *data, size_t n, size_t k, double selectivity
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
-        char *result = sample((char*) &queries[i].first, (char *) &queries[i].second, n, k, data);
+        lsm::record_t *result = sample(queries[i].first, queries[i].second, n, k, data);
         free(result);
     }
 

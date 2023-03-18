@@ -7,7 +7,8 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
                       double del_prop) {
     char* buffer1 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char* buffer2 = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
-    char sample_set[k*lsm::record_size];
+    //char sample_set[k*lsm::record_size];
+    lsm::record_t sample_set[k];
 
     unsigned long total_sample_time = 0;
     unsigned long total_insert_time = 0;
@@ -30,7 +31,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
         if (op < write_prop) {
             operation = WRITE;
             // write records
-            std::vector<shared_record> insert_vec;
+            std::vector<record> insert_vec;
             if (!build_insert_vec(file, insert_vec, trial_cnt, del_prop))  {
                 fprintf(stderr, "continuing...\n");
                 continue;
@@ -40,7 +41,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<insert_vec.size(); i++) {
-                tree->append(insert_vec[i].key.get(), insert_vec[i].value.get(), insert_vec[i].weight, false, g_rng);
+                tree->append(insert_vec[i].key, insert_vec[i].value, insert_vec[i].weight, false, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -48,7 +49,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             total_insert_time += std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
         } else if (op < (write_prop + del_prop)) {
             operation = DELETE;
-            std::vector<shared_record> del_vec;
+            std::vector<record> del_vec;
             std::sample(g_to_delete->begin(), g_to_delete->end(), 
                         std::back_inserter(del_vec), trial_cnt, 
                         std::mt19937{std::random_device{}()});
@@ -61,7 +62,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             ops++;
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<del_vec.size(); i++) {
-                tree->append(del_vec[i].key.get(), del_vec[i].value.get(), 0, true, g_rng); 
+                tree->append(del_vec[i].key, del_vec[i].value, 0, true, g_rng); 
                 g_to_delete->erase(del_vec[i]);
             }
             auto stop = std::chrono::high_resolution_clock::now();
@@ -76,7 +77,7 @@ static void benchmark(lsm::LSMTree *tree, std::fstream *file, size_t k, size_t t
             auto start = std::chrono::high_resolution_clock::now();
             for (int i=0; i<trial_cnt/10; i++) {
                 auto range = get_key_range(g_min_key, g_max_key, selectivity);
-                tree->range_sample(sample_set, (char*) &range.first, (char*) &range.second, k, buffer1, buffer2, g_rng);
+                tree->range_sample(sample_set, range.first, range.second, k, buffer1, buffer2, g_rng);
             }
             auto stop = std::chrono::high_resolution_clock::now();
 
@@ -119,8 +120,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_tree = lsm::LSMTree(root_dir, 10000, 30000, 10, 1000, 1, 100, g_rng);
 

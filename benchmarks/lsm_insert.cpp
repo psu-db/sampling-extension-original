@@ -12,18 +12,18 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
     bool out_of_data = false;
 
     size_t inserted_records = 0;
-    std::vector<shared_record> to_insert(insert_batch_size);
+    std::vector<record> to_insert(insert_batch_size);
 
     size_t deletes = inserts * delete_prop;
-    std::vector<shared_record> del_vec;
+    std::vector<record> del_vec;
     std::sample(g_to_delete->begin(), g_to_delete->end(), std::back_inserter(del_vec), deletes, std::mt19937{std::random_device{}()});
 
     size_t applied_deletes = 0;
     while (inserted_records < inserts && !out_of_data) {
         size_t inserted_from_batch = 0;
         for (size_t i=0; i<insert_batch_size; i++) {
-            auto rec = create_shared_record();
-            if (!next_record(file, rec.key.get(), rec.value.get(), &rec.weight)) {
+            record rec;
+            if (!next_record(file, &rec.key, &rec.value, &rec.weight)) {
                     // If no new records were loaded, there's no reason to duplicate
                     // the last round of sampling.
                     if (i == 0) {
@@ -46,13 +46,13 @@ static bool benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<inserted_from_batch; i++) {
-            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop && del_vec[applied_deletes].key.get() != nullptr) {
-                tree->append(del_vec[applied_deletes].key.get(), del_vec[applied_deletes].value.get(), 0, true, g_rng); 
+            if (applied_deletes<deletes && gsl_rng_uniform(g_rng) < delete_prop) {
+                tree->append(del_vec[applied_deletes].key, del_vec[applied_deletes].value, 0, true, g_rng); 
                 g_to_delete->erase(del_vec[applied_deletes]);
                 applied_deletes++;
                 i--;
             } else {
-                tree->append(to_insert[i].key.get(), to_insert[i].value.get(), to_insert[i].weight, false, g_rng);
+                tree->append(to_insert[i].key, to_insert[i].value, to_insert[i].weight, false, g_rng);
             }
         }
         auto insert_stop = std::chrono::high_resolution_clock::now();
@@ -93,8 +93,8 @@ int main(int argc, char **argv)
     init_bench_env(true);
 
     // use for selectivity calculations
-    lsm::key_type min_key = 0;
-    lsm::key_type max_key = record_count - 1;
+    lsm::key_t min_key = 0;
+    lsm::key_t max_key = record_count - 1;
 
     auto sampling_lsm = lsm::LSMTree(root_dir, memtable_size, memtable_size*3, scale_factor, memory_levels, max_delete_prop, 100, g_rng);
 
