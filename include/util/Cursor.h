@@ -7,7 +7,7 @@
 
 namespace lsm {
 struct Cursor {
-    record_t *ptr;
+    const record_t *ptr;
     const record_t *end;
     size_t cur_rec_idx;
     size_t rec_cnt;

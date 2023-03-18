@@ -117,7 +117,7 @@ private:
             return *(data[a].data) < *(data[b].data);
         } else if (data[a].version != data[b].version)
             return data[a].version < data[b].version;
-        else data[a].data->is_tombstone() && data[b].data->is_tombstone();
+        else return data[a].data->is_tombstone() && data[b].data->is_tombstone();
     }
 
 };

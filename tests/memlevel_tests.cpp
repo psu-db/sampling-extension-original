@@ -15,10 +15,10 @@ static MemTable *create_test_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i = 0; i < cnt; i++) {
-        key_type key = rand();
-        value_type val = rand();
+        lsm::key_t key = rand();
+        lsm::value_t val = rand();
 
-        mtable->append((char*) &key, (char*) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -30,17 +30,17 @@ static MemTable *create_double_seq_memtable(size_t cnt)
     auto mtable = new MemTable(cnt, true, 0, g_rng);
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i;
+        lsm::key_t key = i;
+        lsm::value_t val = i;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append(key, val);
     }
 
     for (size_t i = 0; i < cnt / 2; i++) {
-        key_type key = i;
-        value_type val = i + 1;
+        lsm::key_t key = i;
+        lsm::value_t val = i + 1;
 
-        mtable->append((char*) &key, (char *) &val);
+        mtable->append(key, val);
     }
 
     return mtable;
@@ -102,7 +102,7 @@ START_TEST(t_persist)
 
     for (size_t i=0; i<level->get_run_count(); i++) {
         for (size_t j=0; j<level->get_run(i)->get_record_count(); j++) {
-            ck_assert_mem_eq(level->get_record_at(i, j), level2->get_record_at(i, j), lsm::record_size);
+            ck_assert_mem_eq((const char*)level->get_record_at(i, j), (const char*)level2->get_record_at(i, j), sizeof(record_t));
         }
     }
 
