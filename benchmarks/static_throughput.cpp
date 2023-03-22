@@ -4,7 +4,7 @@
 
 static lsm::record_t *sample(const lsm::key_t& lower, const lsm::value_t& upper, size_t n, size_t k, lsm::record_t *data)
 {
-    lsm::record_t *result = (lsm::record_t*)malloc(k * sizeof(lsm::key_t));
+    lsm::record_t *result = (lsm::record_t*)malloc(k * sizeof(lsm::record_t));
 
     size_t start = 0, end = 0;
 

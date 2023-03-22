@@ -188,9 +188,9 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             auto val = delbuf[del_buf_ptr].value;
             del_buf_ptr++;
 
-            if (deleted_keys.find(*(lsm::key_t *) key) == deleted_keys.end()) {
+            if (deleted_keys.find(key) == deleted_keys.end()) {
                 lsmtree->append(key, val, true, g_rng);
-                deleted_keys.insert(*(lsm::key_t*) key);
+                deleted_keys.insert(key);
             }
 
         }
