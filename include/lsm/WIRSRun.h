@@ -240,15 +240,9 @@ public:
         size_t sampled_cnt=0;
         for (size_t i=0; i<sample_sz; i++) {
             size_t idx = m_alias->get(rng);
-            if (m_tagging) {
-                if (m_data[idx].get_delete_status()) {
-                    m_rejection_cnt++;
-                    continue;
-                }
-            } else if (state) {
-                if (check_deleted(m_data + idx, state)) {
-                    continue;
-                }
+
+            if (m_data[idx].is_tombstone() || check_deleted(m_data + idx, state)) {
+                continue;
             }
 
             sample_set[sampled_cnt++] = m_data[idx];

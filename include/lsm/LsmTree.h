@@ -197,14 +197,12 @@ public:
                 if (DELETE_TAGGING) {
                     if (rec && !rec->get_delete_status()) {
                         sample_set[sample_idx++] = *rec;
-                        //memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                     } else {
                         rejections++;
                     }
                 } else {
                     if (rec && !mtable->check_tombstone(rec->key, rec->value)) {
                         sample_set[sample_idx++] = *rec;
-                        //memcpy(sample_set + (sample_idx++ * record_size), rec, record_size);
                     } else {
                         rejections++;
                     }
@@ -242,8 +240,7 @@ public:
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const record_t *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
 
-        // If tagging is enabled, we just need to check if the record has the delete
-        // tag set
+        // If tagging is enabled, we just need to check if the record has the delete tag set
         if (DELETE_TAGGING) {
             return record->get_delete_status();
         }
@@ -260,34 +257,14 @@ public:
             return false;
         }
 
-        for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
-            if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
-                    return true;
-                }
-            } else {
-                assert(false);
-                /*
-                size_t isam_lvl = lvl - memory_levels.size();
-                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), record->key, record->value, buffer)) {
-                    return true;
-                }
-                */
+        for (size_t lvl=0; lvl<=rid.level_idx; lvl++) {
+            if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
+                return true;
             }
         }
 
         // check the level containing the run
-        if (rid.level_idx < memory_levels.size()) {
-            size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->check_tombstone(run_idx, record->key, record->value);
-        } else {
-            assert(false);
-            /*
-            size_t isam_lvl = rid.level_idx - memory_levels.size();
-            size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
-            return disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
-            */
-        }
+        return memory_levels[rid.level_idx]->check_tombstone(rid.run_idx, record->key, record->value);
     }
 
     WIRSRun *create_static_structure() {

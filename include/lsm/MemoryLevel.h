@@ -119,7 +119,7 @@ public:
 
     bool check_tombstone(size_t run_stop, const key_t& key, const value_t& val) {
         for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_structure->m_runs[i] && (m_tagging || m_structure->m_bfs[i]->lookup(key))
+            if (m_structure->m_runs[i] && (m_structure->m_bfs[i]->lookup(key))
                 && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
         }

@@ -44,18 +44,6 @@ typedef struct record {
     }
 } record;
 
-/*
-typedef struct shared_record {
-    std::shared_ptr<lsm::key_t> key;
-    std::shared_ptr<lsm::value_t> value;
-    lsm::weight_t weight;
-
-    friend bool operator<(const struct shared_record &first, const struct shared_record &other) {
-        return first.key.get() < other.key.get() || (first.key.get() == other.key.get() && first.value.get() < other.value.get());
-    }
-} shared_record;
-*/
-
 typedef std::pair<lsm::key_t, lsm::key_t> key_range;
 
 static gsl_rng *g_rng;
@@ -118,28 +106,6 @@ static void delete_bench_env()
     delete g_to_delete;
 }
 
-/*
-static record create_record()
-{
-    auto key_buf = new char[lsm::key_size];
-    auto val_buf = new char[lsm::value_size];
-
-    return {key_buf, val_buf, 0};
-}
-
-
-static shared_record create_shared_record()
-{
-    auto key_buf = new char[lsm::key_size];
-    auto val_buf = new char[lsm::value_size];
-    auto key_ptr = std::shared_ptr<char[]>(key_buf);
-    auto val_ptr = std::shared_ptr<char[]>(val_buf);
-
-    return {key_ptr, val_ptr, 0};
-}
-*/
-
-
 static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, lsm::weight_t *weight)
 {
     if (g_reccnt >= g_max_record_cnt) return false;
@@ -168,8 +134,6 @@ static bool next_record(std::fstream *file, lsm::key_t* key, lsm::value_t* val, 
         return true;
     }
 
-    //key = nullptr;
-    //val = nullptr;
     return false;
 }
 

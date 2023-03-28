@@ -42,17 +42,19 @@ public:
         int32_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
 
+        if (is_tombstone) {
+            weight = 0;
+        }
+
         m_data[pos].key = key;
         m_data[pos].value = value;
         m_data[pos].header = ((pos << 2) | (is_tombstone ? 1 : 0));
         m_data[pos].weight = weight;
 
-        //layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size, weight);
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
             if (m_tombstone_filter) m_tombstone_filter->insert(key);
         }
-        //m_reccnt.fetch_add(1);
 
         double old_val, new_val;
         do {
@@ -84,7 +86,6 @@ public:
         TIMER_INIT();
         TIMER_START();
         std::sort(m_data, m_data + m_reccnt.load(), memtable_record_cmp);
-        //qsort(m_data, m_reccnt.load(), record_size, memtable_record_cmp);
         TIMER_STOP();
 
         #ifdef INSTRUMENT_MERGING
@@ -145,17 +146,17 @@ public:
         return m_tombstone_filter->get_memory_utilization();
     }
 
-    // NOTE: This operation samples from records strictly between the upper and
-    // lower bounds, not including them
     double get_sample_range(Alias **alias, size_t *cutoff) {
-      std::vector<double> weights;
-
       *cutoff = std::atomic_load(&m_reccnt) - 1;
+      std::vector<double> weights((*cutoff) + 1);
+
       double tot_weight = 0.0;
       for (size_t i = 0; i < (*cutoff) + 1; i++) {
-        if (!m_data[i].is_tombstone()) {
-          tot_weight += m_data[i].weight;
-          weights.emplace_back(m_data[i].weight);
+        if (!m_data[i].is_tombstone() && !m_data[i].get_delete_status()) {
+            tot_weight += m_data[i].weight;
+            weights[i] = m_data[i].weight;
+        } else {
+            weights[i] = 0;
         }
       }
 
@@ -176,9 +177,12 @@ public:
         }
 
         auto idx = (reccnt == 1) ? 0 : gsl_rng_uniform_int(rng, reccnt - 1);
-        //auto rec = get_record_at(idx);
-
         auto test = gsl_rng_uniform(rng) * m_max_weight.load();
+
+        // reject tombstones and deleted records automatically
+        if (m_data[idx].is_tombstone() || m_data[idx].get_delete_status()) {
+            return nullptr;
+        }
 
         return (test <= m_data[idx].weight) ? m_data + idx : nullptr;
     }
