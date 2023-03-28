@@ -9,10 +9,9 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t delete_batch_size = g_insert_batch_size * delete_prop * 15;
     size_t delete_idx = delete_batch_size;
 
-    //char *delbuf = new char[delete_batch_size * lsm::record_size]();
     lsm::record_t* delbuf = new lsm::record_t[delete_batch_size]();
 
-    std::set<lsm::key_t> deleted;
+    std::set<record> deleted;
 
     size_t applied_deletes = 0;
     size_t applied_inserts = 0;
@@ -32,9 +31,10 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         // if we've fully processed the delete vector, sample a new
         // set of records to delete.
-        if (delete_idx > delete_batch_size) {
+        if (delete_idx >= delete_batch_size) {
             tree->range_sample(delbuf, delete_batch_size, g_rng);
             deleted.clear();
+            delete_idx = 0;
         }
 
         progress_update((double) applied_inserts / (double) insert_cnt, "inserting:");
@@ -50,16 +50,17 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
                 auto weight = delbuf[delete_idx].weight;
                 delete_idx++;
 
-                if (deleted.find(key) == deleted.end()) {
+                if (deleted.find({key, val, weight}) == deleted.end()) {
                     if (lsm::DELETE_TAGGING) {
                         tree->delete_record(key, val, g_rng);
                     } else {
                         tree->append(key, val, weight, true, g_rng);
                     }
-                    deleted.insert(key);
+                    deleted.insert({key, val, weight});
                     local_deleted++;
-                }
+                } 
             }
+
             // insert the record;
             tree->append(insert_vec[i].key, insert_vec[i].value, insert_vec[i].weight, false, g_rng);
             local_inserted++;

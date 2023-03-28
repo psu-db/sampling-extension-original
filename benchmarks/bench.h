@@ -38,6 +38,10 @@ typedef struct record {
     friend bool operator<(const struct record &first, const struct record &other) {
         return (first.key < other.key) || (first.key == other.key && first.value < other.value);
     }
+
+    friend bool operator==(const struct record &first, const struct record &other) {
+        return (first.key == other.key) && (first.value == other.value);
+    }
 } record;
 
 /*
@@ -261,11 +265,11 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
     lsm::value_t val;
     lsm::weight_t weight;
 
-    size_t del_buf_size = 100;
+    size_t del_buf_size = 10000;
     size_t del_buf_ptr = del_buf_size;
-    lsm::record_t delbuf[del_buf_size];
 
-    std::set<lsm::key_t> deleted_keys;
+    lsm::record_t delbuf[del_buf_size];
+    std::set<record> deleted_keys;
 
     size_t inserted = 0;
     
@@ -278,9 +282,10 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
         inserted++;
         lsmtree->append(key, val, weight, false, g_rng);
 
-        if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
+        if (i > lsmtree->get_memtable_capacity() && del_buf_ptr >= del_buf_size) {
             lsmtree->range_sample(delbuf, del_buf_size, g_rng);
             del_buf_ptr = 0;
+            deleted_keys.clear();
         }
 
         if (i > lsmtree->get_memtable_capacity() && gsl_rng_uniform(g_rng) < delete_prop) {
@@ -288,13 +293,13 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             auto val = delbuf[del_buf_ptr].value;
             del_buf_ptr++;
 
-            if (deleted_keys.find(key) == deleted_keys.end()) {
+            if (deleted_keys.find({key, val, weight}) == deleted_keys.end()) {
                 if (lsm::DELETE_TAGGING) {
                     lsmtree->delete_record(key, val, g_rng);
                 } else {
-                    lsmtree->append(key, val, 0, true, g_rng);
+                    lsmtree->append(key, val, weight, true, g_rng);
                 }
-                deleted_keys.insert(key);
+                deleted_keys.insert({key, val, weight});
             }
         }
 
