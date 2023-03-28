@@ -38,7 +38,7 @@ inline static bool advance_cursor(Cursor *cur, PagedFileIterator *iter = nullptr
     if (cur->ptr >= cur->end) {
         if (iter && iter->next()) {
             cur->ptr = (record_t*)iter->get_item();
-            cur->end = cur->ptr + PAGE_SIZE;
+            cur->end = cur->ptr + (PAGE_SIZE / sizeof(record_t));
             return true;
         }
 
