@@ -259,7 +259,7 @@ public:
         }
 
         for (size_t lvl=0; lvl<=rid.level_idx; lvl++) {
-            if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
+            if (memory_levels[lvl]->check_tombstone(-1, record->key, record->value)) {
                 TIMER_STOP();
                 rejection_check_time += TIMER_RESULT();
                 return true;
@@ -267,13 +267,8 @@ public:
         }
 
         // check the level containing the run
-        if (rid.run_idx == 0) {
-            TIMER_STOP();
-            rejection_check_time += TIMER_RESULT();
-            return false;
-        }
+        auto res = memory_levels[rid.level_idx]->check_tombstone(rid.run_idx, record->key, record->value);
 
-        auto res = memory_levels[rid.level_idx]->check_tombstone(rid.run_idx - 1, record->key, record->value);
         TIMER_STOP();
         rejection_check_time += TIMER_RESULT();
         return res;
