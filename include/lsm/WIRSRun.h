@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "lsm/MemTable.h"
+//#include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
 #include "util/timer.h"
 #include "ds/Alias.h"
@@ -17,25 +18,11 @@ bool check_deleted(const record_t *record, sample_state *state);
 
 thread_local size_t m_wirsrun_cancelations = 0;
 
-constexpr size_t inmem_isam_node_size = 256;
-
-constexpr size_t inmem_isam_fanout = inmem_isam_node_size / (sizeof(key_t) + sizeof(char*));
-constexpr size_t inmem_isam_leaf_fanout = inmem_isam_node_size / sizeof(record_t);
-constexpr size_t inmem_isam_node_keyskip = sizeof(key_t) * inmem_isam_fanout;
-
-struct InMemISAMNode {
-    key_t keys[inmem_isam_fanout];
-    char* child[inmem_isam_fanout];
-};
-
-static_assert(sizeof(InMemISAMNode) == inmem_isam_node_size, "node size does not match");
-
 class WIRSRun {
 public:
 
     WIRSRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), 
-      m_total_weight(0), m_tagging(tagging), m_internal_node_cnt(0), m_isam_nodes(nullptr), m_root(nullptr) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_total_weight(0), m_tagging(tagging) {
         TIMER_INIT();
         TIMER_START();
         std::vector<double> weights;
@@ -100,19 +87,13 @@ public:
 
         auto alias_time = TIMER_RESULT();
 
-
-        if (m_reccnt > 0) {
-            build_internal_levels();
-        }
-
         #ifdef INSTRUMENT_MERGING
         fprintf(stderr, "memtable merge\t%ld\t%ld\t%ld\n", setup_time, merge_time, alias_time);
         #endif
     }
 
     WIRSRun(WIRSRun** runs, size_t len, BloomFilter* bf, bool tagging)
-    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging),
-      m_internal_node_cnt(0), m_isam_nodes(nullptr), m_root(nullptr) {
+    : m_reccnt(0), m_tombstone_cnt(0), m_total_weight(0), m_rejection_cnt(0), m_ts_check_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
 
         TIMER_INIT();
         TIMER_START();
@@ -202,9 +183,6 @@ public:
 
         auto alias_time = TIMER_RESULT();
 
-        if (m_reccnt > 0) {
-            build_internal_levels();
-        }
 
         #ifdef INSTRUMENT_MERGING
         fprintf(stderr, "run merge\t%ld\t%ld\t%ld\n", setup_time, merge_time, alias_time);
@@ -214,7 +192,6 @@ public:
     ~WIRSRun() {
         if (m_data) free(m_data);
         if (m_alias) delete m_alias;
-        if (m_isam_nodes) free(m_isam_nodes);
     }
 
 
@@ -275,7 +252,6 @@ public:
         return sampled_cnt;
     }
 
-    /*
     size_t get_lower_bound(const key_t& key) const {
         size_t min = 0;
         size_t max = m_reccnt - 1;
@@ -291,27 +267,6 @@ public:
         }
 
         return min;
-    }
-    */
-
-    size_t get_lower_bound(const key_t& key) const {
-        const InMemISAMNode* now = m_root;
-        while (!is_leaf(reinterpret_cast<const char*>(now))) {
-            const InMemISAMNode* next = nullptr;
-            for (size_t i = 0; i < inmem_isam_fanout - 1; ++i) {
-                if (now->child[i + 1] == nullptr || key <= now->keys[i]) {
-                    next = reinterpret_cast<InMemISAMNode*>(now->child[i]);
-                    break;
-                }
-            }
-
-            now = next ? next : reinterpret_cast<const InMemISAMNode*>(now->child[inmem_isam_fanout - 1]);
-        }
-
-        const record_t* pos = reinterpret_cast<const record_t*>(now);
-        while (pos < m_data + m_reccnt && pos->key < key) pos++;
-
-        return pos - m_data;
     }
 
     bool check_tombstone(const key_t& key, const value_t& val) {
@@ -363,79 +318,12 @@ private:
     size_t m_deleted_cnt;
     weight_t m_total_weight;
 
-    InMemISAMNode* m_isam_nodes;
-    InMemISAMNode* m_root;
-    size_t m_internal_node_cnt;
     // The number of rejections caused by tombstones
     // in this WIRSRun.
     size_t m_rejection_cnt;
     size_t m_ts_check_cnt;
 
     bool m_tagging;
-
-    void build_internal_levels() {
-        size_t n_leaf_nodes = m_reccnt / inmem_isam_leaf_fanout + (m_reccnt % inmem_isam_leaf_fanout != 0);
-        size_t level_node_cnt = n_leaf_nodes;
-        size_t node_cnt = 0;
-        do {
-            level_node_cnt = level_node_cnt / inmem_isam_fanout + (level_node_cnt % inmem_isam_fanout != 0);
-            node_cnt += level_node_cnt;
-        } while (level_node_cnt > 1);
-
-        size_t alloc_size = (node_cnt * inmem_isam_node_size) + (CACHELINE_SIZE - (node_cnt * inmem_isam_node_size) % CACHELINE_SIZE);
-        assert(alloc_size % CACHELINE_SIZE == 0);
-
-        m_isam_nodes = (InMemISAMNode*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
-        m_internal_node_cnt = node_cnt;
-        memset(m_isam_nodes, 0, node_cnt * inmem_isam_node_size);
-
-        InMemISAMNode* current_node = m_isam_nodes;
-
-        const record_t* leaf_base = m_data;
-        const record_t* leaf_stop = m_data + m_reccnt;
-        while (leaf_base < leaf_stop) {
-            size_t fanout = 0;
-            for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                auto rec_ptr = leaf_base + inmem_isam_leaf_fanout * i;
-                if (rec_ptr >= leaf_stop) break;
-                const record_t* sep_key = std::min(rec_ptr + inmem_isam_leaf_fanout - 1, leaf_stop - 1);
-                current_node->keys[i] = sep_key->key;
-                current_node->child[i] = (char*)rec_ptr;
-                ++fanout;
-            }
-            current_node++;
-            leaf_base += fanout * inmem_isam_leaf_fanout;
-        }
-
-        auto level_start = m_isam_nodes;
-        auto level_stop = current_node;
-        auto current_level_node_cnt = level_stop - level_start;
-        while (current_level_node_cnt > 1) {
-            auto now = level_start;
-            while (now < level_stop) {
-                size_t child_cnt = 0;
-                for (size_t i = 0; i < inmem_isam_fanout; ++i) {
-                    auto node_ptr = now + i;
-                    ++child_cnt;
-                    if (node_ptr >= level_stop) break;
-                    current_node->keys[i] = node_ptr->keys[inmem_isam_fanout - 1];
-                    current_node->child[i] = (char*)node_ptr;
-                }
-                now += child_cnt;
-                current_node++;
-            }
-            level_start = level_stop;
-            level_stop = current_node;
-            current_level_node_cnt = level_stop - level_start;
-        }
-        
-        assert(current_level_node_cnt == 1);
-        m_root = level_start;
-    }
-
-    bool is_leaf(const char* ptr) const {
-        return ptr >= (const char*)m_data && ptr < (const char*)(m_data + m_reccnt);
-    }
 };
 
 }
