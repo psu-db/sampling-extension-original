@@ -232,8 +232,13 @@ public:
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const record_t *record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
 
+        TIMER_INIT();
+
+        TIMER_START();
         // If tagging is enabled, we just need to check if the record has the delete tag set
         if (DELETE_TAGGING) {
+            TIMER_STOP();
+            rejection_check_time += TIMER_RESULT();
             return record->get_delete_status();
         }
 
@@ -241,22 +246,37 @@ public:
 
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
         if (memtable->check_tombstone(record->key, record->value)) {
+            TIMER_STOP();
+            rejection_check_time += TIMER_RESULT();
             return true;
         }
 
         // if the record is in the memtable, then we're done.
         if (rid == INVALID_RID) {
+            TIMER_STOP();
+            rejection_check_time += TIMER_RESULT();
             return false;
         }
 
         for (size_t lvl=0; lvl<=rid.level_idx; lvl++) {
             if (memory_levels[lvl]->check_tombstone(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
+                TIMER_STOP();
+                rejection_check_time += TIMER_RESULT();
                 return true;
             }
         }
 
         // check the level containing the run
-        return memory_levels[rid.level_idx]->check_tombstone(rid.run_idx, record->key, record->value);
+        if (rid.run_idx == 0) {
+            TIMER_STOP();
+            rejection_check_time += TIMER_RESULT();
+            return false;
+        }
+
+        auto res = memory_levels[rid.level_idx]->check_tombstone(rid.run_idx - 1, record->key, record->value);
+        TIMER_STOP();
+        rejection_check_time += TIMER_RESULT();
+        return res;
     }
 
     WIRSRun *create_static_structure() {
