@@ -117,8 +117,10 @@ public:
         return false;
     }
 
-    bool check_tombstone(ssize_t run_stop, const key_t& key, const value_t& val) {
-        for (size_t i = m_run_cnt - 1; i > run_stop;  i--) {
+    bool check_tombstone(size_t run_stop, const key_t& key, const value_t& val) {
+        if (m_run_cnt == 0) return false;
+
+        for (int i = m_run_cnt - 1; i >= (ssize_t) run_stop;  i--) {
             if (m_structure->m_runs[i] && (m_structure->m_bfs[i]->lookup(key))
                 && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
