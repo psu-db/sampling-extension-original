@@ -5,10 +5,9 @@
 
 static void sample_benchmark(lsm::LSMTree *tree, double fpr, size_t trial_cnt)
 {
-    size_t k = 10000;
+    size_t k = 1000;
     reset_lsm_perf_metrics();
 
-    //char sample_set[k*lsm::record_size];
     lsm::record_t sample_set[k];
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -43,8 +42,7 @@ int main(int argc, char **argv)
     double max_delete_prop = atof(argv[7]);
     bool use_osm = (argc == 9) ? atoi(argv[8]) : 0;
 
-    std::string root_dir = "benchmarks/data/lsm_insert_sample";
-
+    std::string root_dir = "benchmarks/data/lsm_bloom";
 
     std::vector<double> bf_fprs = {.001, .01, .05, .1, .15, .25, .5, .75, .90};
 
@@ -56,8 +54,7 @@ int main(int argc, char **argv)
         std::fstream datafile;
         datafile.open(filename, std::ios::in);
 
-        warmup(&datafile, &sampling_lsm, .4*record_count, 0);
-        warmup(&datafile, &sampling_lsm, .6*record_count, delete_prop);
+        warmup(&datafile, &sampling_lsm, record_count, delete_prop);
         sample_benchmark(&sampling_lsm, fpr, 10000);
 
         fflush(stdout);
@@ -66,7 +63,6 @@ int main(int argc, char **argv)
         datafile.close();
         delete_bench_env();
     }
-
 
     exit(EXIT_SUCCESS);
 }
