@@ -29,7 +29,7 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
 
         // if we've fully processed the delete vector, sample a new
         // set of records to delete.
-        if (delete_idx > delete_batch_size) {
+        if (delete_idx >= delete_batch_size) {
             tree->range_sample(g_min_key, g_max_key, delete_batch_size, delbuf, g_rng);
             deleted.clear();
         }

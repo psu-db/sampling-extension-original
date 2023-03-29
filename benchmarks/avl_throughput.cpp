@@ -25,7 +25,7 @@ static bool insert_benchmark(AvlSet *tree, std::fstream *file,
         }
 
 
-        if (delete_idx > delete_batch_size) {
+        if (delete_idx >= delete_batch_size) {
             avl_sample(tree, delbuf, deletes);
             deleted.clear();
         }

@@ -28,7 +28,7 @@ static void sample_benchmark(lsm::WIRSRun *run, size_t k, size_t trial_cnt)
 
     size_t throughput = (((double)(trial_cnt * k) / (double) total_time) * 1e9);
 
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 
