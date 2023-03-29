@@ -6,7 +6,6 @@
 #include "lsm/MemTable.h"
 #include "lsm/MemoryLevel.h"
 #include "ds/Alias.h"
-//#include "lsm/WIRSIsamTree.h"
 
 #include "util/timer.h"
 
@@ -78,13 +77,6 @@ public:
         for (size_t i=0; i<this->memory_levels.size(); i++) {
             delete this->memory_levels[i];
         }
-
-        /*
-        for (size_t i=0; i<this->disk_levels.size(); i++) {
-            delete this->disk_levels[i];
-        }
-        */
-
     }
 
     int append(const key_t& key, const value_t& val, double weight, bool tombstone, gsl_rng *rng) {
