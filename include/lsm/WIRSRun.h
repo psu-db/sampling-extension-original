@@ -45,6 +45,7 @@ public:
                 if (!base->get_delete_status()) {
                     base->header &= 3;
                     m_data[m_reccnt++] = *base;
+                    if (bf) bf->insert(base->key);
                     m_total_weight += base->weight;
                     weights.push_back((double)base->weight);
                 }
