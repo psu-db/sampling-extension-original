@@ -62,12 +62,11 @@ public:
     static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, bool tagging, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
         auto res = new MemoryLevel(base_level->m_level_no, 1, tagging);
-
-        size_t reccnt = (tagging) ? new_level->get_record_cnt() + base_level->get_record_cnt() :
-                                    new_level->get_tombstone_count() + base_level->get_tombstone_count();
         res->m_run_cnt = 1;
-        res->m_structure->m_bfs[0] = new BloomFilter(BF_FPR, reccnt, BF_HASH_FUNCS, rng);
-
+        res->m_structure->m_bfs[0] =
+            new BloomFilter(BF_FPR,
+                            new_level->get_tombstone_count() + base_level->get_tombstone_count(),
+                            BF_HASH_FUNCS, rng);
         WIRSRun* runs[2];
         runs[0] = base_level->m_structure->m_runs[0];
         runs[1] = new_level->m_structure->m_runs[0];
@@ -78,16 +77,14 @@ public:
 
     void append_mem_table(MemTable* memtable, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
-        size_t reccnt = (m_tagging) ? memtable->get_record_count() : memtable->get_tombstone_count();
-        m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, reccnt, BF_HASH_FUNCS, rng);
+        m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, memtable->get_tombstone_count(), BF_HASH_FUNCS, rng);
         m_structure->m_runs[m_run_cnt] = new WIRSRun(memtable, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
     }
 
     void append_merged_runs(MemoryLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
-        size_t reccnt = (m_tagging) ? level->get_record_cnt() : level->get_tombstone_count();
-        m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, reccnt, BF_HASH_FUNCS, rng);
+        m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
         m_structure->m_runs[m_run_cnt] = new WIRSRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
     }
@@ -121,7 +118,9 @@ public:
     }
 
     bool check_tombstone(size_t run_stop, const key_t& key, const value_t& val) {
-        for (size_t i = 0; i < run_stop;  ++i) {
+        if (m_run_cnt == 0) return false;
+
+        for (int i = m_run_cnt - 1; i >= (ssize_t) run_stop;  i--) {
             if (m_structure->m_runs[i] && (m_structure->m_bfs[i]->lookup(key))
                 && m_structure->m_runs[i]->check_tombstone(key, val))
                 return true;
@@ -131,8 +130,7 @@ public:
 
     bool delete_record(const key_t& key, const value_t& val) {
         for (size_t i = 0; i < m_structure->m_cap;  ++i) {
-            if (m_structure->m_runs[i] && m_structure->m_bfs[i]->lookup(key) && 
-              m_structure->m_runs[i]->delete_record(key, val)) {
+            if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
                 return true;
             }
         }
