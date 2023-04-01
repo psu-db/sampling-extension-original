@@ -1,6 +1,6 @@
 #include "bench.h"
 
-size_t g_insert_batch_size = 1000;
+size_t g_insert_batch_size = 10000;
 
 static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file, 
                       size_t insert_cnt, double delete_prop) {
@@ -34,7 +34,7 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
 
         // if we've fully processed the delete vector, sample a new
         // set of records to delete.
-        if (delete_idx > delete_batch_size) {
+        if (delete_idx >= delete_batch_size) {
             tree->range_sample(delbuf, min_key, max_key, delete_batch_size, buf1, buf2, g_rng);
             deleted.clear();
         }
@@ -72,7 +72,7 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     progress_update(1.0, "inserting:");
     size_t throughput = (((double) (applied_inserts + applied_deletes) / (double) total_time) * 1e9);
 
-    fprintf(stdout, "%ld\n", throughput);
+    fprintf(stdout, "%ld\t", throughput);
 
     reset_lsm_perf_metrics();
     delete[] delbuf;
@@ -101,7 +101,7 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, size_t trial_cnt, dou
 
     free(buffer1);
     free(buffer2);
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 static void sample_benchmark(lsm::LSMTree *tree, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
@@ -126,13 +126,13 @@ static void sample_benchmark(lsm::LSMTree *tree, size_t k, double selectivity, c
 
     free(buffer1);
     free(buffer2);
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 int main(int argc, char **argv)
 {
     if (argc < 8) {
-        fprintf(stderr, "Usage: lsm_insert_sample <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [osm_data]\n");
+        fprintf(stderr, "Usage: lsm_throughput <filename> <record_count> <memtable_size> <scale_factor> <memory_levels> <delete_proportion> <max_delete_proportion> [osm_data]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -168,7 +168,7 @@ int main(int argc, char **argv)
 
     double insert_batch = 0.1; 
 
-    std::string root_dir = "benchmarks/data/lsm_insert_sample";
+    std::string root_dir = "benchmarks/data/lsm_throughput";
 
     init_bench_env(record_count);
 

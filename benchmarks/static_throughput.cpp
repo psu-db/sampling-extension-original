@@ -66,7 +66,7 @@ static void benchmark(lsm::record_t *data, size_t n, size_t k, size_t sample_att
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
     size_t throughput = (((double)(sample_attempts * k) / (double) total_latency) * 1e9);
 
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 static void benchmark(lsm::record_t *data, size_t n, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
@@ -83,7 +83,7 @@ static void benchmark(lsm::record_t *data, size_t n, size_t k, double selectivit
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
     size_t throughput = (((double)(queries.size() * k) / (double) total_latency) * 1e9);
 
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 int main(int argc, char **argv)
@@ -138,7 +138,9 @@ int main(int argc, char **argv)
 
     size_t n;
     auto data = sampling_lsm.get_sorted_array(&n, g_rng);
+    benchmark(data, n, 1000, 10000, min_key, max_key, selectivity);
 
+    /*
 	if (argc == 5) {
 		for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)
 		    benchmark(data, n, sample_size, selectivity, queries[query_set]);
@@ -146,6 +148,7 @@ int main(int argc, char **argv)
 		for (size_t sample_size = 1; sample_size < 100000; sample_size *= 10)
 			benchmark(data, n, sample_size, 10000, min_key, max_key, selectivity);
 	}
+       */
 
     delete_bench_env();
     exit(EXIT_SUCCESS);

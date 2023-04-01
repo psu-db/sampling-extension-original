@@ -1,6 +1,6 @@
 #include "bench.h"
 
-size_t g_insert_batch_size = 1000;
+size_t g_insert_batch_size = 10000;
 
 static bool insert_benchmark(TreeMap *tree, std::fstream *file, 
                       size_t insert_cnt, double delete_prop) {
@@ -29,7 +29,7 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
 
         // if we've fully processed the delete vector, sample a new
         // set of records to delete.
-        if (delete_idx > delete_batch_size) {
+        if (delete_idx >= delete_batch_size) {
             tree->range_sample(min_key, max_key, deletes, delbuf, g_rng);
             deleted.clear();
         }
@@ -64,13 +64,13 @@ static bool insert_benchmark(TreeMap *tree, std::fstream *file,
     progress_update(1.0, "inserting:");
     size_t throughput = (((double) (applied_inserts + applied_deletes) / (double) total_time) * 1e9);
 
-    fprintf(stdout, "%ld\n", throughput);
+    fprintf(stdout, "%ld\t", throughput);
 
     return continue_benchmark;
 }
 
 
-static void sample_benchmark(TreeMap *tree, size_t n, size_t k, size_t trial_cnt, size_t min, size_t max, double selectivity)
+static void sample_benchmark(TreeMap *tree, size_t k, size_t trial_cnt, size_t min, size_t max, double selectivity)
 {
     std::vector<lsm::key_t> sample_set;
     sample_set.reserve(k);
@@ -88,7 +88,7 @@ static void sample_benchmark(TreeMap *tree, size_t n, size_t k, size_t trial_cnt
 
     size_t throughput = (((double)(trial_cnt * k) / (double) total_latency) * 1e9);
 
-    fprintf(stdout, "%zu %.0ld\n", k, throughput);
+    fprintf(stdout, "%.0ld\n", throughput);
 }
 
 static void sample_benchmark(TreeMap *tree, size_t n, size_t k, double selectivity, const std::vector<std::pair<size_t, size_t>>& queries)
@@ -164,7 +164,9 @@ int main(int argc, char **argv)
     size_t insert_cnt = record_count - warmup_cnt;
 
     insert_benchmark(&sampling_tree, &datafile, insert_cnt, delete_prop);
+    sample_benchmark(&sampling_tree, 1000, 10000, min_key, max_key, 0.001);
 
+    /*
     size_t n;
     size_t max_sample_size = 1000000;
     for (size_t sample_size =1; sample_size < max_sample_size; sample_size *= 10) {
@@ -174,6 +176,7 @@ int main(int argc, char **argv)
 			sample_benchmark(&sampling_tree, n, sample_size, 10000, min_key, max_key, 0.001);
 	    }
     }
+    */
 
     delete_bench_env();
     fflush(stdout);

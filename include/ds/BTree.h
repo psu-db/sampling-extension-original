@@ -88,12 +88,12 @@ struct btree_default_traits {
 
     //! Number of slots in each leaf of the tree. Estimated so that each node
     //! has a size of about 256 bytes.
-    static const int leaf_slots = 16;
+    static const int leaf_slots = 5;
         //TLX_BTREE_MAX(4, 256 / (sizeof(Value)));
 
     //! Number of slots in each inner node of the tree. Estimated so that each
     //! node has a size of about 256 bytes.
-    static const int inner_slots = 16;
+    static const int inner_slots = 5;
         //TLX_BTREE_MAX(4, 256 / (sizeof(Key) + sizeof(void*)));
 
     //! As of stx-btree-0.9, the code does linear search in find_lower() and
