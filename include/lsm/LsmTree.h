@@ -40,7 +40,7 @@ thread_local size_t sampling_bailouts = 0;
 static constexpr bool LSM_REJ_SAMPLE = false;
 
 // True for leveling, false for tiering
-static constexpr bool LSM_LEVELING = true;
+static constexpr bool LSM_LEVELING = false;
 
 static constexpr bool DELETE_TAGGING = false;
 
@@ -512,20 +512,11 @@ private:
         // merging two memory levels
         if (LSM_LEVELING) {
             auto tmp = this->memory_levels[base_idx];
-            this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
+            this->memory_levels[incoming_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx],
+                                                                          DELETE_TAGGING, rng);
+            this->mark_as_unused(tmp);
         } else {
-            // merging two memory levels
-            if (LSM_LEVELING) {
-                auto tmp = this->memory_levels[base_idx];
-                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], DELETE_TAGGING, rng);
-                this->mark_as_unused(tmp);
-            } else {
-                this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
-            }
-
-            this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, DELETE_TAGGING);
+            this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
         }
 
         this->mark_as_unused(this->memory_levels[incoming_idx]);
