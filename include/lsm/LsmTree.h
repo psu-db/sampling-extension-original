@@ -42,7 +42,7 @@ static constexpr bool LSM_REJ_SAMPLE = false;
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
 
-static constexpr bool DELETE_TAGGING = false;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 
@@ -80,6 +80,25 @@ public:
         for (size_t i=0; i<this->memory_levels.size(); i++) {
             delete this->memory_levels[i];
         }
+    }
+
+
+    int delete_record(const key_t& key, const value_t& val, gsl_rng *rng) {
+        assert(DELETE_TAGGING);
+
+        auto mtable = this->memtable();
+        // Check the levels first. This assumes there aren't 
+        // any undeleted duplicate records.
+        for (auto level : this->memory_levels) {
+            if (level && level->delete_record(key, val)) {
+                return 1;
+            }
+        }
+
+        // the memtable will take the longest amount of time, and 
+        // probably has the lowest probability of having the record,
+        // so we'll check it last.
+        return mtable->delete_record(key, val);
     }
 
     int append(const key_t& key, const value_t& val, double weight, bool tombstone, gsl_rng *rng) {
