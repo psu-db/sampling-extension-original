@@ -60,7 +60,7 @@ public:
         return 1;     
     }
 
-    bool truncate(bool *truncation_complete) {
+    bool truncate(volatile bool *truncation_complete) {
         if (!m_merging.load()) {
             *truncation_complete = false;
             return false;
@@ -82,6 +82,7 @@ public:
         m_current_tail.store(0); 
 
         m_merging.store(false);
+        m_deferred_truncate.store(false);
 
         *truncation_complete = true;
         this->truncation_signaller = nullptr;
@@ -191,7 +192,7 @@ private:
     size_t m_cap;
     size_t m_buffersize;
 
-    bool *truncation_signaller;
+    volatile bool *truncation_signaller;
 
     std::mutex m_merge_lock;
 

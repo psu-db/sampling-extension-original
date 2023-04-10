@@ -51,11 +51,16 @@ private:
         std::vector<MemTable *> memtables;
         std::vector<memory_level_ptr> mem_levels; 
         std::atomic<size_t> pins;
+        bool merging;
         level_index last_level_idx;
 
-        version_data() : active_memtable(0), pins(0), last_level_idx(-1) {};
+        version_data() : active_memtable(0), pins(0), merging(false), last_level_idx(-1) {};
 
         bool pin() {
+            if (merging) {
+                return false;
+            }
+
             pins.fetch_add(1);
             return true;
         }
@@ -602,7 +607,8 @@ private:
 
         // TEMP: install the new version 
         size_t new_version_no = (version_num + 1) % LSM_MEMTABLE_CNT;
-        m_version_data[new_version_no].load();
+        m_version_data[new_version_no].load()->merging = true;
+        m_version_data[version_num].load()->merging = true;
 
         // This should be sufficient, as once a version is no longer
         // active it will stop acculumating pins. So there isn't a risk
@@ -620,7 +626,7 @@ private:
         // We need to truncate the memtable before we advance
         // the version counter, otherwise there is a moment where 
         // threads may see duplicate records.
-        bool truncation_status = false;
+        volatile bool truncation_status = false;
         mtable->truncate(&truncation_status);
 
         while (!truncation_status) 
@@ -634,6 +640,8 @@ private:
         delete old_version.m_ptr;
 
         m_primary_merge_active.store(false);
+        m_version_data[version_num].load()->merging = false;
+        m_version_data[new_version_no].load()->merging = false;
         m_merge_lock.unlock();
         #ifdef MERGE_LOGGING
         fprintf(stderr, "merge done for %ld\n", version_num);
