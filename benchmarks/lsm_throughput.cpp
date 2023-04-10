@@ -78,6 +78,7 @@ static bool insert_benchmark(lsm::LSMTree *tree, std::fstream *file,
     size_t throughput = (((double) (applied_inserts + applied_deletes) / (double) total_time) * 1e9);
 
     fprintf(stdout, "%ld\t", throughput);
+    fflush(stdout);
 
     free(buf1);
     free(buf2);

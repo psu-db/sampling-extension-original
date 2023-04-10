@@ -91,6 +91,9 @@ static void delete_bench_env()
 
 static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
 {
+
+    if (g_reccnt >= g_max_record_cnt) return false;
+
     std::string line;
     if (std::getline(*file, line, '\n')) {
         std::stringstream line_stream(line);
@@ -99,20 +102,14 @@ static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
 
         std::getline(line_stream, value_field, '\t');
         std::getline(line_stream, key_field, '\t');
-        lsm::key_t key_value = atol(key_field.c_str());
-        lsm::value_t val_value = atol(value_field.c_str());
 
+        key = (g_osm_data) ? osm_to_key(key_field.c_str()) : atol(key_field.c_str());
+        val = atol(value_field.c_str());
 
-        key = key_value;
-        val = val_value;
+        if (key < g_min_key) g_min_key = key;
+        if (key > g_max_key) g_max_key = key;
 
-        if (key_value < g_min_key) {
-            g_min_key = key_value;
-        } 
-
-        if (key_value > g_max_key) {
-            g_max_key = key_value;
-        }
+        g_reccnt++;
 
         return true;
     }
@@ -122,6 +119,8 @@ static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
 
 
 static bool build_insert_vec(std::fstream *file, std::vector<lsm::record_t> &vec, size_t n) {
+    vec.clear();
+
     for (size_t i=0; i<n; i++) {
         lsm::key_t key;
         lsm::value_t val;
@@ -262,6 +261,7 @@ static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double dele
     std::vector<lsm::key_t> delbuf;
     delbuf.reserve(del_buf_size);
     bool ret = true;
+    double last_percent = 0;
 
     for (size_t i=0; i<count; i++) {
         if (!next_record(file, key, val)) {
@@ -281,10 +281,16 @@ static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double dele
             del_buf_ptr++;
             btree->erase_one(key);
         }
-		if (i % 1000000 == 0) {
-            fprintf(stderr, "Finished %zu operations...\n", i);
-            //fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
+
+
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up:");
+            last_percent = (double) i / (double) count;
         }
+    }
+
+    if (progress) {
+        progress_update(1, "warming up:");
     }
 
     return ret;
