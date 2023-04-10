@@ -5,10 +5,8 @@
 #include <thread>
 #include <mutex>
 
-#include "lsm/IsamTree.h"
 #include "lsm/MemTable.h"
 #include "lsm/MemoryLevel.h"
-#include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
 
 #include "util/timer.h"
@@ -30,7 +28,6 @@ thread_local size_t alias_query_time = 0;
 thread_local size_t rejection_check_time = 0;
 thread_local size_t memtable_sample_time = 0;
 thread_local size_t memlevel_sample_time = 0;
-thread_local size_t disklevel_sample_time = 0;
 
 /*
  * LSM Tree configuration global variables
@@ -53,7 +50,6 @@ private:
         std::atomic<size_t> active_memtable;
         std::vector<MemTable *> memtables;
         std::vector<memory_level_ptr> mem_levels; 
-        std::vector<disk_level_ptr> disk_levels; 
         std::atomic<size_t> pins;
         level_index last_level_idx;
 
@@ -103,26 +99,24 @@ private:
             return old_memtable;
         }
     private:
-        version_data(size_t active_memtable, std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, std::vector<disk_level_ptr> &disklvls, level_index last_level_idx)
-        : active_memtable(0), memtables(std::move(tables)), mem_levels(std::move(memlvls)), disk_levels(std::move(disklvls)), pins(0), last_level_idx(last_level_idx) {}
+        version_data(size_t active_memtable, std::vector<MemTable *> &tables, std::vector<memory_level_ptr> &memlvls, level_index last_level_idx)
+        : active_memtable(0), memtables(std::move(tables)), mem_levels(std::move(memlvls)), pins(0), last_level_idx(last_level_idx) {}
 
         version_data *copy() {
             auto active_mtable = active_memtable.load();
             auto tables = memtables;
             auto mlvls = mem_levels;
-            auto dlvls = disk_levels;
 
-            return new version_data(active_mtable, tables, mlvls, dlvls, last_level_idx);
+            return new version_data(active_mtable, tables, mlvls, last_level_idx);
         }
     };
 
 public:
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz,
-            size_t scale_factor, size_t memory_level_cap, double max_ts_prop,
+            size_t scale_factor, double max_ts_prop,
             gsl_rng *rng) : m_scale_factor(scale_factor), m_ts_prop(max_ts_prop),
                             m_root_directory(root_dir), 
-                            m_memtables(LSM_MEMTABLE_CNT),
-                            m_memory_level_cnt(memory_level_cap) {
+                            m_memtables(LSM_MEMTABLE_CNT) {
         m_version_num.store(0);
         for (size_t i=0; i < LSM_MEMTABLE_CNT; i++) {
             m_memtables[i] = new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng);
@@ -217,12 +211,6 @@ public:
             }
         }
 
-        for (auto &level : version->disk_levels) {
-            if (level) {
-                level->get_sample_ranges(disk_ranges, record_counts, lower_key, upper_key, buffer);
-            }
-        }
-
         TIMER_STOP();
         sample_range_time += TIMER_RESULT();
 
@@ -314,37 +302,6 @@ public:
                 }
 
             }
-
-            // Finally, the ISAM Trees
-            // NOTE: this setup is not leveraging rolling all the pages first,
-            // and then batching the IO operations so that each duplicate page
-            // is sampled multiple times in a row. This could be done at the
-            // cost of space, by tracking each page and the number of times it
-            // is sampled, or at the cost of time, by sorting. In either case,
-            // we'd need to double the number of random numbers rolled--as we'd
-            // need to roll the pages, and then the record index within each
-            // page
-            run_offset = 1 + memory_ranges.size(); // Skip the memtable and the memory levels
-            size_t records_per_page = PAGE_SIZE / record_size;
-            PageNum buffered_page = INVALID_PNUM;
-            for (size_t i=0; i<disk_ranges.size(); i++) {
-                size_t range_length = (disk_ranges[i].high - disk_ranges[i].low + 1) * records_per_page;
-                size_t level_idx = disk_ranges[i].run_id.level_idx - m_memory_level_cnt;
-                size_t run_idx = disk_ranges[i].run_id.run_idx;
-
-                while (run_samples[i+run_offset] > 0) {
-                    TIMER_START();
-                    size_t idx = gsl_rng_uniform_int(rng, range_length);
-                    sample_record = version->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].low, idx, buffer, buffered_page);
-                    run_samples[i+run_offset]--;
-                    TIMER_STOP();
-                    disklevel_sample_time += TIMER_RESULT();
-
-                    if (!add_to_sample(sample_record, disk_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
-                        rejections++;
-                    }
-                }
-            }
         } while (sample_idx < sample_sz);
 
         delete memtable;
@@ -368,28 +325,12 @@ public:
         }
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
-            if (lvl < version->mem_levels.size()) {
-                if (version->mem_levels[lvl]->tombstone_check(version->mem_levels[lvl]->get_run_count(), get_key(record), get_val(record))) {
-                    return true;
-                }
-            } else {
-                size_t isam_lvl = lvl - version->mem_levels.size();
-                if (version->disk_levels[isam_lvl]->tombstone_check(version->disk_levels[isam_lvl]->get_run_count(), get_key(record), get_val(record), buffer)) {
-                    return true;
-                }
-
+            if (version->mem_levels[lvl]->tombstone_check(0, get_key(record), get_val(record))) {
+                return true;
             }
         }
 
-        // check the level containing the run
-        if (rid.level_idx < version->mem_levels.size()) {
-            size_t run_idx = std::min((size_t) rid.run_idx, version->mem_levels[rid.level_idx]->get_run_count() + 1);
-            return version->mem_levels[rid.level_idx]->tombstone_check(run_idx, get_key(record), get_val(record));
-        } else {
-            size_t isam_lvl = rid.level_idx - version->mem_levels.size();
-            size_t run_idx = std::min((size_t) rid.run_idx, version->disk_levels[isam_lvl]->get_run_count());
-            return version->disk_levels[isam_lvl]->tombstone_check(run_idx, get_key(record), get_val(record), buffer);
-        }
+        return version->mem_levels[rid.level_idx]->tombstone_check(rid.run_idx + 1, get_key(record), get_val(record));
     }
 
 
@@ -404,10 +345,6 @@ public:
 
         for (size_t i=0; i<version->mem_levels.size(); i++) {
             if (version->mem_levels[i]) cnt += version->mem_levels[i]->get_record_cnt();
-        }
-
-        for (size_t i=0; i<version->disk_levels.size(); i++) {
-            if (version->disk_levels[i]) cnt += version->disk_levels[i]->get_record_cnt();
         }
 
         this->unpin_version(version_num);
@@ -429,10 +366,6 @@ public:
             if (version->mem_levels[i]) cnt += version->mem_levels[i]->get_tombstone_count();
         }
 
-        for (size_t i=0; i<version->disk_levels.size(); i++) {
-            if (version->disk_levels[i]) cnt += version->disk_levels[i]->get_tombstone_count();
-        }
-
         this->unpin_version(version_num);
         return cnt;
     }
@@ -441,7 +374,7 @@ public:
         size_t version_num;
         auto version = this->pin_version(&version_num);
 
-        auto height =  version->mem_levels.size() + version->disk_levels.size();
+        auto height =  version->mem_levels.size();
         this->unpin_version(version_num);
         return height;
     }
@@ -476,110 +409,9 @@ public:
             if (version->mem_levels[i]) cnt += version->mem_levels[i]->get_aux_memory_utilization();
         }
 
-        for (size_t i=0; i<version->disk_levels.size(); i++) {
-            if (version->disk_levels[i]) cnt += version->disk_levels[i]->get_aux_memory_utilization();
-        }
-
         this->unpin_version(version_num);
         return cnt;
     }
-
-    /*
-     * Flattens the entire LSM structure into a single in-memory sorted
-     * array and return a pointer to it. Will be used as a simple baseline
-     * for performance comparisons.
-     *
-     * len will be updated to hold the number of records within the tree.
-     *
-     * It is the caller's responsibility to manage the memory of the returned
-     * object. It should be released with free().
-     *
-     * NOTE: If an interface to create InMemRun objects using ISAM Trees were
-     * added, this could be implemented just like get_flat_isam_tree and return
-     * one of those. But as it stands, this seems the most straightforward way
-     * to get a static in-memory structure.
-     */
-    char *get_sorted_array(size_t *len, gsl_rng *rng)
-    {
-        size_t version_num;
-        auto version = this->pin_version(&version_num);
-
-        // flatten into an ISAM Tree to get a contiguous run of all
-        // the records, and cancel out all tombstones.
-        auto tree = this->get_flat_isam_tree(rng);
-        size_t alloc_sz = tree->get_record_count() * record_size + (CACHELINE_SIZE - tree->get_record_count() * record_size % CACHELINE_SIZE);
-        char *array = (char *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
-
-        assert(tree->get_tombstone_count() == 0);
-
-        *len = tree->get_record_count();
-
-        auto iter = tree->start_scan();
-        size_t offset = 0;
-        while (iter->next() && offset < tree->get_record_count()) {
-            auto pg = iter->get_item();
-            for (size_t i=0; i<PAGE_SIZE/record_size; i++) {
-                memcpy(array + offset*record_size, pg + i*record_size, record_size);
-                offset++;
-
-                if (offset >= tree->get_record_count()) break;
-            }
-        }
-
-        auto pfile = tree->get_pfile();
-        delete iter;
-        delete tree;
-        delete pfile;
-
-        this->unpin_version(version_num);
-        return array;
-    }
-
-    /*
-     * Flattens the entire LSM structure into a single ISAM Tree object
-     * and return a pointer to it. Will be used as a simple baseline for
-     * performance comparisons.
-     */
-    ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
-        size_t version_num;
-        auto version = this->pin_version(&version_num);
-
-        auto mem_level = new MemoryLevel(-1, 1);
-        mem_level->append_mem_table(version->get_active_memtable(), rng);
-
-        std::vector<InMemRun *> runs;
-        std::vector<ISAMTree *> trees;
-
-        for (int i=version->mem_levels.size() - 1; i>= 0; i--) {
-            if (version->mem_levels[i]) {
-                for (int j=0; j<version->mem_levels[i]->get_run_count(); j++) {
-                    runs.push_back(version->mem_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        runs.push_back(mem_level->get_run(0));
-
-        for (int i=version->disk_levels.size() - 1; i >= 0; i--) {
-            if (version->disk_levels[i]) {
-                for (int j=0; j<version->disk_levels[i]->get_run_count(); j++) {
-                    trees.push_back(version->disk_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        auto pfile = PagedFile::create(m_root_directory + "flattened_tree.dat");
-        auto bf = new BloomFilter(0, BF_HASH_FUNCS, rng);
-
-        auto flat = new ISAMTree(pfile, rng, bf, runs.data(), runs.size(), trees.data(), trees.size());
-
-        delete mem_level;
-        delete bf;
-
-        this->unpin_version(version_num);
-        return flat;
-    }
-
 
     bool validate_tombstone_proportion() {
         size_t version_num;
@@ -596,20 +428,9 @@ public:
             }
         }
 
-        for (size_t i=0; i<version->disk_levels.size(); i++) {
-            if (version->disk_levels[i]) {
-                ts_prop = (long double) version->disk_levels[i]->get_tombstone_count() / (long double) this->calc_level_record_capacity(version->mem_levels.size() + i);
-                if (ts_prop > (long double) m_ts_prop) {
-                    this->unpin_version(version_num);
-                    return false;
-                }
-            }
-        }
-
         this->unpin_version(version_num);
         return true;
     }
-
 
     void await_merge_completion() {
         bool done = false;
@@ -635,8 +456,6 @@ private:
 
     size_t m_scale_factor;
     double m_ts_prop;
-
-    size_t m_memory_level_cnt;
 
     // The directory containing all of the backing files
     // for this LSM Tree.
@@ -713,19 +532,11 @@ private:
         level_index new_idx;
 
         size_t new_run_cnt = (LSM_LEVELING) ? 1 : m_scale_factor;
-        if (version->mem_levels.size() < m_memory_level_cnt) {
-            new_idx = version->mem_levels.size();
-            if (new_idx > 0) {
-                assert(version->mem_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
-            }
-            version->mem_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt));
-        } else {
-            new_idx = version->disk_levels.size() + version->mem_levels.size();
-            if (version->disk_levels.size() > 0) {
-                assert(version->disk_levels[version->disk_levels.size() - 1]->get_run(0)->get_tombstone_count() == 0);
-            }
-            version->disk_levels.emplace_back(new DiskLevel(new_idx, new_run_cnt, m_root_directory));
-        } 
+        new_idx = version->mem_levels.size();
+        if (new_idx > 0) {
+            assert(version->mem_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
+        }
+        version->mem_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt));
 
         version->last_level_idx++;
         return new_idx;
@@ -846,7 +657,7 @@ private:
 
         for (level_index i=merge_base_level; i>idx; i--) {
             this->merge_levels(i, i-1, version, rng);
-            this->enforce_tombstone_maximum(i, version, rng);
+            //this->enforce_tombstone_maximum(i, version, rng);
         }
 
         return;
@@ -886,45 +697,14 @@ private:
      * invariant may be violated by the merge operation.
      */
     inline void merge_levels(level_index base_level, level_index incoming_level, version_data *version, gsl_rng *rng) {
-        bool base_disk_level;
-        bool incoming_disk_level;
 
-        size_t base_idx = decode_level_index(base_level, &base_disk_level);
-        size_t incoming_idx = decode_level_index(incoming_level, &incoming_disk_level);
-
-        // If the base level is a memory level, then the incoming level
-        // cannot be a disk level.
-        assert(!(!base_disk_level && incoming_disk_level));
-
-        if (base_disk_level && incoming_disk_level) {
-            // Merging two disk levels
-            if (LSM_LEVELING) {
-                version->disk_levels[base_idx].reset(DiskLevel::merge_levels(version->disk_levels[base_idx].get(), version->disk_levels[incoming_idx].get(), rng));
-            } else {
-                version->disk_levels[base_idx]->append_merged_runs(version->disk_levels[incoming_idx].get(), rng);
-            }
-            version->disk_levels[incoming_idx].reset(new DiskLevel(incoming_level, (LSM_LEVELING) ? 1 : m_scale_factor, m_root_directory));
-        } else if (base_disk_level) {
-            // Merging the last memory level into the first disk level
-            assert(base_idx == 0);
-            assert(incoming_idx == m_memory_level_cnt - 1);
-            if (LSM_LEVELING) {
-                version->disk_levels[base_idx].reset(DiskLevel::merge_levels(version->disk_levels[base_idx].get(), version->mem_levels[incoming_idx].get(), rng));
-            } else {
-                version->disk_levels[base_idx]->append_merged_runs(version->mem_levels[incoming_idx].get(), rng);
-            }
-
-            version->mem_levels[incoming_idx].reset(new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : m_scale_factor));
+        if (LSM_LEVELING) {
+            version->mem_levels[base_level].reset(MemoryLevel::merge_levels(version->mem_levels[base_level].get(), version->mem_levels[incoming_level].get(), rng));
         } else {
-            // merging two memory levels
-            if (LSM_LEVELING) {
-                version->mem_levels[base_idx].reset(MemoryLevel::merge_levels(version->mem_levels[base_idx].get(), version->mem_levels[incoming_idx].get(), rng));
-            } else {
-                version->mem_levels[base_idx]->append_merged_runs(version->mem_levels[incoming_idx].get(), rng);
-            }
-
-            version->mem_levels[incoming_idx].reset(new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : m_scale_factor));
+            version->mem_levels[base_level]->append_merged_runs(version->mem_levels[incoming_level].get(), rng);
         }
+
+        version->mem_levels[incoming_level].reset(new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : m_scale_factor));
     }
 
     inline void merge_memtable_into_l0(MemTable *mtable, version_data *version, gsl_rng *rng) {
@@ -951,16 +731,6 @@ private:
     }
 
     /*
-     * Mark a given disk level as no-longer in use by the tree. For now this
-     * will just free the level. In future, this will be more complex as the
-     * level may not be able to immediately be deleted, depending upon who
-     * else is using it.
-     */ 
-    inline void mark_as_unused(DiskLevel *level) {
-        level->mark_unused();
-    }
-
-    /*
      * Mark a given memory level as no-longer in use by the tree. For now this
      * will just free the level. In future, this will be more complex as the
      * level may not be able to immediately be deleted, depending upon who
@@ -976,11 +746,7 @@ private:
      * levels below idx are below the limit.
      */
     inline void enforce_tombstone_maximum(level_index idx, version_data *version, gsl_rng *rng) {
-        bool disk_level;
-        size_t level_idx = this->decode_level_index(idx, &disk_level);
-
-        long double ts_prop = (disk_level) ? (long double) version->disk_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx)
-                                           : (long double) version->mem_levels[level_idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
+        long double ts_prop = (long double) version->mem_levels[idx]->get_tombstone_count() / (long double) this->calc_level_record_capacity(idx);
 
         if (ts_prop > (long double) m_ts_prop) {
             this->merge_down(idx, version, rng);
@@ -1010,69 +776,28 @@ private:
             return version->get_active_memtable()->get_record_count();
         }
 
-        bool disk_level;
-        size_t vector_index = decode_level_index(idx, &disk_level);
-        if (disk_level) {
-            return (version->disk_levels[vector_index]) ? version->disk_levels[vector_index]->get_record_cnt() : 0;
-        } 
-
-        return (version->mem_levels[vector_index]) ? version->mem_levels[vector_index]->get_record_cnt() : 0;
+        return (version->mem_levels[idx]) ? version->mem_levels[idx]->get_record_cnt() : 0;
     }
 
     /*
      * Determines if the specific level can merge with another record containing
      * incoming_rec_cnt number of records. The provided level index should be 
-     * non-negative (i.e., not refer to the memtable) and will be automatically
-     * translated into the appropriate index into either the disk or memory level
-     * vector.
+     * non-negative (i.e., not refer to the memtable) 
      */
     inline bool can_merge_with(level_index idx, size_t incoming_rec_cnt, version_data *version) {
-        bool disk_level;
-        ssize_t vector_index = decode_level_index(idx, &disk_level);
-        assert(vector_index >= 0);
-
-        if (disk_level) {
-            if (LSM_LEVELING) {
-                return version->disk_levels[vector_index]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_record_capacity(idx);
-            } else {
-                return version->disk_levels[vector_index]->get_run_count() < m_scale_factor;
-            }
-        } 
-
-        if (vector_index >= version->mem_levels.size() || !version->mem_levels[vector_index]) {
+        if (idx >= version->mem_levels.size() || !version->mem_levels[idx]) {
             return false;
         }
 
         if (LSM_LEVELING) {
-            return version->mem_levels[vector_index]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_record_capacity(idx);
+            return version->mem_levels[idx]->get_record_cnt() + incoming_rec_cnt <= this->calc_level_record_capacity(idx);
         } else {
-            return version->mem_levels[vector_index]->get_run_count() < m_scale_factor;
+            return version->mem_levels[idx]->get_run_count() < m_scale_factor;
         }
 
         // unreachable
         assert(true);
     }
-
-    /*
-     * Converts a level_index into the appropriate integer index into 
-     * either the memory level or disk level vector. If the index is
-     * for a memory level, set disk_level to false. If it is for a 
-     * disk level, set disk_level to true. If the index is less than
-     * zero, returns -1 (may indicate either an invalid index, or the
-     * memtable).
-     */
-    inline ssize_t decode_level_index(level_index idx, bool *disk_level) {
-        *disk_level = false;
-
-        if (idx < 0) return -1;
-
-        if (idx < m_memory_level_cnt) return idx;
-
-        *disk_level = true;
-        return idx - m_memory_level_cnt;
-    }
-
-
 
     bool wait_for_version(size_t version_num) {
         // TODO: replace with condition variable

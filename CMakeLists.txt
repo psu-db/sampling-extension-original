@@ -8,21 +8,20 @@ project("lsm_sampling" VERSION 0.1.0)
 
 set(debug true)
 set(tests True)
-set(bench True)
+set(bench false)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 
+add_compile_options(-march=native)
+add_link_options(-latomic)
+
 if (debug) 
     add_compile_options(-g -O0)
     add_compile_options(-fsanitize=address)
-    add_compile_options(-march=native)
     add_link_options(-fsanitize=address)
-    add_link_options(-latomic)
 else()
     add_compile_options(-O3)
-    add_compile_options(-march=native)
-    add_link_options(-latomic)
 endif()
 
 
@@ -35,27 +34,23 @@ if (tests)
 
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/lsmtree")
     add_executable(pagedfile_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/pagedfile_tests.cpp)
-    target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit atomic)
     target_compile_options(pagedfile_tests PUBLIC -llib)
 
-    add_executable(isamtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/isamtree_tests.cpp)
-    target_link_libraries(isamtree_tests PUBLIC ${PROJECT_NAME} check subunit)
-    target_compile_options(isamtree_tests PUBLIC -llib)
-
     add_executable(memtable_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memtable_tests.cpp)
-    target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit atomic)
     target_compile_options(memtable_tests PUBLIC -llib)
 
     add_executable(inmemrun_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/inmemrun_tests.cpp)
-    target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit atomic)
     target_compile_options(inmemrun_tests PUBLIC -llib)
 
     add_executable(lsmtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsmtree_tests.cpp)
-    target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit atomic)
     target_compile_options(lsmtree_tests PUBLIC -llib)
 
     add_executable(memlevel_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memlevel_tests.cpp)
-    target_link_libraries(memlevel_tests PUBLIC ${PROJECT_NAME} check subunit)
+    target_link_libraries(memlevel_tests PUBLIC ${PROJECT_NAME} check subunit atomic)
     target_compile_options(memlevel_tests PUBLIC -llib)
 
 endif()
@@ -63,31 +58,11 @@ endif()
 # Benchmark build instructions
 if (bench)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_CURRENT_SOURCE_DIR}/bin/benchmarks")
-    add_executable(insert_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/insert_bench.cpp)
-    target_link_libraries(insert_bench PUBLIC ${PROJECT_NAME})
-    target_compile_options(insert_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/insert_bench")
 
-    add_executable(default_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/default_bench.cpp)
-    target_link_libraries(default_bench PUBLIC ${PROJECT_NAME})
-    target_compile_options(default_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/default_bench")
-
-    add_executable(sample_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/sample_bench.cpp)
-    target_link_libraries(sample_bench PUBLIC ${PROJECT_NAME})
-    target_compile_options(sample_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/sample_bench")
-
-    add_executable(btree_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_bench.cpp)
-    target_link_libraries(btree_bench PUBLIC ${PROJECT_NAME})
-    target_compile_options(btree_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_bench")
-    
-
-    add_executable(static_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_bench.cpp)
-    target_link_libraries(static_bench PUBLIC ${PROJECT_NAME})
-    target_compile_options(static_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_bench")
+    #add_executable(static_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_bench.cpp)
+    #target_link_libraries(static_bench PUBLIC ${PROJECT_NAME} atomic)
+    #target_compile_options(static_bench PUBLIC -llib)
+    #file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_bench")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
