@@ -39,10 +39,11 @@ private:
     };
 
 public:
-    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory, std::string meta_fname, gsl_rng *rng) 
+    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory, std::string meta_fname, bool tagging, gsl_rng *rng) 
     : m_level_no(level_no), m_run_cnt(0)
     , m_structure(new InternalLevelStructure(run_cap))
-    , m_directory(root_directory) {
+    , m_directory(root_directory)
+    , m_tagging(tagging) {
         FILE *meta_f = fopen(meta_fname.c_str(), "r");
         assert(meta_f);
 
@@ -58,22 +59,24 @@ public:
         while (fscanf(meta_f, "%s %s %ld %ld\n", typebuff, fnamebuff, &reccnt, &tscnt) != EOF && m_run_cnt < run_cap) {
             assert(strcmp(typebuff, "memory") == 0);
             m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, tscnt, BF_HASH_FUNCS, rng);
-            m_structure->m_runs[m_run_cnt] = new InMemRun(std::string(fnamebuff), reccnt, tscnt, m_structure->m_bfs[m_run_cnt]);
+            m_structure->m_runs[m_run_cnt] = new InMemRun(std::string(fnamebuff), reccnt, tscnt, m_structure->m_bfs[m_run_cnt], m_tagging);
             m_run_cnt++;
         }
     }
 
-    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory)
+    MemoryLevel(ssize_t level_no, size_t run_cap, std::string root_directory, bool tagging)
     : m_level_no(level_no), m_run_cnt(0)
     , m_structure(new InternalLevelStructure(run_cap))
-    , m_directory(root_directory) {}
+    , m_directory(root_directory)
+    , m_tagging(tagging) {}
 
     // Create a new memory level sharing the runs and repurposing it as previous level_no + 1
     // WARNING: for leveling only.
     MemoryLevel(MemoryLevel* level)
     : m_level_no(level->m_level_no + 1), m_run_cnt(level->m_run_cnt)
     , m_structure(level->m_structure) 
-    , m_directory(level->m_directory) {
+    , m_directory(level->m_directory)
+    , m_tagging(level->m_tagging) {
         assert(m_structure->m_cap == 1 && m_run_cnt == 1);
     }
 
@@ -81,9 +84,9 @@ public:
 
     // WARNING: for leveling only.
     // assuming the base level is the level new level is merging into. (base_level is larger.)
-    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, const gsl_rng* rng) {
+    static MemoryLevel* merge_levels(MemoryLevel* base_level, MemoryLevel* new_level, bool tagging, const gsl_rng* rng) {
         assert(base_level->m_level_no > new_level->m_level_no || (base_level->m_level_no == 0 && new_level->m_level_no == 0));
-        auto res = new MemoryLevel(base_level->m_level_no, 1, base_level->m_directory);
+        auto res = new MemoryLevel(base_level->m_level_no, 1, base_level->m_directory, tagging);
         res->m_run_cnt = 1;
         res->m_structure->m_bfs[0] =
             new BloomFilter(BF_FPR,
@@ -93,22 +96,32 @@ public:
         runs[0] = base_level->m_structure->m_runs[0];
         runs[1] = new_level->m_structure->m_runs[0];
 
-        res->m_structure->m_runs[0] = new InMemRun(runs, 2, res->m_structure->m_bfs[0]);
+        res->m_structure->m_runs[0] = new InMemRun(runs, 2, res->m_structure->m_bfs[0], tagging);
         return res;
     }
 
     void append_mem_table(MemTable* memtable, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, memtable->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new InMemRun(memtable, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new InMemRun(memtable, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
     }
 
     void append_merged_runs(MemoryLevel* level, const gsl_rng* rng) {
         assert(m_run_cnt < m_structure->m_cap);
         m_structure->m_bfs[m_run_cnt] = new BloomFilter(BF_FPR, level->get_tombstone_count(), BF_HASH_FUNCS, rng);
-        m_structure->m_runs[m_run_cnt] = new InMemRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt]);
+        m_structure->m_runs[m_run_cnt] = new InMemRun(level->m_structure->m_runs, level->m_run_cnt, m_structure->m_bfs[m_run_cnt], m_tagging);
         ++m_run_cnt;
+    }
+
+    bool delete_record(const key_t& key, const value_t& val) {
+        for (size_t i = 0; i < m_structure->m_cap;  ++i) {
+            if (m_structure->m_runs[i] && m_structure->m_runs[i]->delete_record(key, val)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Append the sample range in-order.....
@@ -223,6 +236,7 @@ private:
     size_t m_run_size_cap;
     std::shared_ptr<InternalLevelStructure> m_structure;
     std::string m_directory;
+    bool m_tagging;
 };
 
 }

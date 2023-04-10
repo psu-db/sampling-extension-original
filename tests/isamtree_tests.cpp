@@ -21,7 +21,7 @@ static ISAMTree *create_test_isam(size_t cnt, std::string fname, MemTable **mtbl
 {
     *filter = new BloomFilter(100, 9, g_rng);
     auto mtable = create_test_memtable(cnt);
-    auto memrun = new InMemRun(mtable, *filter);
+    auto memrun = new InMemRun(mtable, *filter, false);
     auto pfile = PagedFile::create(fname);
     assert(pfile);
 
@@ -44,7 +44,7 @@ static ISAMTree *create_test_isam_dupes(size_t cnt, std::string fname, MemTable 
 {
     *filter = new BloomFilter(100, 9, g_rng);
     auto mtable = create_test_memtable_dupes(cnt);
-    auto memrun = new InMemRun(mtable, *filter);
+    auto memrun = new InMemRun(mtable, *filter, false);
     auto pfile = PagedFile::create(fname);
     assert(pfile);
 
@@ -94,7 +94,7 @@ static void free_isam(ISAMTree *tree, BloomFilter *filter, MemTable *tbl)
 static ISAMTree *create_isam_from_memtable(PagedFile *pfile, MemTable *mtable, BloomFilter **filter)
 {
     *filter = new BloomFilter(100, 9, g_rng);
-    auto memrun = new InMemRun(mtable, *filter);
+    auto memrun = new InMemRun(mtable, *filter, false);
 
     (*filter)->clear();
     auto tree = new ISAMTree(pfile, g_rng, *filter, &memrun, 1, nullptr, 0);

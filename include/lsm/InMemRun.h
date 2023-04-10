@@ -28,8 +28,8 @@ thread_local size_t mrun_cancelations = 0;
 
 class InMemRun {
 public:
-    InMemRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf)
-    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt) {
+    InMemRun(std::string data_fname, size_t record_cnt, size_t tombstone_cnt, BloomFilter *bf, bool tagging)
+    : m_reccnt(record_cnt), m_tombstone_cnt(tombstone_cnt), m_deleted_cnt(0), m_tagging(tagging) {
 
         // read the stored data file the file
         size_t alloc_size = (record_cnt * sizeof(record_t)) + (CACHELINE_SIZE - (record_cnt * sizeof(record_t)) % CACHELINE_SIZE);
@@ -56,8 +56,8 @@ public:
         }
     }
 
-    InMemRun(MemTable* mem_table, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
+    InMemRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
+    :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr), m_deleted_cnt(0), m_tagging(tagging) {
 
         size_t alloc_size = (mem_table->get_record_count() * sizeof(record_t)) + (CACHELINE_SIZE - (mem_table->get_record_count() * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
@@ -68,20 +68,27 @@ public:
         record_t* base = mem_table->sorted_output();
         record_t* stop = base + mem_table->get_record_count();
         while (base < stop) {
-            if (!base->is_tombstone() && (base + 1 < stop)
-                && base->match(base + 1) && (base + 1)->is_tombstone()) {
-                base += 2;
-                mrun_cancelations++;
-            } else {
-                //Masking off the ts.
-                base->header &= 1;
-                m_data[m_reccnt++] = *base;
-                if (base->is_tombstone()) {
-                    ++m_tombstone_cnt;
-                    bf->insert(base->key);
-                }
-                base++;
+            if (!m_tagging) {
+                if (!base->is_tombstone() && (base + 1 < stop)
+                    && base->match(base + 1) && (base + 1)->is_tombstone()) {
+                    base += 2;
+                    mrun_cancelations++;
+                    continue;
+                } 
+            } else if (base->get_delete_status()) {
+                base += 1;
+                continue;
             }
+
+            //Masking off the ts.
+            base->header &= 1;
+            m_data[m_reccnt++] = *base;
+            if (bf && base->is_tombstone()) {
+                ++m_tombstone_cnt;
+                bf->insert(base->key);
+            }
+
+            base++;
         }
 
         if (m_reccnt > 0) {
@@ -89,8 +96,8 @@ public:
         }
     }
 
-    InMemRun(InMemRun** runs, size_t len, BloomFilter* bf)
-    :m_reccnt(0), m_tombstone_cnt(0), m_isam_nodes(nullptr) {
+    InMemRun(InMemRun** runs, size_t len, BloomFilter* bf, bool tagging)
+    :m_reccnt(0), m_tombstone_cnt(0), m_deleted_cnt(0), m_isam_nodes(nullptr), m_tagging(tagging) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
 
@@ -99,7 +106,6 @@ public:
         size_t attemp_reccnt = 0;
         
         for (size_t i = 0; i < len; ++i) {
-            //assert(runs[i]);
             if (runs[i]) {
                 auto base = runs[i]->sorted_output();
                 cursors.emplace_back(Cursor{base, base + runs[i]->get_record_count(), 0, runs[i]->get_record_count()});
@@ -119,7 +125,7 @@ public:
         while (pq.size()) {
             auto now = pq.peek();
             auto next = pq.size() > 1 ? pq.peek(1) : queue_record{nullptr, 0};
-            if (!now.data->is_tombstone() && next.data != nullptr &&
+            if (!m_tagging && !now.data->is_tombstone() && next.data != nullptr &&
                 now.data->match(next.data) && next.data->is_tombstone()) {
                 
                 pq.pop(); pq.pop();
@@ -129,10 +135,12 @@ public:
                 if (advance_cursor(cursor2)) pq.push(cursor2.ptr, next.version);
             } else {
                 auto& cursor = cursors[now.version];
-                m_data[m_reccnt++] = *cursor.ptr;
-                if (cursor.ptr->is_tombstone()) {
-                    ++m_tombstone_cnt;
-                    bf->insert(cursor.ptr->key);
+                if (!m_tagging || !cursor.ptr->get_delete_status()) {
+                    m_data[m_reccnt++] = *cursor.ptr;
+                    if (cursor.ptr->is_tombstone()) {
+                        ++m_tombstone_cnt;
+                        bf->insert(cursor.ptr->key);
+                    }
                 }
                 pq.pop();
                 
@@ -160,6 +168,23 @@ public:
 
     size_t get_tombstone_count() const {
         return m_tombstone_cnt;
+    }
+
+    bool delete_record(const key_t& key, const value_t& val) {
+        size_t idx = get_lower_bound(key);
+        if (idx >= m_reccnt) {
+            return false;
+        }
+
+        while (idx < m_reccnt && m_data[idx].lt(key, val)) ++idx;
+
+        if (m_data[idx].match(key, val, false)) {
+            m_data[idx].set_delete_status();
+            m_deleted_cnt++;
+            return true;
+        }
+
+        return false;
     }
 
     const record_t* get_record_at(size_t idx) const {
@@ -301,6 +326,8 @@ private:
     size_t m_reccnt;
     size_t m_tombstone_cnt;
     size_t m_internal_node_cnt;
+    size_t m_deleted_cnt;
+    bool m_tagging;
 };
 
 }

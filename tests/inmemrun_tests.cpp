@@ -63,7 +63,7 @@ START_TEST(t_memtable_init)
     }
 
     BloomFilter* bf = new BloomFilter(BF_FPR, mem_table->get_tombstone_count(), BF_HASH_FUNCS, g_rng);
-    InMemRun* run = new InMemRun(mem_table, bf);
+    InMemRun* run = new InMemRun(mem_table, bf, false);
     ck_assert_uint_eq(run->get_record_count(), 512);
 
     delete bf;
@@ -81,13 +81,13 @@ START_TEST(t_inmemrun_init)
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    auto run1 = new InMemRun(memtable1, bf1);
-    auto run2 = new InMemRun(memtable2, bf2);
-    auto run3 = new InMemRun(memtable3, bf3);
+    auto run1 = new InMemRun(memtable1, bf1, false);
+    auto run2 = new InMemRun(memtable2, bf2, false);
+    auto run3 = new InMemRun(memtable3, bf3, false);
 
     BloomFilter* bf4 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     InMemRun* runs[3] = {run1, run2, run3};
-    auto run4 = new InMemRun(runs, 3, bf4);
+    auto run4 = new InMemRun(runs, 3, bf4, false);
 
     ck_assert_int_eq(run4->get_record_count(), n * 3);
     ck_assert_int_eq(run4->get_tombstone_count(), 0);
@@ -136,7 +136,7 @@ START_TEST(t_get_lower_bound_index)
 
     ck_assert_ptr_nonnull(memtable);
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    InMemRun* run = new InMemRun(memtable, bf);
+    InMemRun* run = new InMemRun(memtable, bf, false);
 
     ck_assert_int_eq(run->get_record_count(), n);
     ck_assert_int_eq(run->get_tombstone_count(), 0);
@@ -161,7 +161,7 @@ START_TEST(t_get_upper_bound_index)
 
     ck_assert_ptr_nonnull(memtable);
     BloomFilter* bf = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
-    InMemRun* run = new InMemRun(memtable, bf);
+    InMemRun* run = new InMemRun(memtable, bf, false);
 
     ck_assert_int_eq(run->get_record_count(), n);
     ck_assert_int_eq(run->get_tombstone_count(), 0);
@@ -190,8 +190,8 @@ START_TEST(t_full_cancelation)
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf3 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
 
-    InMemRun* run = new InMemRun(mtable, bf1);
-    InMemRun* run_ts = new InMemRun(mtable_ts, bf2);
+    InMemRun* run = new InMemRun(mtable, bf1, false);
+    InMemRun* run_ts = new InMemRun(mtable_ts, bf2, false);
 
     ck_assert_int_eq(run->get_record_count(), n);
     ck_assert_int_eq(run->get_tombstone_count(), 0);
@@ -200,7 +200,7 @@ START_TEST(t_full_cancelation)
 
     InMemRun* runs[] = {run, run_ts};
 
-    InMemRun* merged = new InMemRun(runs, 2, bf3);
+    InMemRun* merged = new InMemRun(runs, 2, bf3, false);
 
     ck_assert_int_eq(merged->get_tombstone_count(), 0);
     ck_assert_int_eq(merged->get_record_count(), 0);
@@ -224,12 +224,12 @@ START_TEST(t_persistence)
     BloomFilter* bf1 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
     BloomFilter* bf2 = new BloomFilter(100, BF_HASH_FUNCS, g_rng);
 
-    auto run = new InMemRun(mtable, bf1);
+    auto run = new InMemRun(mtable, bf1, false);
     std::string fname1 = "tests/data/memrun_tests/data.dat";
 
     run->persist_to_file(fname1);
 
-    auto run2 = new InMemRun(fname1, reccnt, 0, bf2);
+    auto run2 = new InMemRun(fname1, reccnt, 0, bf2, false);
 
     // verify that the records are the same, and that boundary lookups
     // also still work.

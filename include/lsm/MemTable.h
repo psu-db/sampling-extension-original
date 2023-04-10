@@ -109,7 +109,7 @@ public:
         for (size_t i=0; i<m_reccnt.load(); i++) {
             auto rec = this->get_record_at(i);
             auto key = rec->key;
-            if (min <= key && key <= max) {
+            if (min <= key && key <= max && !rec->get_delete_status()) {
                 records.push_back(rec);
             }
         }

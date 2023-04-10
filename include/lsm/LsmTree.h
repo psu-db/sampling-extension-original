@@ -41,6 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 
@@ -72,7 +73,7 @@ public:
             if (disk) {
                 this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
             } else {
-                this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, rng));
+                this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, DELETE_TAGGING, rng));
             }
             idx++;
         }
@@ -103,6 +104,24 @@ public:
         for (size_t i=0; i<this->disk_levels.size(); i++) {
             delete this->disk_levels[i];
         }
+    }
+
+   int delete_record(const key_t& key, const value_t& val, gsl_rng *rng) {
+        assert(DELETE_TAGGING);
+
+        auto mtable = this->memtable();
+        // Check the levels first. This assumes there aren't 
+        // any undeleted duplicate records.
+        for (auto level : this->memory_levels) {
+            if (level && level->delete_record(key, val)) {
+                return 1;
+            }
+        }
+
+        // the memtable will take the longest amount of time, and 
+        // probably has the lowest probability of having the record,
+        // so we'll check it last.
+        return mtable->delete_record(key, val);
     }
 
     int append(const key_t& key, const value_t& val, bool tombstone, gsl_rng *rng) {
@@ -294,6 +313,11 @@ public:
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
     bool is_deleted(const record_t* record, const RunId &rid, char *buffer, MemTable *memtable, size_t memtable_cutoff) {
+        // If tagging is in use, check the delete status of the record directly.
+        if (DELETE_TAGGING && record->get_delete_status()) {
+            return true;
+        }
+
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
         if (memtable->check_tombstone(record->key, record->value)) {
             return true;
@@ -449,7 +473,7 @@ public:
      * performance comparisons.
      */
     ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
-        auto mem_level = new MemoryLevel(-1, 1, this->root_directory);
+        auto mem_level = new MemoryLevel(-1, 1, this->root_directory, DELETE_TAGGING);
         mem_level->append_mem_table(this->memtable(), rng);
 
         std::vector<InMemRun *> runs;
@@ -615,7 +639,7 @@ private:
             if (new_idx > 0) {
                 assert(this->memory_levels[new_idx - 1]->get_run(0)->get_tombstone_count() == 0);
             }
-            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, this->root_directory));
+            this->memory_levels.emplace_back(new MemoryLevel(new_idx, new_run_cnt, this->root_directory, DELETE_TAGGING));
         } else {
             new_idx = this->disk_levels.size() + this->memory_levels.size();
             if (this->disk_levels.size() > 0) {
@@ -733,19 +757,19 @@ private:
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory, DELETE_TAGGING);
         } else {
             // merging two memory levels
             if (LSM_LEVELING) {
                 auto tmp = this->memory_levels[base_idx];
-                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], rng);
+                this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx], DELETE_TAGGING, rng);
                 this->mark_as_unused(tmp);
             } else {
                 this->memory_levels[base_idx]->append_merged_runs(this->memory_levels[incoming_idx], rng);
             }
 
             this->mark_as_unused(this->memory_levels[incoming_idx]);
-            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory);
+            this->memory_levels[incoming_idx] = new MemoryLevel(incoming_level, (LSM_LEVELING) ? 1 : this->scale_factor, this->root_directory, DELETE_TAGGING);
         }
     }
 
@@ -754,9 +778,9 @@ private:
         if (LSM_LEVELING) {
             // FIXME: Kludgey implementation due to interface constraints.
             auto old_level = this->memory_levels[0];
-            auto temp_level = new MemoryLevel(0, 1, this->root_directory);
+            auto temp_level = new MemoryLevel(0, 1, this->root_directory, DELETE_TAGGING);
             temp_level->append_mem_table(mtable, rng);
-            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, rng);
+            auto new_level = MemoryLevel::merge_levels(old_level, temp_level, DELETE_TAGGING, rng);
 
             this->memory_levels[0] = new_level;
             delete temp_level;
