@@ -568,13 +568,13 @@ private:
         #endif
         
 
-        memory_level_ptr new_l0 = nullptr;
+        MemoryLevel *new_l0 = nullptr;
         if (m_primary_merge_active.load() && m_secondary_merge_possible.load()) {
             #ifdef MERGE_LOGGING
             fprintf(stderr, "Starting secondary merge...\n");
             #endif
             m_secondary_merge_possible.store(false); // start the secondary merge
-            new_l0 = this->create_new_l0(mtable, rng);
+            new_l0 = this->create_new_l0(mtable, m_version_data[version_num].load().get(), rng);
             #ifdef MERGE_LOGGING
             fprintf(stderr, "Awaiting primary merge completion...\n");
             #endif
@@ -602,7 +602,11 @@ private:
             this->merge_down(0, new_version.get(), rng);
         }
 
-        this->merge_memtable_into_l0(mtable, new_version.get(), rng);
+        if (new_l0) {
+            new_version.get()->mem_levels[0].reset(new_l0);
+        } else {
+            this->merge_memtable_into_l0(mtable, new_version.get(), rng);
+        }
         this->enforce_tombstone_maximum(0, new_version.get(), rng);
 
         // TEMP: install the new version 
@@ -727,13 +731,16 @@ private:
     }
 
 
-    memory_level_ptr create_new_l0(MemTable *mtable, gsl_rng *rng) {
+    MemoryLevel *create_new_l0(MemTable *mtable, version_data *version, gsl_rng *rng) {
         size_t run_capacity = (LSM_LEVELING) ? 1 : m_scale_factor;
 
-        auto new_level = new MemoryLevel(0, run_capacity);
-        new_level->append_mem_table(mtable, rng);
+        auto temp = new MemoryLevel(0, run_capacity);
+        temp->append_mem_table(mtable, rng);
 
-        return std::shared_ptr<MemoryLevel>(new_level);
+        auto new_level = MemoryLevel::merge_levels(version->mem_levels[0].get(), temp, rng);
+        delete temp;
+
+        return new_level;
     }
 
     /*
