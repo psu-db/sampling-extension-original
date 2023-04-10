@@ -61,87 +61,15 @@ endif()
 if (bench)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_CURRENT_SOURCE_DIR}/bin/benchmarks")
 
-    add_executable(lsm_insert ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_insert.cpp)
-    target_link_libraries(lsm_insert PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_insert PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_insert")
-
-    add_executable(lsm_bench ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_bench.cpp)
-    target_link_libraries(lsm_bench PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_bench PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_bench")
-
-    add_executable(lsm_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_sample.cpp)
-    target_link_libraries(lsm_sample PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_sample PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample")
-
     add_executable(lsm_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_throughput.cpp)
     target_link_libraries(lsm_throughput PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(lsm_throughput PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_throughput")
 
-    add_executable(lsm_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_mixed.cpp)
-    target_link_libraries(lsm_mixed PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_mixed PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_mixed")
-
-    add_executable(lsm_bloom ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_bloom.cpp)
-    target_link_libraries(lsm_bloom PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_bloom PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_bloom")
-
-    add_executable(lsm_sample_selectivity ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_sample_selectivity.cpp)
-    target_link_libraries(lsm_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_sample_selectivity PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_sample_selectivity")
-
-    add_executable(lsm_insert_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_insert_sample.cpp)
-    target_link_libraries(lsm_insert_sample PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_insert_sample PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_insert_sample")
-    
-    
-	add_executable(lsm_warmup_construct ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_warmup_construct.cpp)
-    target_link_libraries(lsm_warmup_construct PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_warmup_construct PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_warmup_construct")
-
-
-    add_executable(btree_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_sample.cpp)
-    target_link_libraries(btree_sample PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(btree_sample PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_sample")
-    
-	add_executable(btree_sample_selectivity ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_sample_selectivity.cpp)
-    target_link_libraries(btree_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(btree_sample_selectivity PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_sample_selectivity")
-    
-    add_executable(btree_insert ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_insert.cpp)
-    target_link_libraries(btree_insert PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(btree_insert PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_insert")
-
     add_executable(btree_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_throughput.cpp)
     target_link_libraries(btree_throughput PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(btree_throughput PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_throughput")
-
-    add_executable(btree_mixed ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_mixed.cpp)
-    target_link_libraries(btree_mixed PUBLIC ${PROJECT_NAME})
-    target_compile_options(btree_mixed PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_mixed")
-
-    add_executable(static_sample ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_sample.cpp)
-    target_link_libraries(static_sample PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(static_sample PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_sample")
-    
-	add_executable(static_sample_selectivity ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_sample_selectivity.cpp)
-    target_link_libraries(static_sample_selectivity PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(static_sample_selectivity PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_sample_selectivity")
 
     add_executable(static_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_throughput.cpp)
     target_link_libraries(static_throughput PUBLIC ${PROJECT_NAME} pthread)

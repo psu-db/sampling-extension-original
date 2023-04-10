@@ -17,9 +17,6 @@
 #include <string>
 #include <random>
 
-typedef std::pair<lsm::key_t, lsm::key_t> key_range;
-typedef std::pair<lsm::key_t, lsm::value_t> record;
-
 typedef std::pair<lsm::key_t, lsm::value_t> btree_record;
 struct btree_key_extract {
     static const lsm::key_t &get(const btree_record &v) {
@@ -29,8 +26,12 @@ struct btree_key_extract {
 typedef tlx::BTree<lsm::key_t, btree_record, btree_key_extract> TreeMap;
 
 static gsl_rng *g_rng;
-static lsm::key_t max_key = 0;
-static lsm::key_t min_key = UINT64_MAX;
+static lsm::key_t g_max_key = 0;
+static lsm::key_t g_min_key = UINT64_MAX;
+
+static bool g_osm_data = false;
+static size_t g_max_record_cnt = 0;
+static size_t g_reccnt = 0;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
 
@@ -40,6 +41,11 @@ typedef enum Operation {
     DELETE
 } Operation;
 
+
+typedef struct {
+    lsm::key_t lower;
+    lsm::key_t upper;
+} key_range;
 
 static unsigned int get_random_seed()
 {
@@ -61,10 +67,19 @@ static void init_bench_rng(unsigned int seed, const gsl_rng_type *type)
 }
 
 
-static void init_bench_env(bool random_seed)
+static void init_bench_env(size_t max_reccnt, bool random_seed, bool osm_correction=true)
 {
     unsigned int seed = (random_seed) ? get_random_seed() : DEFAULT_SEED;
     init_bench_rng(seed, gsl_rng_mt19937);
+    g_osm_data = osm_correction;
+    g_max_record_cnt = max_reccnt;
+    g_reccnt = 0;
+}
+
+
+static lsm::key_t osm_to_key(const char *key_field) {
+    double tmp_key = (atof(key_field) + 180) * 10e6;
+    return (lsm::key_t) tmp_key;
 }
 
 
@@ -91,12 +106,12 @@ static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
         key = key_value;
         val = val_value;
 
-        if (key_value < min_key) {
-            min_key = key_value;
+        if (key_value < g_min_key) {
+            g_min_key = key_value;
         } 
 
-        if (key_value > max_key) {
-            max_key = key_value;
+        if (key_value > g_max_key) {
+            g_max_key = key_value;
         }
 
         return true;
@@ -106,7 +121,7 @@ static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
 }
 
 
-static bool build_insert_vec(std::fstream *file, std::vector<record> &vec, size_t n) {
+static bool build_insert_vec(std::fstream *file, std::vector<lsm::record_t> &vec, size_t n) {
     for (size_t i=0; i<n; i++) {
         lsm::key_t key;
         lsm::value_t val;
@@ -122,6 +137,28 @@ static bool build_insert_vec(std::fstream *file, std::vector<record> &vec, size_
     }
 
     return true;
+}
+
+static bool build_btree_insert_vec(std::fstream *file, std::vector<btree_record> &vec, size_t n)
+{
+    lsm::key_t key;
+    lsm::value_t val;
+
+    vec.clear();
+    for (size_t i=0; i<n; i++) {
+        if (!next_record(file, key, val)) {
+            if (i == 0) {
+                return false;
+            }
+
+            break;
+        }
+
+        vec.push_back({key, val});
+    }
+
+    return true;
+
 }
 
 
@@ -152,20 +189,17 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
 {
     std::string line;
 
-    // auto key_buf = std::make_unique<char[]>(lsm::key_size);
-    // auto val_buf = std::make_unique<char[]>(lsm::value_size);
     lsm::key_t key;
     lsm::value_t val;
     
     size_t del_buf_size = 100;
     size_t del_buf_ptr = del_buf_size;
-    //char delbuf[del_buf_size * lsm::record_size];
     lsm::record_t delbuf[del_buf_size];
 
     char *buf1 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
     char *buf2 = (char *) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
 
-    std::set<lsm::key_t> deleted_keys;
+    std::set<lsm::record_t> deleted_keys;
 
     bool ret = true;
     double last_percent = 0;
@@ -179,8 +213,9 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
         lsmtree->append(key, val, false, g_rng);
 
         if (i > lsmtree->get_memtable_capacity() && del_buf_ptr == del_buf_size) {
-            lsmtree->range_sample(delbuf, min_key, max_key, del_buf_size, buf1, buf2, g_rng);
+            lsmtree->range_sample(delbuf, g_min_key, g_max_key, del_buf_size, buf1, buf2, g_rng);
             del_buf_ptr = 0;
+            deleted_keys.clear();
         }
 
         if (i > lsmtree->get_memtable_capacity() && gsl_rng_uniform(g_rng) < delete_prop) {
@@ -188,23 +223,25 @@ static bool warmup(std::fstream *file, lsm::LSMTree *lsmtree, size_t count, doub
             auto val = delbuf[del_buf_ptr].value;
             del_buf_ptr++;
 
-            if (deleted_keys.find(key) == deleted_keys.end()) {
-                lsmtree->append(key, val, true, g_rng);
-                deleted_keys.insert(key);
+            if (deleted_keys.find({key, val}) == deleted_keys.end()) {
+                if (lsm::DELETE_TAGGING) {
+                    lsmtree->delete_record(key, val, g_rng);
+                } else {
+                    lsmtree->append(key, val, true, g_rng);
+                }
+                deleted_keys.insert({key, val});
             }
 
         }
 
         if (progress && ((double) i / (double) count) - last_percent > .01) {
-            progress_update((double) i / (double) count, "warming up: ");
+            progress_update((double) i / (double) count, "warming up:");
+            last_percent = (double) i / (double) count;
         }
+    }
 
-        /*
-		if (i % 1000000 == 0) {
-            fprintf(stderr, "Finished %zu operations...\n", i);
-            //fprintf(stderr, "\tRecords: %ld\n\tTombstones: %ld\n", lsmtree->get_record_cnt(), lsmtree->get_tombstone_cnt());
-        }
-        */
+    if (progress) {
+        progress_update(1, "warming up:");
     }
 
     free(buf1);
@@ -236,7 +273,7 @@ static bool warmup(std::fstream *file, TreeMap *btree, size_t count, double dele
         assert(res.second);
 
         if (del_buf_size > btree->size() && del_buf_ptr == del_buf_size) {
-            btree->range_sample(min_key, max_key, del_buf_size, delbuf, g_rng);
+            btree->range_sample(g_min_key, g_max_key, del_buf_size, delbuf, g_rng);
             del_buf_ptr = 0;
         }
 
