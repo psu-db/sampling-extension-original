@@ -531,7 +531,7 @@ private:
         // merging two memory levels
         if (LSM_LEVELING) {
             auto tmp = this->memory_levels[base_idx];
-            this->memory_levels[incoming_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx],
+            this->memory_levels[base_idx] = MemoryLevel::merge_levels(this->memory_levels[base_idx], this->memory_levels[incoming_idx],
                                                                           DELETE_TAGGING, rng);
             this->mark_as_unused(tmp);
         } else {
