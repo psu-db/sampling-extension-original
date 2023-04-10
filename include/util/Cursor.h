@@ -7,11 +7,17 @@
 
 namespace lsm {
 struct Cursor {
-    const char *ptr;
-    const char *end;
+    const record_t *ptr;
+    const record_t *end;
     size_t cur_rec_idx;
     size_t rec_cnt;
+
+    friend bool operator==(const Cursor &a, const Cursor &b) {
+        return a.ptr == b.ptr && a.end == b.end;
+    }
 };
+
+static Cursor g_empty_cursor = {0};
 
 /*
  * Advance the cursor to the next record. If the cursor is backed by an
@@ -24,15 +30,15 @@ struct Cursor {
  * not be closed.
  */
 inline bool advance_cursor(Cursor &cur, PagedFileIterator *iter = nullptr) {
-    cur.ptr += record_size;
+    cur.ptr++;
     cur.cur_rec_idx++;
 
     if (cur.cur_rec_idx >= cur.rec_cnt) return false;
 
     if (cur.ptr >= cur.end) {
         if (iter && iter->next()) {
-            cur.ptr = iter->get_item();
-            cur.end = cur.ptr + PAGE_SIZE;
+            cur.ptr = (record_t*)iter->get_item();
+            cur.end = cur.ptr + (PAGE_SIZE / sizeof(record_t));
             return true;
         }
 
@@ -40,4 +46,29 @@ inline bool advance_cursor(Cursor &cur, PagedFileIterator *iter = nullptr) {
     }
     return true;
 }
+
+inline static Cursor *get_next(std::vector<Cursor> &cursors, Cursor *current=&g_empty_cursor) {
+    const record_t *min_rec = nullptr;
+    Cursor *result = &g_empty_cursor;
+    for (size_t i=0; i< cursors.size(); i++) {
+        if (cursors[i] == g_empty_cursor) continue;
+
+        const record_t *rec = (&cursors[i] == current) ? cursors[i].ptr + 1 : cursors[i].ptr;
+        if (rec >= cursors[i].end) continue;
+
+        if (min_rec == nullptr) {
+            result = &cursors[i];
+            min_rec = rec;
+            continue;
+        }
+
+        if (*rec < *min_rec) {
+            result = &cursors[i];
+            min_rec = rec;
+        }
+    }
+
+    return result;
+} 
+
 }

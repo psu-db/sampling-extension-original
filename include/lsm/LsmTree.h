@@ -146,7 +146,7 @@ public:
         }
     }
 
-    int append(const char *key, const char *val, bool tombstone, gsl_rng *rng) {
+    int append(key_t key, value_t val, bool tombstone, gsl_rng *rng) {
         size_t version_num;
 
         do {
@@ -183,7 +183,7 @@ public:
         return 0;
     }
 
-    void range_sample(char *sample_set, const char *lower_key, const char *upper_key, size_t sample_sz, char *buffer, char *utility_buffer, gsl_rng *rng) {
+    void range_sample(record_t *sample_set, const key_t lower_key, const key_t upper_key, size_t sample_sz, gsl_rng *rng) {
         TIMER_INIT();
 
         size_t version_num;
@@ -194,7 +194,6 @@ public:
 
         // Obtain the sampling ranges for each level
         std::vector<SampleRange> memory_ranges;
-        std::vector<SampleRange> disk_ranges;
         std::vector<size_t> record_counts;
 
         MemTableView *memtable = nullptr;
@@ -260,7 +259,7 @@ public:
             // reset rejection counter to begin tracking for next
             // sampling pass
             rejections = 0;
-            const char *sample_record;
+            const record_t *sample_record;
 
             // We will draw the records from the runs in order
 
@@ -274,7 +273,7 @@ public:
 
                 run_samples[0]--;
 
-                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
+                if (!add_to_sample(sample_record, INVALID_RID, upper_key, lower_key, sample_set, sample_idx, memtable, version)) {
                     rejections++;
                 }
             }
@@ -296,7 +295,7 @@ public:
                     TIMER_STOP();
                     memlevel_sample_time += TIMER_RESULT();
 
-                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, utility_buffer, sample_set, sample_idx, memtable, version)) {
+                    if (!add_to_sample(sample_record, memory_ranges[i].run_id, upper_key, lower_key, sample_set, sample_idx, memtable, version)) {
                         rejections++;
                     }
                 }
@@ -313,9 +312,9 @@ public:
     // should correspond to the run containing the record in question
     // 
     // Passing INVALID_RID indicates that the record exists within the MemTable
-    bool is_deleted(const char *record, const RunId &rid, char *buffer, MemTableView *memtable, version_data *version) {
+    bool is_deleted(const record_t *record, const RunId &rid, MemTableView *memtable, version_data *version) {
         // check for tombstone in the memtable. This will require accounting for the cutoff eventually.
-        if (memtable->check_tombstone(get_key(record), get_val(record))) {
+        if (memtable->check_tombstone(record->key, record->value)) {
             return true;
         }
 
@@ -325,12 +324,12 @@ public:
         }
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
-            if (version->mem_levels[lvl]->tombstone_check(0, get_key(record), get_val(record))) {
+            if (version->mem_levels[lvl]->tombstone_check(0, record->key, record->value )) {
                 return true;
             }
         }
 
-        return version->mem_levels[rid.level_idx]->tombstone_check(rid.run_idx + 1, get_key(record), get_val(record));
+        return version->mem_levels[rid.level_idx]->tombstone_check(rid.run_idx + 1, record->key, record->value);
     }
 
 
@@ -487,14 +486,14 @@ private:
         return MemTableView::create(m_memtables);
     }
 
-    inline bool rejection(const char *record, RunId rid, const char *lower_bound, const char *upper_bound, char *buffer, MemTableView *memtable, version_data *version) {
-        if (is_tombstone(record)) {
+    inline bool rejection(const record_t *record, RunId rid, const key_t lower_bound, const key_t upper_bound, MemTableView *memtable, version_data *version) {
+        if (record->is_tombstone()) {
             tombstone_rejections++;
             return true;
-        } else if (key_cmp(get_key(record), lower_bound) < 0 || key_cmp(get_key(record), upper_bound) > 0) {
+        } else if (record->key < lower_bound || record->key > upper_bound) {
             bounds_rejections++;
             return true;
-        } else if (this->is_deleted(record, rid, buffer, memtable, version)) {
+        } else if (this->is_deleted(record, rid, memtable, version)) {
             deletion_rejections++;
             return true;
         }
@@ -506,20 +505,19 @@ private:
         return rid.level_idx - m_version_data[version_num].load()->mem_levels.size();
     }
 
-    inline bool add_to_sample(const char *record, RunId rid, const char *upper_key, const char *lower_key, char *io_buffer,
-                              char *sample_buffer, size_t &sample_idx, MemTableView *memtable, version_data *version) {
+    inline bool add_to_sample(const record_t *record, RunId rid, const key_t upper_key, const key_t lower_key, 
+                              record_t *sample_buffer, size_t &sample_idx, MemTableView *memtable, version_data *version) {
         TIMER_INIT();
         TIMER_START();
         sampling_attempts++;
-        if (!record || rejection(record, rid, lower_key, upper_key, io_buffer, memtable, version)) {
+        if (rejection(record, rid, lower_key, upper_key, memtable, version)) {
             sampling_rejections++;
             return false;
         }
         TIMER_STOP();
         rejection_check_time += TIMER_RESULT();
 
-
-        memcpy(sample_buffer + (sample_idx++ * record_size), record, record_size);
+        sample_buffer[sample_idx++] = *record;
         return true;
     }
 

@@ -91,7 +91,7 @@ public:
     }
 
     // Append the sample range in-order.....
-    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const char* low, const char* high) {
+    void get_sample_ranges(std::vector<SampleRange>& dst, std::vector<size_t>& rec_cnts, const key_t low, const key_t high) {
         for (ssize_t i = 0; i < m_run_cnt; ++i) {
             auto low_pos = m_structure->m_runs[i]->get_lower_bound(low);
             auto high_pos = m_structure->m_runs[i]->get_upper_bound(high);
@@ -101,26 +101,26 @@ public:
         }
     }
 
-    bool bf_rejection_check(size_t run_stop, const char* key) {
+    bool bf_rejection_check(size_t run_stop, const key_t key) {
         for (size_t i = 0; i < run_stop; ++i) {
-            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key, key_size))
+            if (m_structure->m_bfs[i] && m_structure->m_bfs[i]->lookup(key))
                 return true;
         }
         return false;
     }
 
-    bool tombstone_check(size_t run_stop, const char* key, const char* val) {
+    bool tombstone_check(size_t run_stop, const key_t key, const value_t val) {
         if (m_run_cnt == 0) return false;
 
         for (int i = m_run_cnt - 1; i >= (ssize_t) run_stop;  i--) {
-            if (m_structure->m_runs[i] && (m_structure->m_bfs[i]->lookup(key, key_size))
-                && m_structure->m_runs[i]->check_tombstone(key, val))
+            if (m_structure->m_runs[i] && (m_structure->m_bfs[i]->lookup(key, sizeof(key_t))
+                && m_structure->m_runs[i]->check_tombstone(key, val)))
                 return true;
         }
         return false;
     }
 
-    const char* get_record_at(size_t run_no, size_t idx) {
+    const record_t* get_record_at(size_t run_no, size_t idx) {
         return m_structure->m_runs[run_no]->get_record_at(idx);
     }
     

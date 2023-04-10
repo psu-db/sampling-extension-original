@@ -8,7 +8,7 @@
 namespace lsm {
 
 struct queue_record {
-    const char *data;
+    const record_t* data;
     size_t version;
 };
 
@@ -43,7 +43,7 @@ public:
         }
     }
 
-    void push(const char* record, size_t version=0) {
+    void push(const record_t* record, size_t version=0) {
         assert(tail != this->data.size());
 
         size_t new_idx = this->tail++;
@@ -113,13 +113,11 @@ private:
     }
 
     inline bool heap_cmp(size_t a, size_t b) {
-        auto cmp = record_cmp(this->data[a].data, this->data[b].data);
-        if (cmp == 0) {
-            if (this->data[a].version != this->data[b].version)
-                return this->data[a].version < this->data[b].version;
-            else return is_tombstone(this->data[a].data) && is_tombstone(this->data[b].data);
-        }
-        return cmp == -1;
+        if (!data[a].data->match(data[b].data))
+            return (*data[a].data) < (*data[b].data);
+        else if (data[a].version != data[b].version)
+            return data[a].version < data[b].version;
+        else return this->data[a].data->is_tombstone() && this->data[b].data->is_tombstone();
     }
 
 };

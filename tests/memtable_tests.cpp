@@ -10,12 +10,9 @@
 
 using namespace lsm;
 
-MemTable *create_mtable(gsl_rng **rng) {
-    *rng = gsl_rng_alloc(gsl_rng_mt19937);
-    auto mtable = new MemTable(100, true, 50, *rng);
-
-    key_type key = 0;
-    value_type val = 5;
+void fill_mtable(MemTable *mtable) {
+    lsm::key_t key = 0;
+    lsm::value_t val = 5;
     size_t ts_cnt = 0;
 
     for (size_t i=0; i<100; i++) {
@@ -25,8 +22,8 @@ MemTable *create_mtable(gsl_rng **rng) {
             ts=true;
         }
 
-        ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, ts), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
+        ck_assert_int_eq(mtable->append(key, val, ts), 1);
+        ck_assert_int_eq(mtable->check_tombstone(key, val), ts);
 
         key++;
         val++;
@@ -36,7 +33,14 @@ MemTable *create_mtable(gsl_rng **rng) {
     }
 
     ck_assert_int_eq(mtable->is_full(), 1);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 0);
+    ck_assert_int_eq(mtable->append(key, val, false), 0);
+}
+
+MemTable *create_mtable(gsl_rng **rng) {
+    *rng = gsl_rng_alloc(gsl_rng_mt19937);
+    auto mtable = new MemTable(100, true, 100, *rng);
+
+    fill_mtable(mtable);
 
     return mtable;
 }
@@ -65,12 +69,12 @@ START_TEST(t_insert)
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
     auto mtable = new MemTable(100, true, 50, rng);
 
-    key_type key = 0;
-    value_type val = 5;
+    lsm::key_t key = 0;
+    lsm::value_t val = 5;
 
     for (size_t i=0; i<99; i++) {
-        ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), 0);
+        ck_assert_int_eq(mtable->append(key, val, false), 1);
+        ck_assert_int_eq(mtable->check_tombstone(key, val), 0);
 
         key++;
         val++;
@@ -80,13 +84,13 @@ START_TEST(t_insert)
         ck_assert_int_eq(mtable->is_full(), 0);
     }
 
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
+    ck_assert_int_eq(mtable->append(key, val, false), 1);
 
     key++;
     val++;
 
     ck_assert_int_eq(mtable->is_full(), 1);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 0);
+    ck_assert_int_eq(mtable->append(key, val, false), 0);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -100,8 +104,8 @@ START_TEST(t_insert_tombstones)
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
     auto mtable = new MemTable(100, true, 50, rng);
 
-    key_type key = 0;
-    value_type val = 5;
+    lsm::key_t key = 0;
+    lsm::value_t val = 5;
     size_t ts_cnt = 0;
 
     for (size_t i=0; i<99; i++) {
@@ -111,8 +115,8 @@ START_TEST(t_insert_tombstones)
             ts=true;
         }
 
-        ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, ts), 1);
-        ck_assert_int_eq(mtable->check_tombstone((char*) &key, (char*) &val), ts);
+        ck_assert_int_eq(mtable->append(key, val, ts), 1);
+        ck_assert_int_eq(mtable->check_tombstone(key, val), ts);
 
         key++;
         val++;
@@ -123,16 +127,16 @@ START_TEST(t_insert_tombstones)
     }
 
     // inserting one more tombstone should not be possible
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, true), 0);
+    ck_assert_int_eq(mtable->append(key, val, true), 0);
 
 
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
+    ck_assert_int_eq(mtable->append(key, val, false), 1);
 
     key++;
     val++;
 
     ck_assert_int_eq(mtable->is_full(), 1);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 0);
+    ck_assert_int_eq(mtable->append(key, val, false), 0);
 
     delete mtable;
     gsl_rng_free(rng);
@@ -145,8 +149,8 @@ START_TEST(t_truncate)
     gsl_rng *rng;
     auto mtable = create_mtable(&rng);
 
-    key_type key = 4;
-    value_type val = 2;
+    lsm::key_t key = 4;
+    lsm::value_t val = 2;
     
     bool trunc_stat;
     // truncating without first initiating a merge should fail
@@ -159,7 +163,7 @@ START_TEST(t_truncate)
     ck_assert_int_eq(mtable->is_full(), 0);
     ck_assert_int_eq(mtable->get_record_count(), 0);
     ck_assert_int_eq(mtable->get_tombstone_count(), 0);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val, false), 1);
+    ck_assert_int_eq(mtable->append(key, val, false), 1);
 
     // Should be unable to truncate without initialing another merge
     ck_assert_int_eq(mtable->truncate(&trunc_stat), 0);
@@ -178,7 +182,7 @@ START_TEST(t_sorted_output)
     auto mtable = new MemTable(cnt, true, cnt/2, rng);
 
 
-    std::vector<key_type> keys(cnt);
+    std::vector<lsm::key_t> keys(cnt);
     for (size_t i=0; i<cnt-2; i++) {
         keys[i] = rand();
     }
@@ -188,20 +192,19 @@ START_TEST(t_sorted_output)
     keys[cnt-2] =  keys[cnt-3];
     keys[cnt-1] =  keys[cnt-2];
 
-    value_type val = 12345;
+    lsm::value_t val = 12345;
     for (size_t i=0; i<cnt-2; i++) {
-        mtable->append((char *) &keys[i], (char*) &val, false);
+        mtable->append(keys[i], val, false);
     }
 
-    mtable->append((char *) &keys[cnt-2], (char*) &val, true);
-    mtable->append((char *) &keys[cnt-1], (char*) &val, true);
+    mtable->append(keys[cnt-2], val, true);
+    mtable->append(keys[cnt-1], val, true);
 
-    char *sorted_records = mtable->sorted_output();
+    record_t *sorted_records = mtable->sorted_output();
     std::sort(keys.begin(), keys.end());
 
     for (size_t i=0; i<cnt; i++) {
-        key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
-        ck_assert_int_eq(*table_key, keys[i]);
+        ck_assert_int_eq(sorted_records[i].key, keys[i]);
     }
 
     delete mtable;
@@ -210,10 +213,10 @@ START_TEST(t_sorted_output)
 END_TEST
 
 
-void insert_records(std::vector<std::pair<key_type, value_type>> *values, size_t start, size_t stop, MemTable *mtable)
+void insert_records(std::vector<lsm::record_t> *values, size_t start, size_t stop, MemTable *mtable)
 {
     for (size_t i=start; i<stop; i++) {
-        mtable->append((char*) &((*values)[i].first), (char*) &((*values)[i].second));
+        mtable->append((*values)[i].key, (*values)[i].value);
     }
 
 }
@@ -224,9 +227,9 @@ START_TEST(t_multithreaded_insert)
     auto rng = gsl_rng_alloc(gsl_rng_mt19937);
     auto mtable = new MemTable(cnt, true, cnt/2, rng);
 
-    std::vector<std::pair<key_type, value_type>> records(cnt);
+    std::vector<lsm::record_t> records(cnt);
     for (size_t i=0; i<cnt; i++) {
-        records[i] = {rand(), rand()};
+        records[i] = {(lsm::key_t) rand(), (lsm::value_t) rand()};
     }
 
     // perform a t_multithreaded insertion
@@ -251,10 +254,9 @@ START_TEST(t_multithreaded_insert)
     ck_assert_int_eq(mtable->get_record_count(), cnt);
 
     std::sort(records.begin(), records.end());
-    char *sorted_records = mtable->sorted_output();
+    record_t *sorted_records = mtable->sorted_output();
     for (size_t i=0; i<cnt; i++) {
-        key_type *table_key = (key_type *) get_key(sorted_records + i*record_size);
-        ck_assert_int_eq(*table_key, records[i].first);
+        ck_assert_int_eq(sorted_records[i].key, records[i].key);
     }
 
     delete mtable;
@@ -276,11 +278,11 @@ START_TEST(t_defer_truncate)
     ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
     ck_assert_int_eq(trunc_stat, false);
 
-    key_type key = 5;
-    value_type val = 2;
+    lsm::key_t key = 5;
+    lsm::value_t val = 2;
     // But the memtable should not actually be truncated yet
     ck_assert_int_eq(mtable->get_record_count(), 100);
-    ck_assert_int_eq(mtable->append((char*) &key, (char*) &val), 0);
+    ck_assert_int_eq(mtable->append(key, val), 0);
 
     // after releasing the pin, the table should be truncated
     ck_assert_int_eq(mtable->unpin(), 1);
@@ -300,10 +302,7 @@ START_TEST(t_pin)
 
     ck_assert_int_eq(mtable->pin(), 1);
     
-    // Cannot add more pins once a merge starts (should use
-    // other table, if possible).
     ck_assert_ptr_nonnull(mtable->start_merge());
-    ck_assert_int_eq(mtable->pin(), 0);
 
     bool trunc_stat = false;
     // Should be able to pin again following the end of a merge
@@ -333,9 +332,15 @@ START_TEST(t_start_merge)
     ck_assert_ptr_null(mtable->start_merge());
 
     bool trunc_stat = false;
-    // Truncation allows a new merge to start
+    // Truncation allows a new merge to start, but merging
+    // is blocked when the table is not full.
     ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
     ck_assert_int_eq(trunc_stat, true);
+    ck_assert_ptr_null(mtable->start_merge());
+
+    // refill the table, after this merging should be possible
+    // again
+    fill_mtable(mtable);
 
     ck_assert_ptr_nonnull(mtable->start_merge());
     ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
@@ -344,6 +349,7 @@ START_TEST(t_start_merge)
     // Merges are still blocked following a deferred
     // truncation
     mtable->pin();
+    fill_mtable(mtable);
     ck_assert_ptr_nonnull(mtable->start_merge());
     ck_assert_int_eq(mtable->truncate(&trunc_stat), 1);
     ck_assert_int_eq(trunc_stat, false);

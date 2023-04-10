@@ -5,6 +5,7 @@
 #include <cassert>
 #include <mutex>
 #include <vector>
+#include <algorithm>
 
 #include "util/base.h"
 #include "util/bf_config.h"
@@ -16,11 +17,11 @@ namespace lsm {
 class MemTable {
 public:
     MemTable(size_t capacity, bool rej_sampling, size_t max_tombstone_cap, const gsl_rng* rng)
-    : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity * record_size), m_reccnt(0)
+    : m_cap(capacity), m_tombstone_cap(max_tombstone_cap), m_buffersize(capacity), m_reccnt(0)
     , m_tombstonecnt(0), m_current_tail(0) {
         m_buffersize += (CACHELINE_SIZE - (CACHELINE_SIZE % m_buffersize));
-        m_data = (char*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize);
-        m_sorted_data = (char*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize);
+        m_data = (record_t*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize * sizeof(record_t));
+        m_sorted_data = (record_t*) std::aligned_alloc(CACHELINE_SIZE, m_buffersize * sizeof(record_t));
         m_tombstone_filter = nullptr;
         if (max_tombstone_cap > 0) {
             assert(rng != nullptr);
@@ -40,17 +41,19 @@ public:
         if (m_sorted_data) free(m_sorted_data);
     }
 
-    int append(const char* key, const char* value, bool is_tombstone = false) {
+    int append(const key_t key, const value_t value, bool is_tombstone = false) {
         if (is_tombstone && m_tombstonecnt + 1 > m_tombstone_cap) return 0;
 
         ssize_t pos = 0;
         if ((pos = try_advance_tail()) == -1) return 0;
 
+        m_data[pos].key = key;
+        m_data[pos].value = value;
+        m_data[pos].header = (pos << 2) | is_tombstone;
 
-        layout_memtable_record(m_data + pos, key, value, is_tombstone, (uint32_t)pos / record_size);
         if (is_tombstone) {
             m_tombstonecnt.fetch_add(1);
-            if (m_tombstone_filter) m_tombstone_filter->insert(key, key_size);
+            if (m_tombstone_filter) m_tombstone_filter->insert(key); 
         }
         m_reccnt.fetch_add(1);
 
@@ -104,19 +107,18 @@ public:
         return m_tombstonecnt.load();
     }
 
-    bool check_tombstone(const char* key, const char* value) {
-        if (m_tombstone_filter && !m_tombstone_filter->lookup(key, key_size)) return false;
+    bool check_tombstone(key_t key, value_t value) {
+        if (m_tombstone_filter && !m_tombstone_filter->lookup(key, sizeof(key_t))) return false;
 
         auto offset = 0;
         while (offset < m_current_tail) {
-            if (record_match(m_data + offset, key, value, true)) return true;
-            offset += record_size;
+            if (m_data[offset++].match(key, value, true)) return true;
         }
         return false;
     }
 
-    const char *get_record_at(size_t idx) {
-      return m_data + (record_size * idx);
+    const record_t *get_record_at(size_t idx) {
+      return m_data + idx;
     }
 
     size_t get_memory_utilization() {
@@ -127,14 +129,14 @@ public:
         return m_tombstone_filter->get_memory_utilization();
     }
 
-    char* sorted_output() {
+    record_t* sorted_output() {
         memset(m_sorted_data, 0, m_buffersize);
-        memcpy(m_sorted_data, m_data, record_size * (m_reccnt.load()));
-        qsort(m_sorted_data, m_reccnt.load(), record_size, memtable_record_cmp);
+        memcpy(m_sorted_data, m_data, sizeof(record_t) * (m_reccnt.load()));
+        std::sort(m_sorted_data, m_sorted_data + m_reccnt.load(), memtable_record_cmp);
         return m_sorted_data;
     }
 
-    char *start_merge() {
+    record_t *start_merge() {
         if (m_merge_lock.try_lock()) {
             // Only allow entry to a merge state when the memtable
             // is full. 
@@ -179,7 +181,7 @@ public:
 
 private:
     ssize_t try_advance_tail() {
-        size_t new_tail = m_current_tail.fetch_add(record_size);
+        size_t new_tail = m_current_tail.fetch_add(1);
 
         if (new_tail < m_buffersize) return new_tail;
         else return -1;
@@ -199,8 +201,8 @@ private:
     std::atomic<bool> m_deferred_truncate;
 
     size_t m_tombstone_cap;
-    char* m_data;
-    char* m_sorted_data;
+    record_t* m_data;
+    record_t* m_sorted_data;
     BloomFilter* m_tombstone_filter;
 
     alignas(64) std::atomic<size_t> m_tombstonecnt;
@@ -251,7 +253,7 @@ public:
         return cnt;
     }
 
-    const char *get_record_at(size_t idx) const {
+    const record_t *get_record_at(size_t idx) const {
         assert(idx < this->get_record_count());
 
         size_t i =0;
@@ -267,9 +269,11 @@ public:
         return m_tables[i]->get_record_at(t_idx);
     }
 
-    bool check_tombstone(const char *key, const char *val) const {
-        for (size_t i=0; i<m_tables.size(); i++) {
-
+    bool check_tombstone(key_t key, value_t val) const  {
+        for (size_t i=0; i< m_tables.size(); i++) {
+            if (m_tables[i]->check_tombstone(key, val)) {
+                return true;
+            }
         }
 
         return false;
