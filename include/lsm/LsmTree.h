@@ -655,7 +655,7 @@ private:
 
         for (level_index i=merge_base_level; i>idx; i--) {
             this->merge_levels(i, i-1, version, rng);
-            //this->enforce_tombstone_maximum(i, version, rng);
+            this->enforce_tombstone_maximum(i, version, rng);
         }
 
         return;
