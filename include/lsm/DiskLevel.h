@@ -210,8 +210,11 @@ public:
     }
 
     bool tombstone_check(size_t run_stop, const key_t& key, const value_t& val, char *buffer) {
-        for (size_t i = 0; i < run_stop;  ++i) {
-            if (m_runs[i] && m_bfs[i]->lookup(key) && m_runs[i]->check_tombstone(key, val, buffer))
+        if (m_run_cnt == 0) return false;
+
+        for (int i = m_run_cnt - 1; i >= (ssize_t) run_stop;  i--) {
+            if (m_runs[i] && (m_bfs[i]->lookup(key))
+                && m_runs[i]->check_tombstone(key, val, buffer))
                 return true;
         }
         return false;

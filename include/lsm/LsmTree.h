@@ -41,7 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
-static constexpr bool DELETE_TAGGING = true;
+static constexpr bool DELETE_TAGGING = false;
 
 typedef ssize_t level_index;
 
@@ -330,12 +330,12 @@ public:
 
         for (size_t lvl=0; lvl<rid.level_idx; lvl++) {
             if (lvl < memory_levels.size()) {
-                if (memory_levels[lvl]->tombstone_check(memory_levels[lvl]->get_run_count(), record->key, record->value)) {
+                if (memory_levels[lvl]->tombstone_check(0, record->key, record->value)) {
                     return true;
                 }
             } else {
                 size_t isam_lvl = lvl - memory_levels.size();
-                if (disk_levels[isam_lvl]->tombstone_check(disk_levels[isam_lvl]->get_run_count(), record->key, record->value, buffer)) {
+                if (disk_levels[isam_lvl]->tombstone_check(0, record->key, record->value, buffer)) {
                     return true;
                 }
 
@@ -344,12 +344,10 @@ public:
 
         // check the level containing the run
         if (rid.level_idx < memory_levels.size()) {
-            size_t run_idx = std::min((size_t) rid.run_idx, memory_levels[rid.level_idx]->get_run_count() + 1);
-            return memory_levels[rid.level_idx]->tombstone_check(run_idx, record->key, record->value);
+            return memory_levels[rid.level_idx]->tombstone_check(rid.run_idx + 1, record->key, record->value);
         } else {
             size_t isam_lvl = rid.level_idx - memory_levels.size();
-            size_t run_idx = std::min((size_t) rid.run_idx, disk_levels[isam_lvl]->get_run_count());
-            return disk_levels[isam_lvl]->tombstone_check(run_idx, record->key, record->value, buffer);
+            return disk_levels[isam_lvl]->tombstone_check(rid.run_idx + 1, record->key, record->value, buffer);
         }
     }
 
