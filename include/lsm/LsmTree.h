@@ -11,6 +11,8 @@
 
 #include "util/timer.h"
 
+#define MERGE_LOGGING
+
 namespace lsm {
 
 thread_local size_t sampling_attempts = 0;
@@ -78,9 +80,9 @@ private:
             }
         }
 
-        static tagged_ptr<version_data> create_copy(tagged_ptr<version_data> version) {
+        static version_data* create_copy(version_data *version) {
             auto ptr = version->copy();
-            return {ptr, version.m_tag + 1};
+            return ptr;
         }
 
         MemTable *get_active_memtable() {
@@ -130,7 +132,7 @@ public:
         for (size_t i=0; i < LSM_MEMTABLE_CNT + 1; i++) {
             auto initial_version = new version_data();
             initial_version->memtables = m_memtables;
-            m_version_data[i].store({initial_version, 0});
+            m_version_data[i].store(initial_version);
         }
 
         m_secondary_merge_possible.store(false);
@@ -144,10 +146,10 @@ public:
         }
 
         for (size_t i=0; i<LSM_MEMTABLE_CNT+1; i++) {
-            if (!m_version_data[i].load().m_ptr) {
+            if (!m_version_data[i].load()) {
                 continue;
             }
-            delete m_version_data[i].load().m_ptr;
+            delete m_version_data[i].load();
         }
     }
 
@@ -155,6 +157,12 @@ public:
         size_t version_num;
 
         do {
+            // If the next version to be pinned is the target
+            // version of a current merge, then we will block
+            // here on the pin call until the merge is complete. 
+            // This prioritizes merging, as otherwise the merge 
+            // will be blocked until it's lucky enough to read
+            // a 0 value of this counter.
             auto version = this->pin_version(&version_num);
             MemTable *mtable = version->get_active_memtable();
 
@@ -202,8 +210,10 @@ public:
         std::vector<size_t> record_counts;
 
         MemTableView *memtable = nullptr;
-        while (!(memtable = this->memtable_view()))
-            ;
+        while (!(memtable = this->memtable_view())) {
+            this->unpin_version(version_num);
+            version = this->pin_version(&version_num);
+        }
 
         TIMER_START();
 
@@ -347,6 +357,8 @@ public:
             cnt += version->memtables[i]->get_record_count();
         }
 
+        fprintf(stderr, "%ld\n", version->mem_levels.size());
+
         for (size_t i=0; i<version->mem_levels.size(); i++) {
             if (version->mem_levels[i]) cnt += version->mem_levels[i]->get_record_cnt();
         }
@@ -450,7 +462,7 @@ public:
 
 private:
     std::atomic<size_t> m_version_num;
-    std::atomic<tagged_ptr<version_data>> m_version_data[LSM_MEMTABLE_CNT + 1];
+    std::atomic<version_data*> m_version_data[LSM_MEMTABLE_CNT + 1];
 
     std::vector<MemTable *> m_memtables;
 
@@ -470,7 +482,7 @@ private:
         // the one retrieved. 
         do {
             size_t vnum = m_version_num.load();
-            version_data *version = m_version_data[vnum].load().m_ptr;
+            version_data *version = m_version_data[vnum].load();
             if (version->pin()) {
                 if (version_num) {
                     *version_num = vnum;
@@ -553,6 +565,7 @@ private:
         fprintf(stderr, "Starting merge for %ld\n", version_num);
         fprintf(stderr, "\tMemtable Version: %ld\n", m_version_data[version_num].load()->active_memtable % LSM_MEMTABLE_CNT);
         #endif
+        /*
         if (m_primary_merge_active) {
             version_num = (version_num + 1) % LSM_MEMTABLE_CNT;
             
@@ -560,6 +573,7 @@ private:
             fprintf(stderr, "\tUpdating version number to: %ld\n", version_num);
             #endif
         }
+        */
 
         #ifdef MERGE_LOGGING
         fprintf(stderr, "\tPrimary Merge: %d\n", m_primary_merge_active.load());
@@ -568,25 +582,29 @@ private:
         #endif
         
 
+        /*
         MemoryLevel *new_l0 = nullptr;
         if (m_primary_merge_active.load() && m_secondary_merge_possible.load()) {
             #ifdef MERGE_LOGGING
             fprintf(stderr, "Starting secondary merge...\n");
             #endif
             m_secondary_merge_possible.store(false); // start the secondary merge
-            new_l0 = this->create_new_l0(mtable, m_version_data[version_num].load().get(), rng);
+            new_l0 = this->create_new_l0(mtable, m_version_data[version_num].load(), rng);
             #ifdef MERGE_LOGGING
             fprintf(stderr, "Awaiting primary merge completion...\n");
             #endif
         }
+        */
 
         m_merge_lock.lock();
         #ifdef MERGE_LOGGING
         fprintf(stderr, "Passed merge lock for %ld\n", version_num);
 
+        /*
         if (new_l0) {
             fprintf(stderr, "Secondary merge continuation\n");
         }
+        */
         #endif
 
         m_primary_merge_active.store(true);
@@ -595,19 +613,24 @@ private:
         // If this merge will leave the first level completely full, then a
         // secondary merge is possible, as we can initiate this process without
         // needing to know the state of memlevel[0].
-        m_secondary_merge_possible.store(new_version.get()->mem_levels.size() > 0 && 
-                                         new_version.get()->mem_levels[0]->merge_will_fill(mtable->get_record_count()));
+        //m_secondary_merge_possible.store(new_version.get()->mem_levels.size() > 0 && 
+                                         //new_version.get()->mem_levels[0]->merge_will_fill(mtable->get_record_count()));
+        m_secondary_merge_possible.store(false);
 
-        if (!this->can_merge_with(0, mtable->get_record_count(), new_version.get())) {
-            this->merge_down(0, new_version.get(), rng);
+        if (!this->can_merge_with(0, mtable->get_record_count(), new_version)) {
+            this->merge_down(0, new_version, rng);
         }
 
+        /*
         if (new_l0) {
-            new_version.get()->mem_levels[0].reset(new_l0);
+            new_version->mem_levels[0].reset(new_l0);
         } else {
-            this->merge_memtable_into_l0(mtable, new_version.get(), rng);
+            this->merge_memtable_into_l0(mtable, new_version, rng);
         }
-        this->enforce_tombstone_maximum(0, new_version.get(), rng);
+        */
+
+        this->merge_memtable_into_l0(mtable, new_version, rng);
+        this->enforce_tombstone_maximum(0, new_version, rng);
 
         // TEMP: install the new version 
         size_t new_version_no = (version_num + 1) % LSM_MEMTABLE_CNT;
@@ -615,7 +638,7 @@ private:
         m_version_data[version_num].load()->merging = true;
 
         // This should be sufficient, as once a version is no longer
-        // active it will stop acculumating pins. So there isn't a risk
+        // active it will stop accumulating pins. So there isn't a risk
         // of this counter changing between when we observe it to be 0
         // and when we swap in the new version.
 
@@ -636,12 +659,12 @@ private:
         while (!truncation_status) 
             ;
 
-        new_version.m_ptr->active_memtable.store(m_version_data[m_version_num.load()].load().m_ptr->active_memtable.load());
+        new_version->active_memtable.store(m_version_data[m_version_num.load()].load()->active_memtable.load());
 
         // Update the version counter
         m_version_num.store(new_version_no);
 
-        delete old_version.m_ptr;
+        delete old_version;
 
         m_primary_merge_active.store(false);
         m_version_data[version_num].load()->merging = false;
