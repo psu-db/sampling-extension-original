@@ -11,8 +11,6 @@
 
 #include "util/timer.h"
 
-#define MERGE_LOGGING
-
 namespace lsm {
 
 thread_local size_t sampling_attempts = 0;
@@ -81,8 +79,7 @@ private:
         }
 
         static version_data* create_copy(version_data *version) {
-            auto ptr = version->copy();
-            return ptr;
+            return version->copy();
         }
 
         MemTable *get_active_memtable() {
@@ -169,7 +166,7 @@ public:
             if (mtable->is_full() && !mtable->merging()) {
                 if (mtable->start_merge()) {
                     // move to other memtable
-                    mtable = m_version_data[version_num].load()->swap_active_memtable();
+                    // mtable = m_version_data[version_num].load()->swap_active_memtable();
 
                     // begin background merge of the full memtable
                     std::thread mthread = std::thread(&LSMTree::merge_memtable, this, mtable, version_num, rng);
@@ -177,7 +174,9 @@ public:
 
                     // Get the new active memtable in preparation for
                     // potentially appending to it.
-                    mtable = version->get_active_memtable();
+                    //mtable = version->get_active_memtable();
+                    this->unpin_version(version_num);
+                    continue;
                 } 
             }
 
@@ -356,8 +355,6 @@ public:
         for (size_t i=0; i<version->memtables.size(); i++) {
             cnt += version->memtables[i]->get_record_count();
         }
-
-        fprintf(stderr, "%ld\n", version->mem_levels.size());
 
         for (size_t i=0; i<version->mem_levels.size(); i++) {
             if (version->mem_levels[i]) cnt += version->mem_levels[i]->get_record_cnt();
@@ -607,8 +604,18 @@ private:
         */
         #endif
 
+        if (version_num != m_version_num.load()) {
+            #ifdef MERGE_LOGGING
+            fprintf(stderr, "Replacing version number\n");
+            #endif
+            version_num = m_version_num.load();
+        }
+
         m_primary_merge_active.store(true);
         auto new_version = version_data::create_copy(m_version_data[version_num]);
+        m_version_data[version_num].load()->swap_active_memtable();
+
+        // flip active memtable to other table
 
         // If this merge will leave the first level completely full, then a
         // secondary merge is possible, as we can initiate this process without
@@ -635,6 +642,8 @@ private:
         // TEMP: install the new version 
         size_t new_version_no = (version_num + 1) % LSM_MEMTABLE_CNT;
         m_version_data[new_version_no].load()->merging = true;
+
+        // This block is probably not necessary
         m_version_data[version_num].load()->merging = true;
 
         // This should be sufficient, as once a version is no longer
@@ -659,7 +668,10 @@ private:
         while (!truncation_status) 
             ;
 
-        new_version->active_memtable.store(m_version_data[m_version_num.load()].load()->active_memtable.load());
+        // The new version should inherit the current active memtable
+        new_version->swap_active_memtable();
+
+            //active_memtable.store(m_version_data[m_version_num.load()].load()->active_memtable.load());
 
         // Update the version counter
         m_version_num.store(new_version_no);
