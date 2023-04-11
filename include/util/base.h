@@ -14,7 +14,7 @@ const size_t SECTOR_SIZE = 512;
 
 // The standard sized block of data (in bytes) for use in IO 
 // operations.
-const size_t PAGE_SIZE = 4096;
+const size_t PAGE_SIZE = 8192;
 
 // The size of a cacheline, for alignment purposes.
 const size_t CACHELINE_SIZE = 64;
