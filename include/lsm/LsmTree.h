@@ -409,6 +409,11 @@ public:
         return cnt;
     }
 
+
+    size_t get_memtable_capacity() {
+        return m_memtables[0]->get_capacity();
+    }
+
     size_t get_aux_memory_utilization() {
         size_t version_num;
         auto version = this->pin_version(&version_num);
