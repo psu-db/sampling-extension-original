@@ -47,11 +47,11 @@ private:
     typedef ssize_t level_index;
 
     struct version_data {
-        std::atomic<size_t> active_memtable;
+        alignas(64) std::atomic<size_t> active_memtable;
         std::vector<MemTable *> memtables;
         std::vector<memory_level_ptr> mem_levels; 
-        std::atomic<size_t> pins;
-        bool merging;
+        alignas(64) std::atomic<size_t> pins;
+        alignas(64) bool merging;
         level_index last_level_idx;
 
         version_data() : active_memtable(0), pins(0), merging(false), last_level_idx(-1) {};
@@ -463,14 +463,14 @@ public:
     }
 
 private:
-    std::atomic<size_t> m_version_num;
-    std::atomic<version_data*> m_version_data[LSM_MEMTABLE_CNT + 1];
+    alignas(64) std::atomic<size_t> m_version_num;
+    alignas(64) std::atomic<version_data*> m_version_data[LSM_MEMTABLE_CNT + 1];
 
     std::vector<MemTable *> m_memtables;
 
     std::mutex m_merge_lock;
-    std::atomic<bool> m_secondary_merge_possible;
-    std::atomic<bool> m_primary_merge_active;
+    alignas(64) std::atomic<bool> m_secondary_merge_possible;
+    alignas(64) std::atomic<bool> m_primary_merge_active;
 
     size_t m_scale_factor;
     double m_ts_prop;

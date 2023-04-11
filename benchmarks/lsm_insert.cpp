@@ -8,7 +8,7 @@ std::mutex latency_lock;
 size_t g_total_latency;
 
 static void insert_records(lsm::LSMTree *tree, std::vector<lsm::record_t> *vec, size_t start_idx, size_t stop_idx, gsl_rng *rng) {
-    struct timespec t { 0, 100};
+    struct timespec t { 0, 10};
     size_t total_latency = 0;
     for (size_t i=start_idx; i<stop_idx; i++) {
 

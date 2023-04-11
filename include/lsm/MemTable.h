@@ -192,14 +192,14 @@ private:
     size_t m_cap;
     size_t m_buffersize;
 
-    volatile bool *truncation_signaller;
+    alignas(64) volatile bool *truncation_signaller;
 
-    std::mutex m_merge_lock;
+    alignas(64) std::mutex m_merge_lock;
 
-    std::atomic<size_t> m_refcnt;
+    alignas(64) std::atomic<size_t> m_refcnt;
 
-    std::atomic<bool> m_merging;
-    std::atomic<bool> m_deferred_truncate;
+    alignas(64) std::atomic<bool> m_merging;
+    alignas(64) std::atomic<bool> m_deferred_truncate;
 
     size_t m_tombstone_cap;
     record_t* m_data;
