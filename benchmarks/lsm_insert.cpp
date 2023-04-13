@@ -2,15 +2,14 @@
 
 #include <ctime>
 
-size_t g_insert_batch_size = 10000;
+size_t g_insert_batch_size = 1000000;
 
 std::mutex latency_lock;
 size_t g_total_latency;
 
-static void insert_records(lsm::LSMTree *tree, std::vector<lsm::record_t> *vec, size_t start_idx, size_t stop_idx, gsl_rng *rng) {
-    struct timespec t { 0, 10};
+static void insert_records(lsm::LSMTree *tree, std::vector<lsm::record_t> *vec, size_t start_idx, size_t stop_idx, size_t delay, gsl_rng *rng) {
     size_t total_latency = 0;
-    for (size_t i=start_idx; i<stop_idx; i++) {
+    for (size_t i=start_idx; i<stop_idx; i+= 100) {
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t j=i; j<i+100 && j<stop_idx; j++) {
@@ -19,7 +18,9 @@ static void insert_records(lsm::LSMTree *tree, std::vector<lsm::record_t> *vec, 
         auto insert_stop = std::chrono::high_resolution_clock::now();
         total_latency += std::chrono::duration_cast<std::chrono::nanoseconds>(insert_stop - insert_start).count();
 
-        nanosleep(&t, nullptr);
+        for (size_t i=0; i<delay; i++) {
+            asm volatile("" : : : "memory");
+        }
     }
 
     latency_lock.lock();
@@ -28,7 +29,7 @@ static void insert_records(lsm::LSMTree *tree, std::vector<lsm::record_t> *vec, 
 }
 
 
-static void multithread_insert_bench(lsm::LSMTree *tree, std::fstream *file, size_t insert_cnt, size_t thrd_cnt) {
+static void multithread_insert_bench(lsm::LSMTree *tree, std::fstream *file, size_t insert_cnt, size_t thrd_cnt, size_t delay) {
     gsl_rng *rngs[thrd_cnt];
 
     for (size_t i=0; i<thrd_cnt; i++) {
@@ -43,7 +44,7 @@ static void multithread_insert_bench(lsm::LSMTree *tree, std::fstream *file, siz
 
     int64_t total_time = 0;
 
-    build_insert_vec(file, insert_vector, g_insert_batch_size);
+    //build_insert_vec(file, insert_vector, g_insert_batch_size);
     while (build_insert_vec(file, insert_vector, g_insert_batch_size) && inserted < insert_cnt) {
 
         progress_update((double) inserted / (double) insert_cnt, "inserting:");
@@ -56,7 +57,7 @@ static void multithread_insert_bench(lsm::LSMTree *tree, std::fstream *file, siz
 
         auto insert_start = std::chrono::high_resolution_clock::now();
         for (size_t i=0; i<thrd_cnt; i++) {
-            thrds[i] = std::thread(insert_records, tree, &insert_vector, start, stop, rngs[i]);
+            thrds[i] = std::thread(insert_records, tree, &insert_vector, start, stop, delay, rngs[i]);
             start = stop;
             stop = std::min(start + per_thread, insert_vector.size());
         }
@@ -114,7 +115,7 @@ int main(int argc, char **argv)
     warmup(&datafile, &sampling_lsm, warmup_cnt, 0);
 
     size_t insert_cnt = record_count - warmup_cnt;
-    multithread_insert_bench(&sampling_lsm, &datafile, insert_cnt, thrd_cnt);
+    multithread_insert_bench(&sampling_lsm, &datafile, insert_cnt, thrd_cnt, 1000000);
 
     delete_bench_env();
     fflush(stdout);
