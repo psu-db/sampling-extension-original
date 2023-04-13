@@ -11,7 +11,7 @@ static void benchmark(lsm::ISAMTree *data, size_t k, const std::vector<std::pair
 
     for (int i = 0; i < queries.size(); i++) {
         auto lb = data->get_lower_bound(queries[i].first, buf);
-        auto ub = data->get_upper_bound(queries[i].first, buf);
+        auto ub = data->get_upper_bound(queries[i].second, buf);
         size_t range_len = (ub - lb) * (lsm::PAGE_SIZE / sizeof(lsm::record_t));
 
         lsm::PageNum buffered_page = lsm::INVALID_PNUM;
