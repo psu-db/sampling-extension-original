@@ -6,7 +6,7 @@ static void benchmark(lsm::ISAMTree *data, size_t k, const std::vector<std::pair
 {
     char *buf = (char*) std::aligned_alloc(lsm::SECTOR_SIZE, lsm::PAGE_SIZE);
 
-    lsm::record_t *sample_buff = (lsm::record_t *) std::aligned_alloc(lsm::SECTOR_SIZE, k*sizeof(lsm::record_t));
+    lsm::record_t *sample_buff = new lsm::record_t[k];
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < queries.size(); i++) {
@@ -29,7 +29,7 @@ static void benchmark(lsm::ISAMTree *data, size_t k, const std::vector<std::pair
     auto stop = std::chrono::high_resolution_clock::now();
 
     free(buf);
-    free(sample_buff);
+    delete[] sample_buff;
 
     auto total_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
     size_t throughput = (((double)(queries.size() * k) / (double) total_latency) * 1e9);
@@ -40,7 +40,7 @@ static void benchmark(lsm::ISAMTree *data, size_t k, const std::vector<std::pair
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: static_throughput <filename> <record_count> <query_file> [osm_data]\n");
+        fprintf(stderr, "Usage: isam_throughput <filename> <record_count> <query_file> [osm_data]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
     bool use_osm = (argc == 5) ? atoi(argv[4]) : false;
 	
 	std::vector<double> sel = {0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001};
-	std::vector<std::pair<size_t, size_t>> queries[6];
+	std::vector<std::pair<size_t, size_t>> queries[7];
 	size_t query_set = 6;
 
     FILE* fp = fopen(argv[3], "r");
@@ -79,7 +79,7 @@ int main(int argc, char **argv)
     datafile.open(filename, std::ios::in);
 
     //build_lsm_tree(&sampling_lsm, &datafile);
-	warmup(&datafile, &sampling_lsm, record_count, 0.05);
+	warmup(&datafile, &sampling_lsm, record_count, 0);
 
     auto data = sampling_lsm.get_flat_isam_tree(g_rng);
     benchmark(data, 1000, queries[4]);
