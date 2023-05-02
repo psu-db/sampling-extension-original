@@ -75,6 +75,7 @@ public:
     }
 
     ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
+        TIMER_INIT();
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);
 
@@ -83,6 +84,7 @@ public:
         size_t incoming_record_cnt = 0;
         size_t incoming_tombstone_cnt = 0;
 
+        TIMER_START();
         // Initialize the priority queue
         // load up the disk levels
         for (size_t i=0; i<tree_cnt; i++) {
@@ -177,7 +179,14 @@ public:
         this->last_data_page = ISAMTree::write_final_buffer(output_idx, cur_leaf_pnum, &last_leaf_rec_cnt, pfile, buffer);
         assert(this->last_data_page != INVALID_PNUM);
 
+        TIMER_STOP();
+        auto copy_time = TIMER_RESULT();
+
+        TIMER_START();
         this->root_page = ISAMTree::generate_internal_levels(pfile, last_leaf_rec_cnt, buffer, ISAM_INIT_BUFFER_SIZE);
+        TIMER_STOP();
+
+        auto internal_time = TIMER_RESULT();
         this->first_data_page = BTREE_FIRST_LEAF_PNUM;
 
         assert(ISAMTree::post_init(this->rec_cnt, this->tombstone_cnt, this->last_data_page, this->root_page, buffer, pfile));
@@ -188,6 +197,8 @@ public:
 
         this->pfile = pfile;
         this->retain_file = false;
+
+        fprintf(stdout, "%ld %ld\n", copy_time, internal_time);
 
         free(buffer);
     }

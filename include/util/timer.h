@@ -24,6 +24,6 @@
     #define TIMER_STOP() \
         do {} while(0)
     #define TIMER_RESULT() \
-        0
+        0ul
 #endif
 

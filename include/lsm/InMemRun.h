@@ -8,6 +8,7 @@
 #include "lsm/MemTable.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
+#include "util/timer.h"
 
 namespace lsm {
 
@@ -63,10 +64,18 @@ public:
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
 
+        TIMER_INIT();
+
         size_t offset = 0;
         m_reccnt = 0;
+        TIMER_START();
         record_t* base = mem_table->sorted_output();
+        TIMER_STOP();
+
+        auto sort_time = TIMER_RESULT();
         record_t* stop = base + mem_table->get_record_count();
+
+        TIMER_START();
         while (base < stop) {
             if (!m_tagging) {
                 if (!base->is_tombstone() && (base + 1 < stop)
@@ -90,10 +99,17 @@ public:
 
             base++;
         }
+        TIMER_STOP();
+        auto copy_time = TIMER_RESULT();
 
+        TIMER_START();
         if (m_reccnt > 0) {
             build_internal_levels();
         }
+        TIMER_STOP();
+        auto level_time = TIMER_RESULT();
+
+        fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
     }
 
     InMemRun(InMemRun** runs, size_t len, BloomFilter* bf, bool tagging)

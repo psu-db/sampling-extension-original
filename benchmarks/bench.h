@@ -175,6 +175,44 @@ static void progress_update(double percentage, std::string prompt) {
     fflush(stderr);   
 }
 
+
+static bool fill_memtable(std::fstream *file, lsm::MemTable *table, size_t count, double delete_prop, bool progress=true)
+{
+    std::string line;
+
+    lsm::key_t key;
+    lsm::value_t val;
+    
+    bool ret = true;
+    double last_percent = 0;
+
+    for (size_t i=0; i<count; i++) {
+        if (!next_record(file, key, val)) {
+            ret = false;
+            break;
+        }
+
+        if (table->append(key, val, false) == 0) {
+            ret = false;
+            break;
+        }
+
+        if (progress && ((double) i / (double) count) - last_percent > .01) {
+            progress_update((double) i / (double) count, "warming up:");
+            last_percent = (double) i / (double) count;
+        }
+    }
+
+    if (progress) {
+        progress_update(1, "warming up:");
+    }
+
+    return ret;
+}
+
+
+
+
 /*
  * "Warm up" the LSM Tree data structure by inserting `count` records from
  * `file` into it. If `delete_prop` is non-zero, then on each insert following

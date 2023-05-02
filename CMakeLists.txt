@@ -80,6 +80,12 @@ if (bench)
     target_link_libraries(isam_throughput PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(isam_throughput PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/isam_throughput")
+
+
+    add_executable(isam_construction ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/isam_construction.cpp)
+    target_link_libraries(isam_construction PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(isam_construction PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/isam_construction")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")
