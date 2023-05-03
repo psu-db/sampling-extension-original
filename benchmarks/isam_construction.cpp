@@ -1,7 +1,7 @@
 #define ENABLE_TIMER
 
 #include "bench.h"
-#include "ds/plex//builder.h"
+#include "ds/ts/builder.h"
 
 int main(int argc, char **argv)
 {
@@ -34,11 +34,11 @@ int main(int argc, char **argv)
 
     TIMER_INIT();
     TIMER_START();
-    auto bldr = ts_cht::Builder<lsm::key_t>(g_min_key, g_max_key);
+    auto bldr = ts::Builder<lsm::key_t>(g_min_key, g_max_key, 100);
     for (size_t i=0; i<mem_isam->get_record_count(); i++) {
         bldr.AddKey(mem_isam->get_record_at(i)->key);
     }
-    auto cht = bldr.Finalize(100000, 100);
+    auto cht = bldr.Finalize();
     TIMER_STOP();
 
     fprintf(stdout, "%ld\n", TIMER_RESULT());
