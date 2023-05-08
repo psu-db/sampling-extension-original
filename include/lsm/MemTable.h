@@ -47,7 +47,18 @@ public:
             m_tombstonecnt.fetch_add(1);
             if (m_tombstone_filter) m_tombstone_filter->insert(key);
         }
-        //m_reccnt.fetch_add(1);
+
+        if (m_reccnt == 0) {
+            m_max_key = m_min_key = key;
+        }
+
+        if (key > m_max_key) {
+            m_max_key = key;
+        }
+
+        if (key < m_min_key) {
+            m_min_key = key;
+        }
 
         return 1;     
     }
@@ -131,6 +142,14 @@ public:
         return m_tombstone_cap;
     }
 
+    key_t get_max_key() {
+        return m_max_key;
+    }
+
+    key_t get_min_key() {
+        return m_min_key;
+    }
+
 private:
     int32_t try_advance_tail() {
         size_t new_tail = m_reccnt.fetch_add(1);
@@ -142,6 +161,9 @@ private:
     size_t m_cap;
     //size_t m_buffersize;
     size_t m_tombstone_cap;
+
+    key_t m_min_key;
+    key_t m_max_key;
     
     record_t* m_data;
     BloomFilter* m_tombstone_filter;

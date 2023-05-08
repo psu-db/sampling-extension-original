@@ -6,7 +6,7 @@
 
 #include "lsm/IsamTree.h"
 #include "lsm/MemTable.h"
-#include "lsm/MemoryLevel.h"
+#include "lsm/CHTRun.h"
 #include "lsm/DiskLevel.h"
 #include "ds/Alias.h"
 
@@ -41,46 +41,12 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
-static constexpr bool DELETE_TAGGING = false;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 
 class LSMTree {
 public:
-    LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
-            double max_tombstone_prop, std::string meta_fname, gsl_rng *rng) 
-        : active_memtable(0), //memory_levels(memory_levels, 0),
-          scale_factor(scale_factor), 
-          max_tombstone_prop(max_tombstone_prop),
-          root_directory(root_dir),
-          last_level_idx(-1),
-          memory_level_cnt(memory_levels),
-          memtable_1(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)), 
-          memtable_2(new MemTable(memtable_cap, LSM_REJ_SAMPLE, memtable_bf_sz, rng)),
-          memtable_1_merging(false), memtable_2_merging(false) {
-
-        size_t run_cap =  (LSM_LEVELING) ? 1 : scale_factor;
-
-        FILE *meta_f = fopen(meta_fname.c_str(), "r");
-        assert(meta_f);
-
-        char fbuf[1028];
-        size_t idx = 0;
-        while (fscanf(meta_f, "%s\n", fbuf) != EOF) {
-            bool disk;
-            level_index l_idx = this->decode_level_index(idx, &disk);
-
-            if (disk) {
-                this->disk_levels.emplace_back(new DiskLevel(idx, run_cap, root_directory, fbuf, rng));
-            } else {
-                this->memory_levels.emplace_back(new MemoryLevel(idx, run_cap, root_directory, fbuf, DELETE_TAGGING, rng));
-            }
-            idx++;
-        }
-
-    }
-
-
     LSMTree(std::string root_dir, size_t memtable_cap, size_t memtable_bf_sz, size_t scale_factor, size_t memory_levels,
             double max_tombstone_prop, gsl_rng *rng) 
         : active_memtable(0), //memory_levels(memory_levels, 0),
@@ -417,96 +383,6 @@ public:
         return this->memtable_1->get_capacity();
     }
 
-    /*
-     * Flattens the entire LSM structure into a single in-memory sorted
-     * array and return a pointer to it. Will be used as a simple baseline
-     * for performance comparisons.
-     *
-     * len will be updated to hold the number of records within the tree.
-     *
-     * It is the caller's responsibility to manage the memory of the returned
-     * object. It should be released with free().
-     *
-     * NOTE: If an interface to create InMemRun objects using ISAM Trees were
-     * added, this could be implemented just like get_flat_isam_tree and return
-     * one of those. But as it stands, this seems the most straightforward way
-     * to get a static in-memory structure.
-     */
-    record_t *get_sorted_array(size_t *len, gsl_rng *rng)
-    {
-        // flatten into an ISAM Tree to get a contiguous run of all
-        // the records, and cancel out all tombstones.
-        auto tree = this->get_flat_isam_tree(rng);
-        size_t alloc_sz = tree->get_record_count() * sizeof(record_t) + (CACHELINE_SIZE - tree->get_record_count() * sizeof(record_t) % CACHELINE_SIZE);
-        record_t *array = (record_t *) std::aligned_alloc(CACHELINE_SIZE, alloc_sz);
-
-        assert(tree->get_tombstone_count() == 0);
-
-        *len = tree->get_record_count();
-
-        auto iter = tree->start_scan();
-        size_t offset = 0;
-        while (iter->next() && offset < tree->get_record_count()) {
-            auto pg = (record_t*)iter->get_item();
-            for (size_t i=0; i<PAGE_SIZE/sizeof(record_t); i++) {
-                array[offset] = pg[i];
-                //memcpy(array + offset*sizeof(record_t), pg + i*sizeof(record_t), sizeof(record_t));
-                offset++;
-
-                if (offset >= tree->get_record_count()) break;
-            }
-        }
-
-        auto pfile = tree->get_pfile();
-        delete iter;
-        delete tree;
-        delete pfile;
-
-        return array;
-    }
-
-    /*
-     * Flattens the entire LSM structure into a single ISAM Tree object
-     * and return a pointer to it. Will be used as a simple baseline for
-     * performance comparisons.
-     */
-    ISAMTree *get_flat_isam_tree(gsl_rng *rng) {
-        auto mem_level = new MemoryLevel(-1, 1, this->root_directory, DELETE_TAGGING);
-        mem_level->append_mem_table(this->memtable(), rng);
-
-        std::vector<InMemRun *> runs;
-        std::vector<ISAMTree *> trees;
-
-        for (int i=memory_levels.size() - 1; i>= 0; i--) {
-            if (memory_levels[i]) {
-                for (int j=0; j<memory_levels[i]->get_run_count(); j++) {
-                    runs.push_back(memory_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        runs.push_back(mem_level->get_run(0));
-
-        for (int i=disk_levels.size() - 1; i >= 0; i--) {
-            if (disk_levels[i]) {
-                for (int j=0; j<disk_levels[i]->get_run_count(); j++) {
-                    trees.push_back(disk_levels[i]->get_run(j));
-                }
-            }
-        }
-
-        auto pfile = PagedFile::create(root_directory + "flattened_tree.dat");
-        auto bf = new BloomFilter(0, BF_HASH_FUNCS, rng);
-
-        auto flat = new ISAMTree(pfile, rng, bf, runs.data(), runs.size(), trees.data(), trees.size());
-
-        delete mem_level;
-        delete bf;
-
-        return flat;
-    }
-
-
     bool validate_tombstone_proportion() {
         long double ts_prop;
         for (size_t i=0; i<this->memory_levels.size(); i++) {
@@ -528,34 +404,6 @@ public:
         }
 
         return true;
-    }
-
-    void persist_tree(gsl_rng *rng) {
-        std::string meta_dir = this->root_directory + "/meta";
-        mkdir(meta_dir.c_str(), 0755);
-
-        std::string meta_fname = meta_dir + "/lsmtree.dat";
-        FILE *meta_f = fopen(meta_fname.c_str(), "w");
-        assert(meta_f);
-
-        // merge the memtable down to ensure it is persisted
-        this->merge_memtable(rng);
-        
-        // persist each level of the tree
-        for (size_t i=0; i<this->get_height(); i++) {
-            bool disk = false;
-
-            auto level_idx = this->decode_level_index(i, &disk);
-            std::string level_meta = meta_dir + "/level-" + std::to_string(i) +"-meta.dat";
-
-            if (disk) {
-                disk_levels[level_idx]->persist_level(level_meta);
-            } else {
-                memory_levels[level_idx]->persist_level(level_meta);
-            }
-        }
-
-        fclose(meta_f);
     }
 
 private:
