@@ -26,7 +26,7 @@ public:
 
         TIMER_INIT();
 
-        size_t max_error = mem_table->get_record_count();
+        size_t max_error = 16;
         auto bldr = ts::Builder<key_t>(mem_table->get_min_key(), mem_table->get_max_key(), max_error);
 
         size_t offset = 0;
@@ -79,8 +79,6 @@ public:
         }
         TIMER_STOP();
         auto level_time = TIMER_RESULT();
-
-        fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
     }
 
     CHTRun(CHTRun** runs, size_t len, BloomFilter* bf, bool tagging)
@@ -116,7 +114,7 @@ public:
         size_t alloc_size = (attemp_reccnt * sizeof(record_t)) + (CACHELINE_SIZE - (attemp_reccnt * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
-        size_t max_error = attemp_reccnt;
+        size_t max_error = 8;
         auto bldr = ts::Builder<key_t>(m_min_key, m_max_key, max_error);
 
         size_t offset = 0;
@@ -195,10 +193,14 @@ public:
         auto bound = m_ts.GetSearchBound(key);
         size_t idx = bound.begin;
 
+        if (idx >= m_reccnt) {
+            return m_reccnt;
+        }
+
         // if the found location is larger than the key, we need to
         // move backwards towards the beginning of the array
         if (m_data[idx].key > key) {
-            for (size_t i=idx; i>=0; i--) {
+            for (ssize_t i=idx; i>=0; i--) {
                 if (m_data[i].key < key) {
                     return i+1;
                 }
@@ -212,7 +214,7 @@ public:
             }
         }
 
-        return 0;
+        return m_reccnt;
     }
 
     size_t get_upper_bound(const key_t& key) const {
@@ -222,7 +224,7 @@ public:
         // if the found location is larger than the key, we need to
         // move backwards towards the beginning of the array
         if (m_data[idx].key > key) {
-            for (size_t i=idx; i>=0; i--) {
+            for (ssize_t i=idx; i>=0; i--) {
                 if (m_data[i].key <= key) {
                     return i+1;
                 }

@@ -28,22 +28,30 @@ int main(int argc, char **argv)
     fill_memtable(&datafile, &table2, record_count/4, 0);
     fill_memtable(&datafile, &table3, record_count/4, 0);
 
-    lsm::InMemRun *mem_isam[4];
+    lsm::CHTRun *mem_isam[4];
 
     for (size_t i=0; i<4; i++) {
-        mem_isam[i] = new lsm::InMemRun(&table0, nullptr, g_rng);
+        mem_isam[i] = new lsm::CHTRun(&table0, nullptr, g_rng);
     }
     TIMER_INIT();
 
+    fprintf(stderr, "Building...\n");
+
     TIMER_START();
-    lsm::InMemRun *test_run = new lsm::InMemRun(mem_isam, 4, nullptr, false);
+    lsm::CHTRun *test_run = new lsm::CHTRun(mem_isam, 4, nullptr, false);
     TIMER_STOP();
 
     auto build_time = TIMER_RESULT();
 
+    fprintf(stderr, "Querying...\n");
+
+    std::vector<lsm::key_t> results(query_keys.size());
     TIMER_START();
     for (size_t i=0; i<query_keys.size(); i++) {
-        auto x = test_run->get_lower_bound(query_keys[i]);
+        results[i] = test_run->get_lower_bound(query_keys[i]);
+        if (i % query_keys.size() == .01 * query_keys.size()) {
+            progress_update((double) i / (double) query_keys.size(), "Querying:");
+        }
     }
     TIMER_STOP();
 
@@ -51,6 +59,10 @@ int main(int argc, char **argv)
 
     printf("%ld\t%ld\t%ld\n", build_time, query_time, test_run->get_memory_utilization());
 
+    for (size_t i=0; i<results.size(); i++) {
+        if (results[i] < test_run->get_record_count()) 
+            fprintf(stderr, "%ld %ld %ld\n", results[i], query_keys[i], test_run->get_record_at(results[i])->key);
+    }
     /*
     TIMER_INIT();
     TIMER_START();
