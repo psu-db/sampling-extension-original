@@ -35,23 +35,16 @@ int main(int argc, char **argv)
     }
     TIMER_INIT();
 
-    fprintf(stderr, "Building...\n");
-
     TIMER_START();
     lsm::CHTRun *test_run = new lsm::CHTRun(mem_isam, 4, nullptr, false);
     TIMER_STOP();
 
     auto build_time = TIMER_RESULT();
 
-    fprintf(stderr, "Querying...\n");
-
     std::vector<lsm::key_t> results(query_keys.size());
     TIMER_START();
     for (size_t i=0; i<query_keys.size(); i++) {
         results[i] = test_run->get_lower_bound(query_keys[i]);
-        if (i % query_keys.size() == .01 * query_keys.size()) {
-            progress_update((double) i / (double) query_keys.size(), "Querying:");
-        }
     }
     TIMER_STOP();
 
