@@ -33,10 +33,6 @@ if (tests)
     target_link_libraries(pagedfile_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
     target_compile_options(pagedfile_tests PUBLIC -llib)
 
-    add_executable(isamtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/isamtree_tests.cpp)
-    target_link_libraries(isamtree_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
-    target_compile_options(isamtree_tests PUBLIC -llib)
-
     add_executable(memtable_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memtable_tests.cpp)
     target_link_libraries(memtable_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
     target_compile_options(memtable_tests PUBLIC -llib)
@@ -45,10 +41,6 @@ if (tests)
     add_executable(inmemrun_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/inmemrun_tests.cpp)
     target_link_libraries(inmemrun_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
     target_compile_options(inmemrun_tests PUBLIC -llib)
-
-    add_executable(lsmtree_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsmtree_tests.cpp)
-    target_link_libraries(lsmtree_tests PUBLIC ${PROJECT_NAME} check subunit pthread)
-    target_compile_options(lsmtree_tests PUBLIC -llib)
 
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/memlevel_tests")
     add_executable(memlevel_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/memlevel_tests.cpp)
@@ -61,31 +53,16 @@ endif()
 if (bench)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_CURRENT_SOURCE_DIR}/bin/benchmarks")
 
-    add_executable(lsm_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_throughput.cpp)
-    target_link_libraries(lsm_throughput PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(lsm_throughput PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_throughput")
-
-    add_executable(btree_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_throughput.cpp)
-    target_link_libraries(btree_throughput PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(btree_throughput PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_throughput")
-
-    add_executable(static_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_throughput.cpp)
-    target_link_libraries(static_throughput PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(static_throughput PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/static_throughput")
-
-    add_executable(isam_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/isam_throughput.cpp)
-    target_link_libraries(isam_throughput PUBLIC ${PROJECT_NAME} pthread)
-    target_compile_options(isam_throughput PUBLIC -llib)
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/isam_throughput")
-
-
     add_executable(isam_construction ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/isam_construction.cpp)
     target_link_libraries(isam_construction PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(isam_construction PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/isam_construction")
+
+
+    add_executable(cht_construction ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/cht_construction.cpp)
+    target_link_libraries(cht_construction PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(cht_construction PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/cht_construction")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/utilities")

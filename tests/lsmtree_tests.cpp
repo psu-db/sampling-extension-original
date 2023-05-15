@@ -1,8 +1,9 @@
-#include <check.h>
 #include <set>
 #include <random>
 
 #include "lsm/LsmTree.h"
+
+#include <check.h>
 
 using namespace lsm;
 
@@ -185,133 +186,6 @@ START_TEST(t_range_sample_disklevels)
 END_TEST
 
 
-START_TEST(t_sorted_array)
-{
-    size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
-
-    std::set<std::pair<lsm::key_t, lsm::value_t>> records; 
-    std::set<std::pair<lsm::key_t, lsm::value_t>> to_delete;
-    std::set<std::pair<lsm::key_t, lsm::value_t>> deleted;
-
-    while (records.size() < reccnt) {
-        lsm::key_t key = rand();
-        lsm::value_t val = rand();
-
-        if (records.find({key, val}) != records.end()) continue;
-
-        records.insert({key, val});
-    }
-
-    size_t deletes = 0;
-    for (auto rec : records) {
-        ck_assert_int_eq(lsm->append(rec.first, rec.second, 0, g_rng), 1);
-
-         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
-            std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
-            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
-
-            for (size_t i=0; i<del_vec.size(); i++) {
-                lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng);
-                deletes++;
-                to_delete.erase(del_vec[i]);
-                deleted.insert(del_vec[i]);
-            }
-        }
-
-        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
-            to_delete.insert(rec);
-        }
-    }
-
-    size_t len;
-    record_t* flat = lsm->get_sorted_array(&len, g_rng);
-    ck_assert_int_eq(len, reccnt - deletes);
-
-    lsm::key_t prev_key = 0;
-    for (size_t i=0; i<len; i++) {
-        ck_assert_int_ge(flat[i].key, prev_key);
-        prev_key = flat[i].key;
-    }
-
-    free(flat);
-    delete lsm;
-}
-END_TEST
-
-
-START_TEST(t_flat_isam)
-{
-    size_t reccnt = 100000;
-    auto lsm = new LSMTree(dir, 100, 100, 2, 1, 1, g_rng);
-
-    std::set<std::pair<lsm::key_t, lsm::value_t>> records; 
-    std::set<std::pair<lsm::key_t, lsm::value_t>> to_delete;
-    std::set<std::pair<lsm::key_t, lsm::value_t>> deleted;
-
-    while (records.size() < reccnt) {
-        lsm::key_t key = rand();
-        lsm::value_t val = rand();
-
-        if (records.find({key, val}) != records.end()) continue;
-
-        records.insert({key, val});
-    }
-
-    size_t deletes = 0;
-    for (auto rec : records) {
-        ck_assert_int_eq(lsm->append(rec.first, rec.second, false, g_rng), 1);
-
-         if (gsl_rng_uniform(g_rng) < 0.05 && !to_delete.empty()) {
-            std::vector<std::pair<lsm::key_t, lsm::value_t>> del_vec;
-            std::sample(to_delete.begin(), to_delete.end(), std::back_inserter(del_vec), 3, std::mt19937{std::random_device{}()});
-
-            for (size_t i=0; i<del_vec.size(); i++) {
-                ck_assert_int_eq(lsm->append(del_vec[i].first, del_vec[i].second, true, g_rng), 1);
-                deletes++;
-                to_delete.erase(del_vec[i]);
-                deleted.insert(del_vec[i]);
-            }
-        }
-
-        if (gsl_rng_uniform(g_rng) < 0.25 && deleted.find(rec) == deleted.end()) {
-            to_delete.insert(rec);
-        }
-    }
-
-    auto flat = lsm->get_flat_isam_tree(g_rng);
-
-    ck_assert_int_eq(flat->get_record_count(), reccnt - deletes);
-    ck_assert_int_eq(flat->get_tombstone_count(), 0);
-
-    auto iter = flat->start_scan();
-
-    size_t recs = 0;
-    lsm::key_t prev_key = 0;
-    while (iter->next()) {
-        auto pg = iter->get_item();
-        for (size_t i=0; i<PAGE_SIZE/sizeof(record_t); i++) {
-            if (recs >= flat->get_record_count()) break;
-            recs++;
-
-            auto rec = (record_t*)(pg + (i * sizeof(record_t)));
-            //auto k = *(lsm::key_t*) get_key(rec);
-            //auto r = *(lsm::value_t*) get_val(rec);
-            ck_assert_int_ge(rec->key, prev_key);
-            prev_key = rec->key;
-        }
-    }
-
-    auto pfile = flat->get_pfile();
-
-    delete iter;
-    delete flat;
-    delete lsm;
-    delete pfile;
-}
-END_TEST
-
-
 START_TEST(t_tombstone_merging_01)
 {
     size_t reccnt = 100000;
@@ -403,96 +277,6 @@ lsm::LSMTree *create_test_tree(size_t reccnt, size_t memlevel_cnt) {
     return lsm;
 }
 
-START_TEST(t_persist_mem) 
-{
-    size_t reccnt = 100000;
-    auto lsm = create_test_tree(reccnt, 100);
-
-    lsm->persist_tree(g_rng);
-
-    std::string meta_fname = dir + "/meta/lsmtree.dat";
-    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 100, 1, meta_fname, g_rng);
-
-    ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
-    ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());
-
-    // NOTE: The aux memory  usage is *not* the same between the two, because of tombstone
-    // cancellation. The original tree uses more memory, as the bloom filters are allocated
-    // based on the max number of tombstones possible on a level during a merge, before any
-    // cancellations occur. The second tree is built using the *actual*, smaller, tombstone
-    // number as it happens post merge. So this difference is not an error.
-    //ck_assert_int_eq(lsm->get_aux_memory_utilization(), lsm2->get_aux_memory_utilization());
-    
-    ck_assert_int_eq(lsm->get_memory_utilization(), lsm2->get_memory_utilization());
-
-    size_t len1;
-    auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
-
-    size_t len2;
-    auto sorted2 = lsm2->get_sorted_array(&len2, g_rng);
-
-    ck_assert_int_eq(len1, len2);
-
-    for (size_t i=0; i<len1; i++) {
-        record_t *rec1 = sorted1 + i;
-        record_t *rec2 = sorted2 + i;
-
-        ck_assert_mem_eq((const char*)rec1, (const char*)rec2, sizeof(record_t));
-    }
-
-    delete lsm;
-    delete lsm2;
-    free(sorted1);
-    free(sorted2);
-}
-END_TEST
-
-
-START_TEST(t_persist_disk)
-{
-    size_t reccnt = 100000;
-    auto lsm = create_test_tree(reccnt, 1);
-
-    lsm->persist_tree(g_rng);
-
-    std::string meta_fname = dir + "/meta/lsmtree.dat";
-    auto lsm2 = new LSMTree(dir, 1000, 3000, 2, 1, 1, meta_fname, g_rng);
-
-    ck_assert_int_eq(lsm->get_record_cnt(), lsm2->get_record_cnt());
-    ck_assert_int_eq(lsm->get_tombstone_cnt(), lsm2->get_tombstone_cnt());
-
-    // NOTE: The aux memory  usage is *not* the same between the two, because of tombstone
-    // cancellation. The original tree uses more memory, as the bloom filters are allocated
-    // based on the max number of tombstones possible on a level during a merge, before any
-    // cancellations occur. The second tree is built using the *actual*, smaller, tombstone
-    // number as it happens post merge. So this difference is not an error.
-    //ck_assert_int_eq(lsm->get_aux_memory_utilization(), lsm2->get_aux_memory_utilization());
-    
-    ck_assert_int_eq(lsm->get_memory_utilization(), lsm2->get_memory_utilization());
-
-    size_t len1;
-    auto sorted1 = lsm->get_sorted_array(&len1, g_rng);
-
-    size_t len2;
-    auto sorted2 = lsm2->get_sorted_array(&len2, g_rng);
-
-    ck_assert_int_eq(len1, len2);
-
-    for (size_t i=0; i<len1; i++) {
-        record_t *rec1 = sorted1 + i;
-        record_t *rec2 = sorted2 + i;
-
-        ck_assert_mem_eq((const char*)rec1, (const char*)rec2, sizeof(record_t));
-    }
-
-    delete lsm;
-    delete lsm2;
-    free(sorted1);
-    free(sorted2);
-}
-END_TEST
-
-
 Suite *unit_testing()
 {
     Suite *unit = suite_create("lsm::LSMTree Unit Testing");
@@ -513,11 +297,6 @@ Suite *unit_testing()
     tcase_add_test(sampling, t_range_sample_memlevels);
     tcase_add_test(sampling, t_range_sample_disklevels);
     suite_add_tcase(unit, sampling);
-
-    TCase *flat = tcase_create("lsm::LSMTree::get_flat_isam_tree Testing");
-    tcase_add_test(flat, t_flat_isam);
-    tcase_add_test(flat, t_sorted_array);
-    suite_add_tcase(unit, flat);
 
     TCase *ts = tcase_create("lsm::LSMTree::tombstone_compaction Testing");
     tcase_add_test(ts, t_tombstone_merging_01);

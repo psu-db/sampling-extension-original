@@ -5,7 +5,7 @@
 
 #include "util/types.h"
 #include "util/bf_config.h"
-#include "lsm/InMemRun.h"
+#include "CHTRun.h"
 #include "lsm/IsamTree.h"
 #include "ds/BloomFilter.h"
 #include "lsm/MemoryLevel.h"
@@ -86,7 +86,7 @@ public:
                             BF_HASH_FUNCS, rng);
 
         ISAMTree *run1 = base_level->m_runs[0];
-        InMemRun *run2 = new_level->m_structure->m_runs[0];
+        CHTRun *run2 = new_level->m_structure->m_runs[0];
         assert(run2);
 
         res->m_pfiles[0] = PagedFile::create(base_level->get_fname(0));

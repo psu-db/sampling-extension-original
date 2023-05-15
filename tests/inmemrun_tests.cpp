@@ -1,8 +1,9 @@
-#include <check.h>
 
 #include "lsm/InMemRun.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
+
+#include <check.h>
 
 using namespace lsm;
 
