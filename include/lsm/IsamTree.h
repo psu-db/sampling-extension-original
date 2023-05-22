@@ -13,7 +13,7 @@
 #include "lsm/MemTable.h"
 #include "ds/PriorityQueue.h"
 #include "util/Cursor.h"
-#include "lsm/InMemRun.h"
+#include "lsm/CHTRun.h"
 #include "util/internal_record.h"
 
 namespace lsm { 
@@ -74,7 +74,7 @@ public:
         delete iter;
     }
 
-    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, InMemRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
+    ISAMTree(PagedFile *pfile, const gsl_rng *rng, BloomFilter *tomb_filter, CHTRun * const* runs, size_t run_cnt, ISAMTree * const*trees, size_t tree_cnt) {
         TIMER_INIT();
         std::vector<Cursor> cursors(run_cnt + tree_cnt);
         std::vector<PagedFileIterator *> isam_iters(tree_cnt);

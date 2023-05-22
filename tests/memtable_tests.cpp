@@ -1,4 +1,3 @@
-#include <check.h>
 #include <string>
 #include <thread>
 #include <gsl/gsl_rng.h>
@@ -7,6 +6,8 @@
 
 #include "testing.h"
 #include "lsm/MemTable.h"
+
+#include <check.h>
 
 using namespace lsm;
 

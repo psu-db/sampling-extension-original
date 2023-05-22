@@ -1,8 +1,9 @@
-#include <check.h>
 #include <string>
 
 #include "testing.h"
 #include "io/PagedFile.h"
+
+#include <check.h>
 
 using namespace lsm;
 

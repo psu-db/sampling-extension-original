@@ -2,6 +2,7 @@
 #define H_BENCH
 #include "lsm/LsmTree.h"
 #include "ds/BTree.h"
+#include "lsm/InMemRun.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -34,6 +35,8 @@ static size_t g_max_record_cnt = 0;
 static size_t g_reccnt = 0;
 
 static constexpr unsigned int DEFAULT_SEED = 0;
+
+std::vector<lsm::key_t> query_keys;
 
 typedef enum Operation {
     READ,
@@ -89,7 +92,7 @@ static void delete_bench_env()
 }
 
 
-static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
+static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val, bool queries=false)
 {
 
     if (g_reccnt >= g_max_record_cnt) return false;
@@ -110,6 +113,10 @@ static bool next_record(std::fstream *file, lsm::key_t& key, lsm::value_t& val)
         if (key > g_max_key) g_max_key = key;
 
         g_reccnt++;
+
+        if (queries && g_reccnt % 1000) {
+            query_keys.push_back(key);
+        }
 
         return true;
     }
@@ -187,7 +194,7 @@ static bool fill_memtable(std::fstream *file, lsm::MemTable *table, size_t count
     double last_percent = 0;
 
     for (size_t i=0; i<count; i++) {
-        if (!next_record(file, key, val)) {
+        if (!next_record(file, key, val, true)) {
             ret = false;
             break;
         }

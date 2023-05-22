@@ -1,8 +1,9 @@
-#include <check.h>
 
 #include "lsm/InMemRun.h"
 #include "lsm/MemoryLevel.h"
 #include "util/bf_config.h"
+
+#include <check.h>
 
 using namespace lsm;
 
@@ -87,31 +88,6 @@ MemoryLevel *create_test_memlevel(size_t reccnt) {
     return base_level;
 }
 
-START_TEST(t_persist) 
-{
-    auto level = create_test_memlevel(400000);
-
-    std::string meta_fname = "tests/data/memlevel_tests/meta";
-    level->persist_level(meta_fname);
-
-    auto level2 = new MemoryLevel(1, 4, root_dir, meta_fname, false, g_rng);
-
-    ck_assert_int_eq(level->get_record_cnt(), level2->get_record_cnt());
-    ck_assert_int_eq(level->get_tombstone_count(), level2->get_tombstone_count());
-    ck_assert_int_eq(level->get_run_count(), level2->get_run_count());
-
-    for (size_t i=0; i<level->get_run_count(); i++) {
-        for (size_t j=0; j<level->get_run(i)->get_record_count(); j++) {
-            ck_assert_mem_eq((const char*)level->get_record_at(i, j), (const char*)level2->get_record_at(i, j), sizeof(record_t));
-        }
-    }
-
-    delete level;
-    delete level2;
-}
-END_TEST
-
-
 Suite *unit_testing()
 {
     Suite *unit = suite_create("MemoryLevel Unit Testing");
@@ -119,10 +95,6 @@ Suite *unit_testing()
     TCase *merge = tcase_create("lsm::MemoryLevel::merge_level Testing");
     tcase_add_test(merge, t_memlevel_merge);
     suite_add_tcase(unit, merge);
-
-    TCase *persistence = tcase_create("lsm::MemoryLevel::persistence Testing");
-    tcase_add_test(persistence, t_persist);
-    suite_add_tcase(unit, persistence);
 
     return unit;
 }

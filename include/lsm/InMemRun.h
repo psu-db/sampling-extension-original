@@ -108,8 +108,6 @@ public:
         }
         TIMER_STOP();
         auto level_time = TIMER_RESULT();
-
-        fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
     }
 
     InMemRun(InMemRun** runs, size_t len, BloomFilter* bf, bool tagging)
@@ -260,7 +258,7 @@ public:
     }
 
     size_t get_memory_utilization() {
-        return m_reccnt * sizeof(record_t) + m_internal_node_cnt * inmem_isam_node_size;
+        return m_internal_node_cnt * inmem_isam_node_size;
     }
 
     void persist_to_file(std::string data_fname) {
