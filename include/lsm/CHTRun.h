@@ -17,7 +17,7 @@ namespace lsm {
 class CHTRun  {
 public:
 
-    CHTRun(MemTable* mem_table, BloomFilter* bf, bool tagging)
+    CHTRun(MemTable* mem_table, BloomFilter* bf, bool tagging, size_t max_error=128)
     :m_reccnt(0), m_tombstone_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
 
         size_t alloc_size = (mem_table->get_record_count() * sizeof(record_t)) + (CACHELINE_SIZE - (mem_table->get_record_count() * sizeof(record_t)) % CACHELINE_SIZE);
@@ -26,7 +26,6 @@ public:
 
         TIMER_INIT();
 
-        size_t max_error = mem_table->get_record_count();
         auto bldr = ts::Builder<key_t>(mem_table->get_min_key(), mem_table->get_max_key(), max_error);
 
         size_t offset = 0;
@@ -83,7 +82,7 @@ public:
         fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
     }
 
-    CHTRun(CHTRun** runs, size_t len, BloomFilter* bf, bool tagging)
+    CHTRun(CHTRun** runs, size_t len, BloomFilter* bf, bool tagging, size_t max_error=128)
     :m_reccnt(0), m_tombstone_cnt(0), m_deleted_cnt(0), m_tagging(tagging) {
         std::vector<Cursor> cursors;
         cursors.reserve(len);
@@ -116,7 +115,6 @@ public:
         size_t alloc_size = (attemp_reccnt * sizeof(record_t)) + (CACHELINE_SIZE - (attemp_reccnt * sizeof(record_t)) % CACHELINE_SIZE);
         assert(alloc_size % CACHELINE_SIZE == 0);
         m_data = (record_t*)std::aligned_alloc(CACHELINE_SIZE, alloc_size);
-        size_t max_error = attemp_reccnt;
         auto bldr = ts::Builder<key_t>(m_min_key, m_max_key, max_error);
 
         size_t offset = 0;
