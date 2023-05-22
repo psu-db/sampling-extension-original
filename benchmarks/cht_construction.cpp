@@ -6,7 +6,7 @@
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: isam_benching <filename> <record_count> [osm_data]\n");
+        fprintf(stderr, "Usage: cht_construction <filename> <record_count> [osm_data]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -33,48 +33,43 @@ int main(int argc, char **argv)
     for (size_t i=0; i<4; i++) {
         mem_isam[i] = new lsm::CHTRun(&table0, nullptr, g_rng);
     }
-    TIMER_INIT();
+    size_t errors[] = {2, 4, 8, 16, 128, 256};
 
-    TIMER_START();
-    lsm::CHTRun *test_run = new lsm::CHTRun(mem_isam, 4, nullptr, false);
-    TIMER_STOP();
+    for (size_t i=0; i<sizeof(errors); i++) {
+        TIMER_INIT();
 
-    auto build_time = TIMER_RESULT();
+        TIMER_START();
+        lsm::CHTRun *test_run = new lsm::CHTRun(mem_isam, 4, nullptr, false, errors[i]);
+        TIMER_STOP();
 
-    std::vector<lsm::key_t> results(query_keys.size());
-    TIMER_START();
-    for (size_t i=0; i<query_keys.size(); i++) {
-        results[i] = test_run->get_lower_bound(query_keys[i]);
+        auto build_time = TIMER_RESULT();
+
+        std::vector<lsm::key_t> results(query_keys.size());
+        TIMER_START();
+        for (size_t i=0; i<query_keys.size(); i++) {
+            results[i] = test_run->get_lower_bound(query_keys[i]);
+        }
+        TIMER_STOP();
+
+        auto query_time = TIMER_RESULT() / query_keys.size();
+
+        printf("%ld\t%ld\t%ld\t%ld\n", errors[i], build_time, query_time, test_run->get_memory_utilization());
+
+        /*
+        for (size_t i=0; i<results.size(); i++) {
+            if (results[i] < test_run->get_record_count()) 
+                fprintf(stderr, "%ld %ld %ld\n", results[i], query_keys[i], test_run->get_record_at(results[i])->key);
+        }
+        */
+
+        delete test_run;
     }
-    TIMER_STOP();
-
-    auto query_time = TIMER_RESULT() / query_keys.size();
-
-    printf("%ld\t%ld\t%ld\n", build_time, query_time, test_run->get_memory_utilization());
-
-    for (size_t i=0; i<results.size(); i++) {
-        if (results[i] < test_run->get_record_count()) 
-            fprintf(stderr, "%ld %ld %ld\n", results[i], query_keys[i], test_run->get_record_at(results[i])->key);
-    }
-    /*
-    TIMER_INIT();
-    TIMER_START();
-    auto bldr = ts::Builder<lsm::key_t>(g_min_key, g_max_key, 100);
-    for (size_t i=0; i<mem_isam->get_record_count(); i++) {
-        bldr.AddKey(mem_isam->get_record_at(i)->key);
-    }
-    auto cht = bldr.Finalize();
-    TIMER_STOP();
-
-    fprintf(stdout, "%ld\n", TIMER_RESULT());
-    */
-
-    delete_bench_env();
 
     for (size_t i=0; i<4; i++) {
         delete mem_isam[i];
     }
 
-    delete test_run;
+    delete_bench_env();
+
     exit(EXIT_SUCCESS);
 }
