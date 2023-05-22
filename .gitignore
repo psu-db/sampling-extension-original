@@ -3,6 +3,10 @@
 build/*
 lib/*
 bin/*
+*.tsv
+*.dat
+*.plt
+*.out
 
 #tests/*
 #!tests/*.{cpp,sh}
