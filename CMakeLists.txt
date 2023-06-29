@@ -66,10 +66,20 @@ if (bench)
     target_compile_options(lsm_throughput PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_throughput")
 
+    add_executable(lsm_delete ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/lsm_delete.cpp)
+    target_link_libraries(lsm_delete PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(lsm_delete PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/lsm_delete")
+
     add_executable(btree_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_throughput.cpp)
     target_link_libraries(btree_throughput PUBLIC ${PROJECT_NAME} pthread)
     target_compile_options(btree_throughput PUBLIC -llib)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_throughput")
+
+    add_executable(btree_delete ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/btree_delete.cpp)
+    target_link_libraries(btree_delete PUBLIC ${PROJECT_NAME} pthread)
+    target_compile_options(btree_delete PUBLIC -llib)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/data/btree_delete")
 
     add_executable(static_throughput ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/static_throughput.cpp)
     target_link_libraries(static_throughput PUBLIC ${PROJECT_NAME} pthread)
