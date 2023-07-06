@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstddef>
+#include <cassert>
 #include <memory>
 #include <gsl/gsl_rng.h>
 
@@ -78,15 +79,18 @@ static inline size_t get_random(gsl_rng *rng, size_t max) {
         return 0;
     } 
 
-    size_t result = 0;
-    while (max > rng_max) {
-        result += gsl_rng_uniform_int(rng, rng_max);
-        max -= rng_max;
+    if (max <= rng_max) {
+        return gsl_rng_uniform_int(rng, max);
     }
 
-    result += gsl_rng_uniform_int(rng, max);
+    size_t chunks = max / rng_max;
+    size_t chunk_size = max / chunks;
 
-    return result;
+    assert(chunks <= rng_max); // Dear lord, if this doesn't hold...
+    
+    size_t chunk = gsl_rng_uniform_int(rng, chunks);
+
+    return chunk * chunk_size + gsl_rng_uniform_int(rng, chunk_size);
 }
 
 }
