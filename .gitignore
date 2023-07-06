@@ -4,6 +4,11 @@ build/*
 lib/*
 bin/*
 
+*.tsv
+*.dat
+*.out
+*.plt
+
 #tests/*
 #!tests/*.{cpp,sh}
 tests/data
