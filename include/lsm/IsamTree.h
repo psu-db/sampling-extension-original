@@ -198,8 +198,6 @@ public:
         this->pfile = pfile;
         this->retain_file = false;
 
-        fprintf(stdout, "%ld %ld\n", copy_time, internal_time);
-
         free(buffer);
     }
 

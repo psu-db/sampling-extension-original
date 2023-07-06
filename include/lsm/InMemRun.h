@@ -109,7 +109,7 @@ public:
         TIMER_STOP();
         auto level_time = TIMER_RESULT();
 
-        fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
+        //fprintf(stdout, "%ld %ld %ld\n", sort_time, copy_time, level_time);
     }
 
     InMemRun(InMemRun** runs, size_t len, BloomFilter* bf, bool tagging)
