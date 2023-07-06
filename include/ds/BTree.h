@@ -25,6 +25,7 @@
 #include <numeric>
 
 #include <gsl/gsl_rng.h>
+#include "util/base.h"
 
 
 namespace tlx {
@@ -1621,7 +1622,7 @@ public:
                 const InnerNode* inner = static_cast<const InnerNode*>(now);
 
                 uint64_t sum = std::accumulate(inner->weight, inner->weight + inner->slotuse + 1, 0);
-                uint64_t pos = gsl_rng_uniform_int(rng, sum);
+                uint64_t pos = lsm::get_random(rng, sum);
 
                 uint64_t prefix_sum = 0;
                 unsigned short s = -1;

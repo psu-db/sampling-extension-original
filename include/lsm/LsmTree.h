@@ -41,7 +41,7 @@ static constexpr bool LSM_REJ_SAMPLE = true;
 
 // True for leveling, false for tiering
 static constexpr bool LSM_LEVELING = false;
-static constexpr bool DELETE_TAGGING = false;
+static constexpr bool DELETE_TAGGING = true;
 
 typedef ssize_t level_index;
 
@@ -237,7 +237,7 @@ public:
             // First the memtable,
             while (run_samples[0] > 0) {
                 TIMER_START();
-                size_t idx = gsl_rng_uniform_int(rng, memtable_cutoff);
+                size_t idx = get_random(rng, memtable_cutoff);
                 sample_record = (LSM_REJ_SAMPLE) ? memtable->get_record_at(idx) : memtable_records[idx];
                 TIMER_STOP();
                 memtable_sample_time += TIMER_RESULT();
@@ -261,7 +261,7 @@ public:
                 auto run_id = memory_ranges[i].run_id;
                 while (run_samples[i+run_offset] > 0) {
                     TIMER_START();
-                    size_t idx = gsl_rng_uniform_int(rng, range_length);
+                    size_t idx = get_random(rng, range_length);
                     sample_record = memory_levels[run_id.level_idx]->get_record_at(run_id.run_idx, idx + memory_ranges[i].low);
                     run_samples[i+run_offset]--;
                     TIMER_STOP();
@@ -293,7 +293,7 @@ public:
 
                 while (run_samples[i+run_offset] > 0) {
                     TIMER_START();
-                    size_t idx = gsl_rng_uniform_int(rng, range_length);
+                    size_t idx = get_random(rng, range_length);
                     sample_record = this->disk_levels[level_idx]->get_run(run_idx)->sample_record(disk_ranges[i].low, idx, buffer, buffered_page);
                     run_samples[i+run_offset]--;
                     TIMER_STOP();

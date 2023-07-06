@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+#include <gsl/gsl_rng.h>
 
 namespace lsm {
 
@@ -61,5 +62,32 @@ TYPEALIGN(uint64_t ALIGNVAL, T LEN) {
 static inline char *get_page(char *buffer, size_t idx) {
     return buffer + (idx * PAGE_SIZE);
 }
+
+/*
+ *  Helper function for getting random numbers in a manner that
+ *  allows the maximum limit of the generator to be exceeded.
+ */
+static inline size_t get_random(gsl_rng *rng, size_t max) {
+    static size_t rng_max = 0;
+
+    if (rng_max == 0) {
+        rng_max = gsl_rng_max(rng);
+    }
+
+    if (max == 0) {
+        return 0;
+    } 
+
+    size_t result = 0;
+    while (max > rng_max) {
+        result += gsl_rng_uniform_int(rng, rng_max);
+        max -= rng_max;
+    }
+
+    result += gsl_rng_uniform_int(rng, max);
+
+    return result;
+}
+
 }
 #endif
