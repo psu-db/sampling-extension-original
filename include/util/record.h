@@ -7,7 +7,7 @@ namespace lsm {
 
 typedef uint32_t hdr_t;
 typedef uint64_t key_t;
-typedef uint32_t value_t;
+typedef uint64_t value_t;
 
 struct record_t {
     key_t key;
@@ -43,7 +43,7 @@ struct record_t {
     }
 };
 
-static_assert(sizeof(record_t) == 16, "Record is not 16 bytes long.");
+static_assert(sizeof(record_t) == 24, "Record is not 16 bytes long.");
 
 static bool memtable_record_cmp(const record_t& a, const record_t& b) {
     return (a.key < b.key) || (a.key == b.key && a.value < b.value)

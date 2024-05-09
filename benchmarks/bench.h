@@ -1,5 +1,6 @@
 #ifndef H_BENCH
 #define H_BENCH
+
 #include "lsm/LsmTree.h"
 #include "ds/BTree.h"
 
@@ -404,6 +405,57 @@ static void scan_for_key_range(std::fstream *file, size_t record_cnt=0) {
                 break;
         }
     }
+}
+
+
+
+template <typename QP>
+static std::vector<QP> read_range_queries(std::string &fname, double selectivity) {
+    std::vector<QP> queries;
+
+    FILE *qf = fopen(fname.c_str(), "r");
+
+    if (!qf) {
+        fprintf(stderr, "ERROR: Failed to open file %s\n", fname.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    size_t start, stop;
+    double sel;
+    while (fscanf(qf, "%zu%zu%lf\n", &start, &stop, &sel) != EOF) {
+        if (start < stop && std::abs(sel - selectivity) < 0.00001) {
+            QP q;
+            q.lower_bound = start;
+            q.upper_bound = stop;
+            q.k = 1000;
+
+            queries.push_back(q);
+        }
+    }
+    fclose(qf);
+
+    return queries;
+}
+
+template<typename R>
+static std::vector<R> read_sosd_file(std::string &fname, size_t n) {
+    std::fstream file;
+    file.open(fname, std::ios::in | std::ios::binary);
+
+    if (!file.is_open()) {
+        fprintf(stderr, "ERROR: Failed to open file %s\n", fname.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    std::vector<R> records(n);
+    for (size_t i=0; i<n; i++) {
+        decltype(R::key) k;
+        file.read((char*) &(k), sizeof(R::key));
+        records[i].key = k;
+        records[i].value = i;
+    }
+
+    return records;
 }
 
 #endif // H_BENCH

@@ -260,7 +260,7 @@ public:
     }
 
     size_t get_memory_utilization() {
-        return m_reccnt * sizeof(record_t) + m_internal_node_cnt * inmem_isam_node_size;
+        return m_internal_node_cnt * inmem_isam_node_size;
     }
 
     void persist_to_file(std::string data_fname) {
