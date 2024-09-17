@@ -1,5 +1,17 @@
 # README
 
+This is the "original" version of the code associated with SIGMOD 2024 
+conference paper: Practical Dynamic Extension for Sampling Indexes, by
+Douglas B. Rumbaugh and Dong Xie. It's a bit of a mess, and so a cleaned
+up version is available in [another repository](https://github.com/psu-db/sampling-extension),
+containing versions of the framework for WSS and WIRS queries. A cleaner implementation of
+IRS, including concurrency, [can be found in the repository for our follow-on VLDB paper](https://github.com/psu-db/dynamic-extension). However,
+as this is the code-base that was used for the SIGMOD paper itself, we are also making it available in its current state.
+
+The "templated" branches are the ones that were used for generating the figures within the paper. Specifically, the `irs-templated` branch
+was used for the IRS figures (including with external storage), the `wirsfr-templated` was used for WSS, `wirs-templated` for WIRS, and
+`conc-template` for concurrent IRS. The other branches can be safely ignored except for historical interest.
+
 ## Dependencies
 
 - gsl
