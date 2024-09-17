@@ -12,6 +12,9 @@ The "templated" branches are the ones that were used for generating the figures 
 was used for the IRS figures (including with external storage), the `wirsfr-templated` was used for WSS, `wirs-templated` for WIRS, and
 `conc-template` for concurrent IRS. The other branches can be safely ignored except for historical interest.
 
+Note that the extensive use of the term "LSM" to refer to the framework itself is a historical artifact from the early days of the 
+project.
+
 ## Dependencies
 
 - gsl
