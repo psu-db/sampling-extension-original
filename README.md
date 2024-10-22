@@ -117,22 +117,13 @@ The following benchmarking programs are currently available,
 
 | name | purpose |
 |------| ------- |
-| `btree_delete` | Measures delete performance of the B+Tree baseline 
-                   and writes the average delete latency to stdout. |
-| `btree_throughput` | Measures the average insertion and query throughput 
-                       of the B+Tree baseline |
-| `isam_throughput` | Measures the average query throughput of a static 
-                      ISAM tree | 
-| `lsm_delete` | Measures delete performance of the sampling extension
-                 structure and writes average delete latency to stdout | 
-| `lsm_throughput` | Measures the average insertion and query throughput
-                     of the extended sampling structure |
-| `static_throughput` | Measures the average query throughput of a static
-                        ISAM tree |
-| `vldb_irs_bench` | Measures average insertion throughput and query latency
-                     using a different benchmarking architecture, to align
-                     with the methodology used in our follow-on VLDB 
-                     paper |
+| `btree_delete` | Measures delete performance of the B+Tree baseline and writes the average delete latency to stdout. |
+| `btree_throughput` | Measures the average insertion and query throughput of the B+Tree baseline |
+| `isam_throughput` | Measures the average query throughput of a static ISAM tree | 
+| `lsm_delete` | Measures delete performance of the sampling extension structure and writes average delete latency to stdout | 
+| `lsm_throughput` | Measures the average insertion and query throughput of the extended sampling structure |
+| `static_throughput` | Measures the average query throughput of a static ISAM tree |
+| `vldb_irs_bench` | Measures average insertion throughput and query latency using a different benchmarking architecture, to align with the methodology used in our follow-on VLDB paper |
 
 The required arguments for a given benchmark can be seen by running it
 without arguments. Each benchmark will write progress information to
